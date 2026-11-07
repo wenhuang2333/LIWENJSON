@@ -199,7 +199,7 @@ printf '%s' '{"a":"b","a":"c"}' | $J explain --json --policy execution ; echo "e
 **SR-25**　骨架声明是**类型检查 + 值约束**，文法如下（EBNF，空白可以出现在记号之间）：
 
 ```ebnf
-schema     = kind constraints? | object | array ;
+schema     = (kind | object | array) constraints? ;
 kind       = "any" | "null" | "boolean" | "number" | "integer" | "string" ;
 constraints= "(" [ constraint { ("," | ";") constraint } [("," | ";")] ] ")" ;
 constraint = name ":" value ;
@@ -226,19 +226,23 @@ key        = 裸标识符 | 双引号字符串 ;
 | `minimum` / `maximum` | `number`、`integer` | JSON 数字（`1`、`-1`、`1.5`、`1e3`） |
 | `exclusiveMinimum` / `exclusiveMaximum` | `number`、`integer` | 同上 |
 | `minLength` / `maxLength` | `string` | 非负整数（`-1`、`1.5` 是 `E070`） |
-| `enum` | 任何类型 | JSON 字面量数组 |
+| `enum` | 任何类型 | JSON 字面量数组；标量类型只接受该类型的标量，容器类型接受对象/数组字面量 |
 | `pattern` | `string` | 字符类（见 SR-28） |
 
 `enum` 的拼写、转义与数字形式**必须**是 JSON 自己的（`enum:["low","high"]`），不得另立方言。
+容器上的 `enum` 是**值约束**：它和容器内部的结构（`required`、`items`）是**合取**关系，不是二选一。
 
 **SR-28**　`pattern` **必须**是**字符类子集，不是正则表达式**：
 `pattern:[a-zA-Z0-9_]` 表示「值的每个字符都属于该类」，前导 `^` 表示取反，
 允许 `\ \] \- \^ \n \t \r \d \w \s` 与 `a-z` 形式的区间（区间不可倒置、不可起止于转义），
 空类 `[]`、`[^]` 与任何正则语法（`*`、`+`、`?`、`|`、`.`、锚点、分组）都是 `E070`。
-本库**必须不**内置正则引擎。
+本库**必须不**内置正则引擎。`{n}`、`{n,}`、`{n,m}` 的十进制量词**必须**精确表示；
+超出 `Int32` 上界的量词是 `E070`，**必须不**发生整数回绕。
 
 **SR-29**　0.6.x 能解析的声明，0.7.0 **必须**解析成同一个骨架、`stringify()` 写回同一文本、
 `accepts` / `evaluate` 行为不变；约束只有在**写出来**时才可见。
+（自本次修复起 SR-29 的适用面收窄为：声明的**解析**与 `stringify` 仍逐字节向后兼容；
+`evaluate` 的语义按 SR-34 变化——这**必须**按版本契约处理，而不是悄悄改变。）
 
 **SR-30**　就绪与判定**必须**共用同一个声明：`semantic_readiness` 给的两个数、
 `walk_schema` / `evaluate` 的判定、`at_path` 的按路径查询，**必须**来自同一份解析结果，
@@ -246,6 +250,35 @@ key        = 裸标识符 | 双引号字符串 ;
 
 **SR-31**　值级约束的违反**必须**在值定稿时即刻可见（进入 `FieldInvalid` / `RootInvalid` 一类的判定），
 而不是等到文档结束；这是「值级早拒绝」与 SR-10/SR-11 咬合的地方。
+
+## 7a. Schema 闸门的合取与顺序无关（1.5.2 起的语义）
+
+**SR-34**　根声明**必须**参与执行判定：`evaluate(schema, value).ok` 为真**必须**蕴含
+`value` 满足该声明的**类型**（不只是它声明的成员）。裸标量根（`string`、`integer`、
+`boolean`、`null`、`any`）与容器根一视同仁。这是 1.5.1 与更早版本之间的公开语义变化：
+旧版本对裸标量根只查 `accepts`、不查 `evaluate`，因此 `{"type":"string"}` 会放行数字 `42`。
+
+**SR-35**　同一节点上的约束**必须**按**合取**解释：`const` 与 `enum` 同时出现时，
+允许的值集合**必须**是 `{const}` ∩ `enum`；交集为空是 `E070`（声明不可满足），
+**必须不**退回其中一个集合。判定结果**必须**与关键字的书写顺序、与 Map 的迭代顺序无关。
+
+**SR-36**　带值约束的容器（`{...}(enum:[...])`、`[...](const:...)`）**必须**同时执行两层语义：
+当前节点的值约束，以及内部容器的结构约束（`required`、`items`）。
+遍历器（`evaluate`、`required_paths`、`at_path`、`member_keys`、`field`、`collect_required`
+与流式 watcher）**必须**通过同一个「取结构内层」的访问器看到约束内部的结构，
+不得各自处理一遍。
+
+**SR-37**　`Schema::stringify` **必须**对桥接层可构造的全部声明无损：
+容器上的值约束**必须**写出来（`{!a:integer}(enum:[{"a":1}])`、`[integer](enum:[[1]])`），
+且 `parse(stringify(s))` **必须**是 `s` 的等价声明。有损输出**必须不**被继续当作声明使用。
+
+**SR-38**　声明里无法被当前子集准确表达的结构关键字组合**必须**是 `E070`，不得静默丢弃：
+`items` 只能和 `type:"array"` 一起出现；`properties` / `required` 只能和 `type:"object"`
+一起出现；空 `enum` 与不可满足的数值/长度上下界**必须**在建模阶段拒绝。
+
+**SR-39**　流式路径**必须**与批处理给出同一最终判定，且 `RootReady` **必须不**早于
+嵌套约束可知的时刻：带容器值约束的声明要等根值闭合后再发布 verdict；
+一次 feed、逐码元 feed 与任意分块大小的最终判定**必须**一致。
 
 ```bash
 # 复现：约束在 0.7.0 上逐条生效（退出码 5 = 拒绝执行，2 = E070 声明写错）
@@ -280,6 +313,7 @@ moon test --target native && moon test --target js
 bash tests/cli_smoke.sh                    # SR-12/16/18–24 的命令行断言
 python3 tests/eval/run_readiness.py --cli ./_build/native/release/build/cmd/interjson/interjson.exe --check
 python3 tests/eval/run_independent.py --cli ./_build/native/release/build/cmd/interjson/interjson.exe --node-dir <node_modules>
+python3 tests/json_schema_diff.py --cli ./_build/native/release/build/cmd/interjson/interjson.exe  # SR-34…SR-39
 ```
 
 需求编号与用例的对应关系维护在仓库内的 `docs/TRACEABILITY.md`，每条规则的详细语义

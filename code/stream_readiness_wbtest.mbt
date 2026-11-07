@@ -1134,3 +1134,115 @@ test "field_rejected has a JSON form like every other event" {
     "{\"kind\":\"root_invalid\",\"path\":\"\",\"offset\":7}",
   )
 }
+
+// ---------------------------------------------------------------------------
+// The audit (`marks/审计.md` §4.3): a container's value constraint and the
+// shape inside it are conjunctive, and the streaming path has to agree with the
+// batch path about that -- including *when* it may publish a verdict.
+// ---------------------------------------------------------------------------
+
+///|
+/// `gate_stream` feeds `text` against a JSON Schema declaration in `chunk`
+/// pieces and returns the event kinds, or `None` when the declaration is
+/// refused.
+fn gate_stream(decl : String, text : String, chunk : Int32) -> String? {
+  let schema = Schema::parse_json_schema(decl) catch { _ => return None }
+  let w = SemanticWatcher::new(schema) catch { _ => return None }
+  let raw : Array[ReadinessEvent] = []
+  let mut i = 0
+  while i < text.length() {
+    let to = if i + chunk > text.length() { text.length() } else { i + chunk }
+    w.feed(text[i:to].to_owned()) catch {
+      _ => return None
+    }
+    i = to
+    for e in w.drain_events() {
+      raw.push(e)
+    }
+  }
+  let _ = w.finish() catch { _ => return None }
+  for e in w.drain_events() {
+    raw.push(e)
+  }
+  Some(sr_names_of(raw))
+}
+
+///|
+test "TC-GATE-20 a constrained object does not report root_ready without its required member" {
+  // The audit's object reproducer, streamed. The enum admits `{"other":1}`, but
+  // the object still has to carry `mode`, so no `root_ready` may be published.
+  let decl = "{\"type\":\"object\",\"enum\":[{\"other\":1},{\"mode\":\"read\",\"other\":1}],\"properties\":{\"mode\":{\"type\":\"string\",\"const\":\"read\"}},\"required\":[\"mode\"]}"
+  let events = match gate_stream(decl, "{\"other\":1}", 1) {
+    Some(e) => e
+    None => return assert_true(false, msg="the stream failed")
+  }
+  assert_false(events.contains("root_ready"), msg=events)
+  assert_true(events.contains("root_invalid"), msg=events)
+  // The satisfying value does report it, so the refusal above is about the
+  // value and not about the declaration.
+  let ok = match gate_stream(decl, "{\"mode\":\"read\",\"other\":1}", 1) {
+    Some(e) => e
+    None => return assert_true(false, msg="the stream failed")
+  }
+  assert_true(ok.contains("root_ready"), msg=ok)
+  assert_false(ok.contains("root_invalid"), msg=ok)
+}
+
+///|
+test "TC-GATE-21 a constrained array does not report root_ready for a bad element" {
+  // The audit's array reproducer, streamed: `["bad"]` is in the enum, but it
+  // violates `items.type = integer`.
+  let decl = "{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"enum\":[[1],[\"bad\"]],\"items\":{\"type\":\"integer\"}}},\"required\":[\"items\"]}"
+  let bad = match gate_stream(decl, "{\"items\":[\"bad\"]}", 1) {
+    Some(e) => e
+    None => return assert_true(false, msg="the stream failed")
+  }
+  assert_false(bad.contains("root_ready"), msg=bad)
+  let good = match gate_stream(decl, "{\"items\":[1]}", 1) {
+    Some(e) => e
+    None => return assert_true(false, msg="the stream failed")
+  }
+  assert_true(good.contains("root_ready"), msg=good)
+}
+
+///|
+test "TC-GATE-22 a constrained container's verdict does not depend on the chunking" {
+  // Q-35 in the presence of a container constraint: the claim is about the
+  // container, so it can only be judged when the container closes, and *that*
+  // moment must not move with the caller's chunk size.
+  let decl = "{\"type\":\"object\",\"enum\":[{\"other\":1},{\"mode\":\"read\",\"other\":1}],\"properties\":{\"mode\":{\"type\":\"string\",\"const\":\"read\"}},\"required\":[\"mode\"]}"
+  for text in ["{\"other\":1}", "{\"mode\":\"read\",\"other\":1}"] {
+    let whole = match gate_stream(decl, text, text.length()) {
+      Some(e) => e
+      None => return assert_true(false, msg="the whole-input stream failed")
+    }
+    for chunk in [1, 2, 3, 5, 7] {
+      let piecewise = match gate_stream(decl, text, chunk) {
+        Some(e) => e
+        None => return assert_true(false, msg="the stream failed")
+      }
+      assert_eq(piecewise, whole, msg=text + " chunk " + chunk.to_string())
+    }
+  }
+}
+
+///|
+test "TC-GATE-23 root_ready waits for the container to close when it is constrained" {
+  // The claim is about the whole object, so it cannot be answered while the
+  // object is still open. Without the wait, the members settling early would
+  // publish `root_ready` for a container whose `enum` has not been checked --
+  // and the batch path would then disagree with the stream.
+  let decl = "{\"type\":\"object\",\"enum\":[{\"mode\":\"read\",\"extra\":1}],\"properties\":{\"mode\":{\"type\":\"string\"}},\"required\":[\"mode\"]}"
+  let events = match gate_stream(decl, "{\"mode\":\"read\",\"extra\":1}", 1) {
+    Some(e) => e
+    None => return assert_true(false, msg="the stream failed")
+  }
+  assert_true(events.contains("root_ready"), msg=events)
+  // `extra` is not in the enumeration's value, so the document is refused --
+  // and the refusal has to survive even though `mode` was fine.
+  let refused = match gate_stream(decl, "{\"mode\":\"read\"}", 1) {
+    Some(e) => e
+    None => return assert_true(false, msg="the stream failed")
+  }
+  assert_false(refused.contains("root_ready"), msg=refused)
+}

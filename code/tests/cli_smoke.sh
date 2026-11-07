@@ -749,6 +749,71 @@ else
   fail=$((fail + 1)); printf 'FAIL %-34s rc=%s\n' "--strict --policy is refused" "$conflict_rc"
 fi
 
+# ---------------------------------------------------------------------------
+# The Schema-gate audit (`marks/审计.md`), end to end.
+#
+# The audit reproduced wrong-allows through `serve` and the MCP gate. These
+# assertions pin the same declarations at the two entry points that are not the
+# library: the CLI and `interjson mcp`. The library itself is covered by
+# `schema_gate_wbtest.mbt`.
+# ---------------------------------------------------------------------------
+
+# A bare root declaration is a claim about the value: `string` must refuse 42.
+STDIN='42' check "bare root type refuses the wrong kind" 5 '' "schema not satisfied" -- --schema 'string'
+STDIN='"42"' check "bare root type allows the right kind" 0 '' "" -- --schema 'string'
+
+# A container's `enum` and its shape are conjunctive: the member is in the
+# enumeration but violates `items`.
+STDIN='["bad"]' check "container constraint does not skip items" 5 '' "schema not satisfied" -- --schema '[integer](enum:[[1],["bad"]])'
+STDIN='[1]' check "container constraint allows the satisfying element" 0 '' "" -- --schema '[integer](enum:[[1],["bad"]])'
+
+# The MCP gate, both field orders of `const`/`enum`: the same input, the same
+# verdict. This is the audit's headline reproducer.
+mcp_gate() {
+  printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"interjson_gate\",\"arguments\":{\"text\":\"{\\\"mode\\\":\\\"write\\\"}\",\"schema_json\":$1}}}" \
+    | "$BIN" mcp | tail -1
+}
+for order in \
+  '{"type":"object","properties":{"mode":{"type":"string","const":"read","enum":["read","write"]}},"required":["mode"]}' \
+  '{"type":"object","properties":{"mode":{"type":"string","enum":["read","write"],"const":"read"}},"required":["mode"]}'
+do
+  if mcp_gate "$order" | grep -qF '"executable":false'; then
+    pass=$((pass + 1)); printf 'ok   %-34s\n' "mcp const/enum order independent"
+  else
+    fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "mcp const/enum order independent" "$(mcp_gate "$order")"
+  fi
+done
+
+# The gate allows what the declaration admits, in both orders.
+for order in \
+  '{"type":"object","properties":{"mode":{"type":"string","const":"read","enum":["read","write"]}},"required":["mode"]}' \
+  '{"type":"object","properties":{"mode":{"type":"string","enum":["read","write"],"const":"read"}},"required":["mode"]}'
+do
+  if printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"interjson_gate\",\"arguments\":{\"text\":\"{\\\"mode\\\":\\\"read\\\"}\",\"schema_json\":$order}}}" \
+    | "$BIN" mcp | tail -1 | grep -qF '"executable":true'; then
+    pass=$((pass + 1)); printf 'ok   %-34s\n' "mcp const/enum allows read"
+  else
+    fail=$((fail + 1)); printf 'FAIL %-34s\n' "mcp const/enum allows read"
+  fi
+done
+
+# `interjson_repair` reads the declaration instead of silently accepting it: an
+# unsupported keyword is `E070` and a violating document is refused.
+repair_out="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"interjson_repair","arguments":{"text":"{\"a\":1}","schema_json":{"$ref":"#/definitions/a"}}}}' | "$BIN" mcp | tail -1)"
+if printf '%s' "$repair_out" | grep -qF 'E070'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "mcp repair refuses an unsupported keyword"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "mcp repair refuses an unsupported keyword" "$repair_out"
+fi
+repair_out="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"interjson_repair","arguments":{"text":"{\"mode\":\"write\"}","schema_json":{"type":"object","properties":{"mode":{"type":"string","const":"read"}},"required":["mode"]}}}}' | "$BIN" mcp | tail -1)"
+if printf '%s' "$repair_out" | grep -qF 'E070'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "mcp repair refuses a violating document"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "mcp repair refuses a violating document" "$repair_out"
+fi
+
 # A schema deep enough to exhaust the stack is refused, not crashed.
 deep_schema="$(python3 -c 'print("[" * 400 + "]" * 400)')"
 deep_rc=0

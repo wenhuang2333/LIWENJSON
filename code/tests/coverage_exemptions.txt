@@ -51,7 +51,6 @@ schema.mbt	237	0x72 => if u == 0x0D { hit = true } // \r
 schema.mbt	238	0x5C | 0x5D | 0x2D | 0x5E => if u == e { hit = true } // \\ \] \- \^
 schema.mbt	239	_ => ()
 schema.mbt	413	inner.name()
-schema.mbt	457	Arr(_) | Obj(_) => inner.stringify()
 schema.mbt	460	inner.stringify()
 schema.mbt	478	return true
 schema.mbt	726	base

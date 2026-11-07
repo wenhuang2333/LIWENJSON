@@ -5,6 +5,47 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 安全：Schema 闸门错误放行（`marks/审计.md`）
+
+这一节记录一次以「门能不能被绕过」为问题的审计，以及修复。每一条都曾经让一个
+**不满足声明的值**被判定为可执行；它们不是精度问题，是执行门的问题。
+
+- **`const` 与 `enum` 不是合取，而且结果依赖字段顺序。** 桥接层把两个关键字写进
+  同一个槽位，后写的一个覆盖前一个，于是
+  `{"type":"string","const":"read","enum":["read","write"]}` 放行 `"write"`，
+  把 `const` 和 `enum` 换个位置又拒绝它。现在两者是交集：允许值集合是
+  `{const}` ∩ `enum`，交集为空是 `E070`（声明不可满足），判定与书写顺序无关。
+- **带值约束的容器跳过内部结构。** `{"type":"array","enum":[[1],["bad"]],"items":{"type":"integer"}}`
+  放行 `["bad"]`，`{"type":"object","enum":[…],"required":["mode"]}` 放行缺少
+  `mode` 的对象。现在同一节点上的值约束与结构约束是合取；`evaluate`、
+  `required_paths`、`at_path`、`member_keys`、`field`、`collect_required` 与流式
+  watcher 共用一个「取结构内层」的访问器，不再各自解释一遍。
+- **`pattern` 量词整数回绕。** `{4294967296}` 被折成 `{0}`，于是空串通过了
+  「恰好 4294967296 个字符」的声明。超出 `Int32` 上界的量词现在是 `E070`。
+- **`items` 没有 `type` 时被静默丢弃。** 现在 `items` 只能与 `type:"array"` 同现，
+  `properties`/`required` 只能与 `type:"object"` 同现，否则 `E070`。空 `enum`、
+  `const` 不在 `enum` 内、`minimum > maximum` 等不可满足的声明同样在建模阶段拒绝。
+- **裸标量根类型不参与判定。** `{"type":"string"}` 放行数字 `42`。根声明现在和
+  其它节点一样检查；这是公开语义变化：`Schema::evaluate` 对裸标量根的判定在
+  1.5.1 及更早版本里恒为真，自本次修复起按声明检查。
+- **`interjson_repair` 完全不读 `schema` / `schema_json`。** 连不支持的 `$ref` 都不报
+  `E070`，修复后的文档违反声明也返回 `ok: true`。现在 `repair` 解析声明（不支持的
+  关键字是 `E070`），修复后的值不满足声明时拒绝，与 CLI 的 `--schema` 门一致。
+- **`Schema::stringify` 丢失容器约束。** `Constrained(Arr/Obj, c).stringify()` 只写回
+  内层容器，`parse(stringify(s))` 因此是一个更弱的声明。现在约束会写出来
+  （`{!a:integer}(enum:[{"a":1}])`、`[integer](enum:[[1]])`），文本形式对桥接层
+  可构造的声明无损。
+- **流式路径的过早判定。** 带容器约束的声明在成员就绪时就会发布 `RootReady` /
+  `RootInvalid`，此时容器的值还没闭合，`enum` 无从判断。现在这类声明的 verdict
+  等根值闭合；一次 feed、逐码元 feed 与任意分块大小的最终判定一致。
+
+文档同步：`docs/SPEC.md` 新增 SR-34…SR-39，`docs/MCP.md` 写明 JSON Schema 子集的
+合取语义与 `repair` 的声明契约。回归测试见 `schema_gate_wbtest.mbt`
+（TC-GATE-01…19、TC-GATE-26/27）、`stream_readiness_wbtest.mbt`（TC-GATE-20…23）、
+`tests/cli_smoke.sh`（CLI 与 MCP 端到端）、npm 与 Python 包测试。
+
 ## [1.5.1] - 2026-10-29
 
 1.5.0 的 tag 打出去之后，深度与内存上的工作才做完。两者不能混在一个版本里：

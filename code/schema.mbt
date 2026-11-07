@@ -19,7 +19,8 @@
 //   any | null | boolean | number | integer | string
 //   { member* }        member := ("!" key | "?" key) ":" schema (";" | ",")?
 //   [ schema ]
-//   kind ( constraints )?      constraints := constraint ("," | ";")*
+//   (kind | { ... } | [ ... ]) ( constraints )?
+//                              constraints := constraint ("," | ";")*
 //
 // A member is required by default: `!` is written for the reader, not for the
 // parser. `Schema::stringify` always writes the marker back, so the text form
@@ -50,10 +51,22 @@
 // meaning. There is no regex engine behind this file and there is no plan to
 // add one.
 //
+// Since the Schema-gate audit (1.5.2), a *container* may carry a constraint
+// list too -- `{...}(enum:[...])`, `[...](const:...)` -- because the JSON Schema
+// bridge can build exactly that from `const`/`enum` on an object or an array.
+// Such a constraint is a claim about the container's whole value and is
+// **conjunctive** with the shape inside it: `{!a:integer}(enum:[{"a":1}])`
+// requires both a valid object and one of the listed values. Every traversal
+// (`evaluate`, `required_paths`, `at_path`, `member_keys`, `field`,
+// `collect_required`, the streaming watcher) goes through `Schema::structure`
+// for that reason, and `stringify` writes the constraint back so the text form
+// stays lossless.
+//
 // Backward compatibility: a declaration that parsed before 0.7.0 parses to the
-// same schema, `stringify()` still writes it the same way, and `accepts` /
-// `evaluate` on it do exactly what they did. A constraint is only visible when
-// one was written.
+// same schema and `stringify()` still writes it the same way. A constraint is
+// only visible when one was written. `evaluate` differs from 1.5.1 and earlier
+// in one documented way: the root declaration is checked like any other node,
+// so a bare `string` root refuses `42` (SPEC SR-34).
 
 ///|
 /// The kinds a skeleton declaration can name (FR-36), plus a scalar kind with
@@ -404,6 +417,61 @@ pub fn Schema::name(self : Schema) -> String {
 }
 
 ///|
+/// The declaration with its value constraints peeled off.
+///
+/// A `Constrained` node is two claims about the same value: the constraints
+/// (`enum`, range, length, …) and the shape inside them (`Obj` members,
+/// `Arr` items). They are conjunctive, so every traversal that looks for
+/// members or items must see through the wrapper instead of treating it as a
+/// leaf. This one accessor exists so `evaluate`, `required_paths`, `at_path`,
+/// `member_keys`, `field`, `collect_required` and the streaming watcher all
+/// agree on what "inside" means.
+fn Schema::structure(self : Schema) -> Schema {
+  let mut cur = self
+  let mut done = false
+  while !done {
+    match cur {
+      Constrained(inner, _) => cur = inner
+      _ => done = true
+    }
+  }
+  cur
+}
+
+///|
+/// Whether any node of the declaration carries a value constraint on a
+/// *container* (`{...}(enum:[...])`, `[...](const:...)`).
+///
+/// Such a constraint is a claim about the whole container, so it can only be
+/// judged once the container is final. The streaming watcher uses this to know
+/// that a verdict on the members alone is premature: it must wait for the
+/// enclosing value to close. A declaration that only constrains leaves is
+/// unaffected and keeps the early verdict it always had.
+///
+/// Iterative, because a declaration may be built by hand as deep as
+/// `MAX_VALUE_DEPTH` and a recursive scan would put that on the native stack.
+fn Schema::has_container_constraint(self : Schema) -> Bool {
+  let work : Array[Schema] = [self]
+  while work.length() > 0 {
+    let s = work.remove(work.length() - 1)
+    match s {
+      Constrained(inner, c) =>
+        match inner.structure() {
+          Obj(_) | Arr(_) => if !c.is_empty() { return true }
+          _ => ()
+        }
+      Obj(members) =>
+        for m in members {
+          work.push(m.schema)
+        }
+      Arr(inner) => work.push(inner)
+      _ => ()
+    }
+  }
+  false
+}
+
+///|
 /// The declaration as a caller would have written it: the kind alone when
 /// nothing is constrained, `integer(minimum:0)` when something is.
 pub fn Schema::expectation(self : Schema) -> String {
@@ -449,18 +517,17 @@ pub fn Schema::stringify(self : Schema) -> String {
       sb.write_char('}')
       sb.to_string()
     }
-    // A container carries no constraint anywhere the text form can express one:
-    // the parser accepts a constraint list only after a scalar kind, so writing
-    // one back would produce text that does not parse.
+    // A container carries constraints the text form can express since the
+    // schema audit fix (1.5.1 and earlier dropped them): `{...}(enum:[...])`
+    // and `[...](enum:[...])` parse, so writing them back is lossless. Before
+    // that the constraint list was silently dropped, which made
+    // `parse(stringify(s))` a weaker gate than `s` -- the one thing the text
+    // form exists to prevent.
     Constrained(inner, c) =>
-      match inner {
-        Arr(_) | Obj(_) => inner.stringify()
-        _ =>
-          if c.is_empty() {
-            inner.stringify()
-          } else {
-            inner.stringify() + "(" + c.text() + ")"
-          }
+      if c.is_empty() {
+        inner.stringify()
+      } else {
+        inner.stringify() + "(" + c.text() + ")"
       }
     _ => self.name()
   }
@@ -493,9 +560,13 @@ fn name_needs_quotes(key : String) -> Bool {
 
 ///|
 /// Member names declared under `parent`, in declaration order.
+///
+/// The members of `{...}(enum:[...])` are the members of the object inside the
+/// constraint list: a constraint is an extra claim about the same value, not a
+/// replacement for its shape.
 pub fn Schema::member_keys(self : Schema) -> Array[String] {
   let out : Array[String] = []
-  match self {
+  match self.structure() {
     Obj(members) =>
       for m in members {
         out.push(m.key)
@@ -508,7 +579,7 @@ pub fn Schema::member_keys(self : Schema) -> Array[String] {
 ///|
 /// The declared schema of member `key`, or `None`.
 pub fn Schema::field(self : Schema, key : String) -> SchemaMember? {
-  match self {
+  match self.structure() {
     Obj(members) => {
       for m in members {
         if m.key == key {
@@ -535,7 +606,7 @@ pub fn Schema::at_path(self : Schema, path : String) -> Schema? {
   }
   let mut cur = self
   for seg in path.split(".") {
-    cur = match cur {
+    cur = match cur.structure() {
       Obj(members) => {
         let mut next : Schema? = None
         for m in members {
@@ -673,7 +744,11 @@ fn sp_schema_body(p : SchemaParser) -> Schema raise InterJSONError {
       }
     }
     guard_no_dup(members)
-    Obj(members)
+    // A container may carry a constraint list too: `{...}(enum:[...])`. The
+    // constraint is an extra claim about the same value, and dropping it on
+    // the way back out would make `parse(stringify(s))` a weaker gate than
+    // `s`.
+    sp_wrap_constraints(p, Obj(members))
   } else if c == 0x5B {
     // [
     p.i = p.i + 1
@@ -683,7 +758,7 @@ fn sp_schema_body(p : SchemaParser) -> Schema raise InterJSONError {
       raise SchemaError(" `[` is never closed")
     }
     p.i = p.i + 1
-    Arr(inner)
+    sp_wrap_constraints(p, Arr(inner))
   } else if c == 0x22 {
     // A quoted key is not a type here; only members have names.
     raise SchemaError(" expected a type or `{`, found a quoted string")
@@ -1059,6 +1134,15 @@ fn sp_constraint_enum(
     )
   }
   for v in items {
+    // A literal the declared kind can never hold would be a rule that silently
+    // never fires, which is the failure mode this parser exists to prevent.
+    // A container kind admits object/array literals -- the JSON Schema bridge
+    // builds exactly that from `const`, and `stringify` has to be able to
+    // write it back.
+    let is_scalar = match base.structure() {
+      Obj(_) | Arr(_) | Any => false
+      _ => true
+    }
     match v {
       Json::Null
       | Json::True
@@ -1066,13 +1150,13 @@ fn sp_constraint_enum(
       | Json::Number(_, ..)
       | Json::String(_) => ()
       _ =>
-        raise SchemaError(
-          " schema: `enum` admits only scalar literals at offset " +
-          open.to_string(),
-        )
+        if is_scalar {
+          raise SchemaError(
+            " schema: `enum` admits only scalar literals at offset " +
+            open.to_string(),
+          )
+        }
     }
-    // A literal the declared kind can never hold would be a rule that silently
-    // never fires, which is the failure mode this parser exists to prevent.
     if !kind_accepts(base, v) {
       raise SchemaError(
         " schema: `enum` value " +
@@ -1372,6 +1456,7 @@ fn is_integer(v : Json) -> Bool {
 /// Whether `v` has the declared kind (FR-36), ignoring constraints.
 fn kind_accepts(schema : Schema, v : Json) -> Bool {
   match (schema, v) {
+    (Constrained(inner, _), _) => kind_accepts(inner, v)
     (Any, _) => true
     (Null, Json::Null) => true
     (Bool, Json::True) | (Bool, Json::False) => true
@@ -1388,17 +1473,21 @@ fn kind_accepts(schema : Schema, v : Json) -> Bool {
 /// Whether `v` has the declared kind **and** satisfies the declared value
 /// constraints (FR-36, 0.7.0). A declaration with no constraints accepts
 /// exactly what it accepted in 0.6.x.
+///
+/// The layers of a hand-built `Constrained(Constrained(…))` are conjunctive,
+/// exactly like two keywords on one JSON Schema node: every layer applies, and
+/// an inner constraint is not erased by an outer one.
 pub fn Schema::accepts(self : Schema, v : Json) -> Bool {
   match self {
-    Constrained(inner, c) => {
-      if !kind_accepts(inner, v) {
-        return false
+    Constrained(inner, c) =>
+      if !inner.accepts(v) {
+        false
+      } else {
+        match c.violation(inner.name(), v) {
+          None => true
+          Some(_) => false
+        }
       }
-      match c.violation(inner.name(), v) {
-        None => true
-        Some(_) => false
-      }
-    }
     _ => kind_accepts(self, v)
   }
 }
@@ -1410,10 +1499,13 @@ pub fn Schema::accepts(self : Schema, v : Json) -> Bool {
 fn Schema::constraint_problem(self : Schema, v : Json) -> String? {
   match self {
     Constrained(inner, c) =>
-      if kind_accepts(inner, v) {
-        c.violation(inner.name(), v)
-      } else {
+      if !kind_accepts(inner, v) {
         None
+      } else {
+        match c.violation(inner.name(), v) {
+          Some(e) => Some(e)
+          None => inner.constraint_problem(v)
+        }
       }
     _ => None
   }
@@ -1521,8 +1613,11 @@ fn walk_schema_step(
             total[0] = total[0] + 1
             if m.schema.accepts(child) {
               satisfied[0] = satisfied[0] + 1
-              // A container is walked: the skeleton can constrain deeper.
-              match m.schema {
+              // A container is walked: the skeleton can constrain deeper. The
+              // test is on the *structure* so a container that carries value
+              // constraints (`{...}(enum:[...])`, `[...](const:...)`) is still
+              // walked instead of being treated as a leaf.
+              match m.schema.structure() {
                 Obj(_) | Arr(_) => pending.push((m.schema, child, here))
                 _ => ()
               }
@@ -1577,14 +1672,44 @@ fn walk_schema_step(
           })
       }
     Constrained(_, _) =>
+      // A constrained node is two claims about the same value: the constraint
+      // on the value and the shape inside it. Both are checked, never one
+      // instead of the other.
+      //
+      // The root is the only node nobody has checked yet -- a node pushed by
+      // its parent was already accepted there -- so the value-level check runs
+      // only at `path == ""` and the walk then descends into the shape. Before
+      // the audit fix the descent did not happen at all, which is why an object
+      // or an array carrying `const`/`enum` had its `required` members and
+      // `items` silently ignored.
       if path == "" && !schema.accepts(value) {
         mismatched.push({
           path: "<root>",
           expected: mismatch_expected(schema, value),
           got: kind_of(value),
         })
+      } else {
+        // Push the *structure*, not the wrapper: the constraint was checked
+        // above (or by the parent), and re-pushing the wrapper would walk it
+        // again.
+        let shape = schema.structure()
+        match shape {
+          Obj(_) | Arr(_) => work.push((shape, value, path))
+          _ => ()
+        }
       }
-    _ => ()
+    // A bare scalar kind at the root declares no members, but the declaration
+    // is still a claim about the value: `{"type":"string"}` must reject `42`.
+    // Below the root the parent has already checked the member's kind and
+    // constraints, so the claim is not repeated (and would double-count).
+    _ =>
+      if path == "" && !schema.accepts(value) {
+        mismatched.push({
+          path: "<root>",
+          expected: schema.expectation(),
+          got: kind_of(value),
+        })
+      }
   }
 }
 
@@ -1632,18 +1757,21 @@ pub fn Schema::required_paths(self : Schema) -> Array[String] {
 
 ///|
 /// Recursive half of `Schema::required_paths`.
+///
+/// The structure is what is walked, not the wrapper: a required member inside
+/// `{...}(enum:[...])` is still required, and the watcher has to follow it.
 fn collect_required(
   schema : Schema,
   base : String,
   out : Array[String],
 ) -> Unit {
-  match schema {
+  match schema.structure() {
     Obj(members) =>
       for m in members {
         if m.required {
           let here = join_path(base, m.key)
           out.push(here)
-          match m.schema {
+          match m.schema.structure() {
             Obj(_) => collect_required(m.schema, here, out)
             _ => ()
           }

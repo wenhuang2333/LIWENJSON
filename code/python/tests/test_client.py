@@ -73,6 +73,78 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "E070")
         self.assertIn("$ref", caught.exception.message)
 
+
+    def test_const_and_enum_are_conjunctive_whatever_the_field_order(self) -> None:
+        """The audit's headline reproducer, through the Python wrapper."""
+        orders = [
+            {
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "const": "read",
+                        "enum": ["read", "write"],
+                    }
+                },
+                "required": ["mode"],
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "enum": ["read", "write"],
+                        "const": "read",
+                    }
+                },
+                "required": ["mode"],
+            },
+        ]
+        for schema_json in orders:
+            self.assertFalse(
+                self.client.analyze('{"mode":"write"}', schema_json=schema_json)[
+                    "executable"
+                ]
+            )
+            self.assertTrue(
+                self.client.analyze('{"mode":"read"}', schema_json=schema_json)[
+                    "executable"
+                ]
+            )
+
+    def test_a_container_constraint_does_not_skip_the_shape_inside_it(self) -> None:
+        schema_json = {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "enum": [[1], ["bad"]],
+                    "items": {"type": "integer"},
+                }
+            },
+            "required": ["items"],
+        }
+        self.assertFalse(
+            self.client.analyze('{"items":["bad"]}', schema_json=schema_json)[
+                "executable"
+            ]
+        )
+        self.assertTrue(
+            self.client.analyze('{"items":[1]}', schema_json=schema_json)["executable"]
+        )
+
+    def test_repair_honours_the_declaration_it_is_given(self) -> None:
+        with self.assertRaises(InterJSONError) as caught:
+            self.client.repair(
+                '{"mode":"write"}',
+                schema_json={
+                    "type": "object",
+                    "properties": {"mode": {"type": "string", "const": "read"}},
+                    "required": ["mode"],
+                },
+            )
+        self.assertEqual(caught.exception.code, "E070")
+
     def test_validate(self) -> None:
         self.assertTrue(self.client.validate('{"a":1}')["valid"])
         bad = self.client.validate("{a:1,}")

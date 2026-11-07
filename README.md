@@ -24,7 +24,7 @@ mooncakes 的 `0.13.0` 已于 2026-10-29 发布（`moon add zhanshishan/interjso
 - **本地 MCP server**。`interjson mcp` 通过 stdio 讲 JSON-RPC 2.0（协议 `2025-06-18`），不监听端口、不发网络请求、不需要 API key，模型输出不离开本机。四个只读工具：`interjson_gate`（执行门，不传 `profile` 时默认 `agent`，等价于 `Options::for_agent()`）、`interjson_repair`、`interjson_validate`、`interjson_readiness`。`--print-config=claude|cursor|vscode|codex|windsurf|zed|json` 打印可直接粘贴的客户端配置。**MCP 是建议性的**：模型可以不调它，要变成强制闸门得由宿主接入（见下节「接入面」）。
 - **流式部分解析**。`PartialParser` 的 `feed` / `feed_bytes` / `snapshot` / `finish`：任意切分任何 token（含转义序列与代理对）都成立，`snapshot` 给出的是稳定前缀——同一个输入前缀永远得到同一个快照。增量视图是 `Set` / `AppendText` / `Close` 三种 delta，路径用 RFC 6901 JSON Pointer。
 - **五种安全档位**。`permissive` / `interactive` / `execution` / `agent` / `strict`，库侧对应 `Options::for_execution()`、`Options::for_agent()` 等预设；`with_policy` 只换安全字段、保留协议字段，`with_profile` 连协议一起给，可按名字反查。库默认 `permissive`，**任何执行路径必须显式选执行档**。
-- **JSON Schema 桥**。两条声明通道：库内声明 DSL（如 `{!query:string,!limit:integer}`）与工具声明里已有的 JSON Schema 子集（`type` / `properties` / `required` / `items` / `enum` / `const` / 数值与长度约束 / `pattern`）。不支持的键报 `E070`，而不是静默忽略。
+- **JSON Schema 桥**。两条声明通道：库内声明 DSL（如 `{!query:string,!limit:integer}`）与工具声明里已有的 JSON Schema 子集（`type` / `properties` / `required` / `items` / `enum` / `const` / 数值与长度约束 / `pattern`）。不支持的键报 `E070`，而不是静默忽略。同一节点上的关键字按 **合取** 解释、与书写顺序无关（`const` 与 `enum` 取交集，容器上的约束与内部 `required`/`items` 同时生效），根节点的类型也参与判定；无法满足的声明在建模阶段就是 `E070`。语义与验收用例见 `code/docs/SPEC.md` §7a 与 `code/schema_gate_wbtest.mbt`。
 - **CLI 与资源上限**。`interjson` 有六个子命令：`repair`、`explain`、`readiness`、`serve`、`mcp`、`llm`。资源上限可收紧也可放宽：`--max-input-len`（`E021`）、`--max-depth`（`E020`）、`--max-token-len`（`E022`），三个上限的默认值与库一致。退出码 0 / 1 / 2 / 3 / 4 / 5 / 70 逐条固定。
 - **多后端一致性**。wasm-gc / native / JS / wasm 四个后端跑**同一套**测试，结果一致；CLI 是 native 后端。
 - **LLM provider 适配**。`interjson/llm` 吃 Anthropic 的细粒度工具流与 OpenAI 兼容的工具调用流，自带 SSE 分帧，支持多路并发；一次调用结束被报成 `Complete` / `MaxTokens` / `Interrupted` / `ProviderError`，并保留 provider 自己的 `stop_reason`。
@@ -34,14 +34,14 @@ mooncakes 的 `0.13.0` 已于 2026-10-29 发布（`moon add zhanshishan/interjso
 
 | 证据 | 结果 |
 | --- | --- |
-| 四个后端（wasm-gc / native / JS / wasm） | 每个后端 `249/249` 通过 |
-| CLI 冒烟 | `122 项断言` |
+| 四个后端（wasm-gc / native / JS / wasm） | 每个后端 `274/274` 通过 |
+| CLI 冒烟 | `132 项断言` |
 | 协议 / MCP 一致性 | `19 组` |
-| npm 包 | `15 个 Node 测试` |
-| Python 包 | `29 个测试` |
-| 根包行覆盖率 | `4032/4299` |
+| npm 包 | `17 个 Node 测试` |
+| Python 包 | `32 个测试` |
+| 根包行覆盖率 | `4121/4391` |
 | `llm` 包行覆盖率 | `337/391` |
-| 覆盖率门（有未覆盖行的文件口径） | `4294/4615` |
+| 覆盖率门（有未覆盖行的文件口径） | `4383/4707` |
 | wasm-gc 产物体积 | `114.5 KiB` |
 | 真值评测（协议先冻结） | `1200` 条，恢复率 `100.00%` |
 | 差分测试（对 `jsonrepair` / `json-repair`） | `402` 条，未解释 0 处分歧 |
@@ -192,7 +192,7 @@ q.finish()                                             // 抛 E010
 ## 技术栈
 
 - **引擎**：纯 MoonBit，无第三方运行时依赖；工具链钉在 `moon 0.1.20261016`（CI 同样钉住）。
-- **后端**：wasm-gc / native / JS / wasm 四个后端跑同一套测试（每个后端 `249/249`）；CLI 与 MCP server 是 native 后端，浏览器里跑的是 JS 后端产物。
+- **后端**：wasm-gc / native / JS / wasm 四个后端跑同一套测试（每个后端 `272/272`）；CLI 与 MCP server 是 native 后端，浏览器里跑的是 JS 后端产物。
 - **协议**：MCP 用 stdio + JSON-RPC 2.0，协议版本 `2025-06-18`；`interjson serve` 用版本化 JSONL（每行一个请求、一行一个响应，stdout 只走协议）。
 - **语言包**：npm 包提供 ESM + CJS + TypeScript 类型（Node >= 20）；Python 包是同一引擎的薄客户端，无第三方依赖，wheel 内自带四个平台的 native 二进制。
 - **构建与 CI**：GitHub Actions；同一组命令在 CI 与本地执行，失败即失败。

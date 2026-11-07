@@ -195,3 +195,44 @@ test("the package reports the engine version", () => {
   const pkg = JSON.parse(readFileSync(resolve(here, "..", "package.json"), "utf8"));
   assert.equal(pkg.version, declared);
 });
+
+test("const and enum are conjunctive, whatever the field order", () => {
+  // The audit's headline reproducer: the same declaration with `const` and
+  // `enum` in either order must reach the same verdict.
+  const orders = [
+    {
+      type: "object",
+      properties: {
+        mode: { type: "string", const: "read", enum: ["read", "write"] },
+      },
+      required: ["mode"],
+    },
+    {
+      type: "object",
+      properties: {
+        mode: { type: "string", enum: ["read", "write"], const: "read" },
+      },
+      required: ["mode"],
+    },
+  ];
+  for (const schemaJson of orders) {
+    assert.equal(gate('{"mode":"write"}', { schemaJson }).executable, false);
+    assert.equal(gate('{"mode":"read"}', { schemaJson }).executable, true);
+  }
+});
+
+test("a container's constraint does not skip the shape inside it", () => {
+  const schemaJson = {
+    type: "object",
+    properties: {
+      items: {
+        type: "array",
+        enum: [[1], ["bad"]],
+        items: { type: "integer" },
+      },
+    },
+    required: ["items"],
+  };
+  assert.equal(gate('{"items":["bad"]}', { schemaJson }).executable, false);
+  assert.equal(gate('{"items":[1]}', { schemaJson }).executable, true);
+});

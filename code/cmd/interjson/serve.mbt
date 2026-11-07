@@ -452,16 +452,40 @@ fn ServeState::new() -> ServeState {
 
 ///|
 /// `repair`: one document in, one repaired document out.
+///
+/// The declaration is honoured, not merely accepted. In 1.5.1 and earlier this
+/// method read `text` and the options and silently ignored `schema`/`schema_json`,
+/// which meant an unsupported keyword (`$ref`, say) was accepted here while the
+/// same declaration was refused with `E070` by every other method -- and a
+/// caller that passed a declaration got back a document that violated it with
+/// `ok: true`. The one-shot CLI already refuses a repaired value that does not
+/// satisfy `--schema`, so the two entry points now agree: the declaration is
+/// parsed (an unsupported keyword is `E070`) and a repaired value that violates
+/// it is refused with the same sentence the gate uses.
 fn handle_repair(
   params : Map[String, Json],
   base : @ij.Options,
 ) -> Json raise @ij.InterJSONError {
   let text = text_param(params)
   let opts = options_from_params(base, params)
+  let schema = schema_param(params)
   // The one-shot entry point, not a hand-rolled feed/finish: it also carries
   // the scalar-root retry that `skip_prose` needs, so `serve` cannot disagree
   // with `interjson repair`.
-  repair_out_json(@ij.repair(text, options=opts))
+  let repaired = @ij.repair(text, options=opts)
+  match schema {
+    Some(s) => {
+      // The repaired text is legal JSON by construction, so this parse cannot
+      // raise for a reason the caller could act on.
+      let value = @ij.parse(repaired.text).value
+      let violation = @ij.schema_violation(s, value)
+      if violation != "" {
+        raise @ij.SchemaError(violation)
+      }
+    }
+    None => ()
+  }
+  repair_out_json(repaired)
 }
 
 ///|

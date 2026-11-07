@@ -139,7 +139,12 @@ plan.to_json()         // machine channel: decision/exactness/value/retry/repair
 - **`Schema` + `semantic_readiness`**: declare `{!query:string,!limit:integer}` and
   get two fractions for the same stream — syntax ready and schema ready — plus the
   members that are missing or of the wrong kind. `Schema::of_json_schema` and
-  `parse_json_schema` accept a tool's existing JSON Schema subset directly.
+  `parse_json_schema` accept a tool's existing JSON Schema subset directly. The
+  subset is read conjunctively and order-independently: `const` and `enum` on one
+  node intersect, a container's value constraint does not skip its
+  `required`/`items`, a bare root type participates in `evaluate`, and a
+  declaration that can never be satisfied is `E070` at modelling time
+  (`docs/SPEC.md` §7a, `schema_gate_wbtest.mbt`).
 - **Exactness labels**: every result carries `Exact` / `Cosmetic` / `Lossy`,
   derived from the severities of the records. `Options::max_loss` turns the first
   repair that exceeds the budget into a fatal `E010`.
@@ -452,7 +457,7 @@ python3 tests/eval/run_eval.py --cli ./_build/native/release/build/cmd/interjson
 moon run examples/agent_loop --target native --release
 ```
 
-Cross-backend results are identical: **249/249** tests pass on each of wasm-gc,
+Cross-backend results are identical: **274/274** tests pass on each of wasm-gc,
 native, JS and wasm. `.github/workflows/ci.yml` runs the same commands on every
 push, so the numbers are re-derived rather than trusted. The commands above are
 the reproduction path; the figures they produce are in the [repository front

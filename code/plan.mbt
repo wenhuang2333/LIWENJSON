@@ -509,6 +509,54 @@ fn SchemaCheck::decision(
 }
 
 ///|
+/// The sentence that names why `value` does not satisfy `schema`, or `""` when
+/// it does.
+///
+/// One implementation, shared by the gate's plan and by `repair`/the CLI, so
+/// the two entry points cannot describe the same violation differently.
+pub fn schema_violation(schema : Schema, value : Json) -> String {
+  let v = schema.evaluate(value)
+  if v.ok {
+    return ""
+  }
+  let sb = StringBuilder()
+  sb.write_string(
+    "the value does not satisfy the declared skeleton: " +
+    v.satisfied.to_string() +
+    "/" +
+    v.total.to_string() +
+    " declared members",
+  )
+  if v.missing.length() > 0 {
+    sb.write_string("; missing ")
+    for i = 0; i < v.missing.length(); i = i + 1 {
+      if i > 0 {
+        sb.write_string(", ")
+      }
+      sb.write_string(v.missing[i])
+    }
+  }
+  if v.mismatched.length() > 0 {
+    // "mismatch", not "wrong kind": since 0.7.0 the declared kind can be
+    // right while a constraint on the value is violated, and `expected`
+    // then carries the constraint (`integer >= 0`, `one of ["low",
+    // "high"]`) rather than a kind. Calling that a wrong kind sends the
+    // reader looking for a type error that is not there.
+    sb.write_string("; mismatch ")
+    for i = 0; i < v.mismatched.length(); i = i + 1 {
+      if i > 0 {
+        sb.write_string(", ")
+      }
+      let m = v.mismatched[i]
+      sb.write_string(
+        m.path + " (expected " + m.expected + ", got " + m.got + ")",
+      )
+    }
+  }
+  sb.to_string()
+}
+
+///|
 /// Check a value against an optional skeleton, turning the two failure modes
 /// (missing required member, wrong kind) into one sentence.
 fn check_schema(schema : Schema?, value : Json) -> SchemaCheck {
@@ -516,48 +564,16 @@ fn check_schema(schema : Schema?, value : Json) -> SchemaCheck {
     None => { total: 0, satisfied: 0, missing: [], ok: true, message: "", }
     Some(s) => {
       let v = s.evaluate(value)
-      let sb = StringBuilder()
-      if !v.ok {
-        sb.write_string(
-          "the value does not satisfy the declared skeleton: " +
-          v.satisfied.to_string() +
-          "/" +
-          v.total.to_string() +
-          " declared members",
-        )
-        if v.missing.length() > 0 {
-          sb.write_string("; missing ")
-          for i = 0; i < v.missing.length(); i = i + 1 {
-            if i > 0 {
-              sb.write_string(", ")
-            }
-            sb.write_string(v.missing[i])
-          }
-        }
-        if v.mismatched.length() > 0 {
-          // "mismatch", not "wrong kind": since 0.7.0 the declared kind can be
-          // right while a constraint on the value is violated, and `expected`
-          // then carries the constraint (`integer >= 0`, `one of ["low",
-          // "high"]`) rather than a kind. Calling that a wrong kind sends the
-          // reader looking for a type error that is not there.
-          sb.write_string("; mismatch ")
-          for i = 0; i < v.mismatched.length(); i = i + 1 {
-            if i > 0 {
-              sb.write_string(", ")
-            }
-            let m = v.mismatched[i]
-            sb.write_string(
-              m.path + " (expected " + m.expected + ", got " + m.got + ")",
-            )
-          }
-        }
-      }
       {
         total: v.total,
         satisfied: v.satisfied,
         missing: v.missing,
         ok: v.ok,
-        message: sb.to_string(),
+        message: if v.ok {
+          ""
+        } else {
+          schema_violation(s, value)
+        },
       }
     }
   }

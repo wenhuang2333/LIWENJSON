@@ -20,6 +20,23 @@
 //
 // A gate that silently drops half of a declaration is worse than one that
 // refuses it: the caller would believe a guarantee that was never checked.
+//
+// The keywords of one node are **conjunctive**, the way JSON Schema reads them,
+// and the order they were written in means nothing:
+//
+//   * `const` and `enum` on the same node admit `{const}` ∩ `enum`; an empty
+//     intersection is an `E070`, because the declaration can never be
+//     satisfied;
+//   * a node with `const`/`enum` *and* `properties`/`items` enforces both --
+//     the value has to be in the set and its required members and element kinds
+//     have to hold;
+//   * the root node is checked like every other node.
+//
+// A declaration the skeleton cannot express exactly is refused rather than
+// approximated: `items` without `type:"array"`, `properties`/`required` on a
+// kind that is not an object, an empty `enum`, a `const` outside its `enum`,
+// a bound pair that cannot be satisfied, and a `pattern` quantifier past
+// `Int32` are all `E070`.
 
 ///|
 /// Fields of a JSON Schema node that carry no validation meaning here.
@@ -65,8 +82,18 @@ fn json_schema_number(v : Json, key : String) -> Double raise InterJSONError {
 
 ///|
 /// A non-negative integer field.
+///
+/// `Int32::to_int` on a double outside its range is not a conversion the schema
+/// can rely on, so the bound is checked in `Double` space first: a declaration
+/// whose bound the implementation cannot represent is an `E070`, never a silent
+/// clamp.
 fn json_schema_uint(v : Json, key : String) -> Int32 raise InterJSONError {
   let d = json_schema_number(v, key)
+  if !(d >= 0.0) || d > 2147483647.0 {
+    raise SchemaError(
+      "json schema: `" + key + "` must be a non-negative integer",
+    )
+  }
   let n = d.to_int()
   if n.to_double() != d || n < 0 {
     raise SchemaError(
@@ -111,6 +138,13 @@ priv struct PatternSpec {
 
 ///|
 /// Parse a decimal integer used in a `{n,m}` quantifier.
+///
+/// The accumulated value must be exactly the number that was written. Without
+/// the check below, `n * 10 + digit` wraps around Int32 in silence, and
+/// `{4294967296}` -- 2^32 -- became `{0}`: a declaration that requires an empty
+/// string where it actually demanded two-to-the-thirty-second characters. The
+/// bound is checked *before* the multiply-add, so no intermediate values are
+/// computed.
 fn json_schema_quantifier_int(s : StringView) -> Int32 raise InterJSONError {
   if s.length() == 0 {
     raise SchemaError("json schema: empty quantifier bound")
@@ -123,7 +157,13 @@ fn json_schema_quantifier_int(s : StringView) -> Int32 raise InterJSONError {
         "json schema: quantifier bounds must be decimal integers",
       )
     }
-    n = n * 10 + (c - 0x30)
+    let digit = c - 0x30
+    if n > (2147483647 - digit) / 10 {
+      raise SchemaError(
+        "json schema: quantifier bound exceeds 2147483647 and cannot be represented",
+      )
+    }
+    n = n * 10 + digit
   }
   n
 }
@@ -220,6 +260,25 @@ fn json_schema_pattern(s : String) -> PatternSpec raise InterJSONError {
 ///|
 /// Build the constraint record of one leaf, or `None` when the node declared
 /// no value constraint.
+///
+/// ## `const` and `enum` are conjunctive
+///
+/// Both keywords are assertions about the same value, so a node that carries
+/// both admits exactly `const` when `const` is one of the `enum` values, and
+/// nothing at all otherwise. They used to be written into the same field while
+/// the object was being traversed, so the later keyword silently erased the
+/// earlier one and *the order the keys happened to appear in decided whether
+/// `{"mode":"write"}` passed the gate*. JSON objects are unordered; a security
+/// decision cannot depend on their order. The two are therefore collected
+/// separately and intersected once the traversal is over, which is what makes
+/// the result independent of both the field order and the map's iteration
+/// order.
+///
+/// The intersection is stored as the `enum` set because that is the skeleton's
+/// only set-valued constraint: `const X` is the single-element set `[X]`, and
+/// `const X ∩ enum [...]` is `[X]` when `X` is in the list. A declaration whose
+/// intersection is empty can never be satisfied, so it is an `E070` at
+/// modelling time rather than a gate that rejects everything at runtime.
 fn json_schema_constraints(
   obj : Map[String, Json],
   kind : Schema,
@@ -227,18 +286,25 @@ fn json_schema_constraints(
   let c = Constraints::none()
   let mut any = false
   let mut pattern_spec : PatternSpec? = None
+  // Collected separately from `c.enum_values` so neither keyword can erase the
+  // other; intersected after the loop, so the result is order-independent.
+  let mut const_value : Json? = None
+  let mut enum_values : Array[Json]? = None
   for key, value in obj {
     if key == "enum" {
       match value {
         Json::Array(items) => {
-          c.enum_values = Some(items.copy())
-          any = true
+          if items.length() == 0 {
+            raise SchemaError(
+              "json schema: `enum` must have at least one value; an empty `enum` can never be satisfied",
+            )
+          }
+          enum_values = Some(items.copy())
         }
         _ => raise SchemaError("json schema: `enum` must be an array")
       }
     } else if key == "const" {
-      c.enum_values = Some([value])
-      any = true
+      const_value = Some(value)
     } else if key == "minimum" {
       c.minimum = Some(json_schema_number(value, key))
       any = true
@@ -263,6 +329,38 @@ fn json_schema_constraints(
       pattern_spec = Some(spec)
       any = true
     }
+  }
+  match (const_value, enum_values) {
+    (Some(k), Some(items)) => {
+      // `const ∩ enum`: keep the constant only when the enumeration admits it.
+      // Structural equality (`json_equal`), because JSON Schema's `const` and
+      // `enum` compare values, not text or references.
+      let mut hit = false
+      for v in items {
+        if json_equal(v, k) {
+          hit = true
+          break
+        }
+      }
+      if !hit {
+        raise SchemaError(
+          "json schema: `const` " +
+          k.stringify() +
+          " is not one of the declared `enum` values; the declaration can never be satisfied",
+        )
+      }
+      c.enum_values = Some([k])
+      any = true
+    }
+    (Some(k), None) => {
+      c.enum_values = Some([k])
+      any = true
+    }
+    (None, Some(items)) => {
+      c.enum_values = Some(items)
+      any = true
+    }
+    (None, None) => ()
   }
   match pattern_spec {
     Some(spec) => {
@@ -299,6 +397,50 @@ fn json_schema_constraints(
   }
   if !any {
     return None
+  }
+  // A bound pair that cannot be satisfied together is a declaration error, not
+  // a rule that silently never fires. The comparison is on the raw bounds, so
+  // it does not matter which order the keywords were written in.
+  if c.min_length is Some(lo) && c.max_length is Some(hi) && lo > hi {
+    raise SchemaError(
+      "json schema: `minLength` exceeds `maxLength`; the declaration can never be satisfied",
+    )
+  }
+  match (c.minimum, c.maximum) {
+    (Some(lo), Some(hi)) =>
+      if lo > hi {
+        raise SchemaError(
+          "json schema: `minimum` exceeds `maximum`; the declaration can never be satisfied",
+        )
+      }
+    _ => ()
+  }
+  match (c.minimum, c.exclusive_maximum) {
+    (Some(lo), Some(hi)) =>
+      if lo >= hi {
+        raise SchemaError(
+          "json schema: `minimum` is not below `exclusiveMaximum`; the declaration can never be satisfied",
+        )
+      }
+    _ => ()
+  }
+  match (c.exclusive_minimum, c.maximum) {
+    (Some(lo), Some(hi)) =>
+      if lo >= hi {
+        raise SchemaError(
+          "json schema: `exclusiveMinimum` is not below `maximum`; the declaration can never be satisfied",
+        )
+      }
+    _ => ()
+  }
+  match (c.exclusive_minimum, c.exclusive_maximum) {
+    (Some(lo), Some(hi)) =>
+      if lo >= hi {
+        raise SchemaError(
+          "json schema: `exclusiveMinimum` is not below `exclusiveMaximum`; the declaration can never be satisfied",
+        )
+      }
+    _ => ()
   }
   // The kind determines which constraints make sense. Refusing a mismatched
   // constraint here is the same policy as `Schema::parse`: a declaration that
@@ -411,6 +553,23 @@ fn json_schema_node_at(v : Json, depth : Int32) -> Schema raise InterJSONError {
           if obj.contains("properties") || obj.contains("required") {
             kind_name = "object"
           }
+      }
+      // A structural keyword that the resolved kind never reads would be
+      // silently dropped, which is the failure mode this bridge exists to
+      // prevent. `{"items": {...}}` is the sharp case: JSON Schema means "if
+      // the value is an array, its elements must match", and inferring `array`
+      // from it would reject the non-arrays JSON Schema allows, so the only
+      // sound answer is `E070`.
+      if obj.contains("items") && kind_name != "array" {
+        raise SchemaError(
+          "json schema: `items` requires `type: \"array\"`; the skeleton cannot express \"if this is an array\"",
+        )
+      }
+      if (obj.contains("properties") || obj.contains("required")) &&
+        kind_name != "object" {
+        raise SchemaError(
+          "json schema: `properties`/`required` require `type: \"object\"`",
+        )
       }
       let base : Schema = if kind_name == "" || kind_name == "any" {
         Any

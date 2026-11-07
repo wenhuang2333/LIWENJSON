@@ -336,6 +336,30 @@ Schema subset (`type`, `properties`, `required`, `items`, `enum`, `const`,
 `maxLength`, `pattern`). Unsupported keywords are refused with `E070` instead
 of being silently ignored.
 
+The subset is read as JSON Schema reads it, which means **the keywords on one
+node are conjunctive and the order they are written in means nothing**:
+
+- `const` and `enum` on the same node admit exactly `{const}` ∩ `enum`. When the
+  constant is not in the enumeration the declaration can never be satisfied and
+  is refused with `E070` — the gate never falls back to one of the two sets, so
+  reordering the two keys cannot turn a refusal into an allow.
+- A node with `const`/`enum` **and** `properties`/`items` enforces both: the
+  value must be in the set *and* its required members / element kinds must hold.
+- The root node is checked like every other node: `{"type":"string"}` refuses
+  the number `42`.
+- `items` is only accepted together with `type: "array"`, and
+  `properties`/`required` only with `type: "object"`. The skeleton has no
+  conditional, so a keyword the declared kind never reads is an `E070` rather
+  than a silent drop.
+- A declaration that can never be satisfied (an empty `enum`, a `const` outside
+  its `enum`, `minimum` above `maximum`, a quantifier past `Int32`) is an
+  `E070` at modelling time, not a gate that rejects everything at runtime.
+
+All four tools honour the declaration they are given. `interjson_repair` parses
+it — an unsupported keyword is `E070` — and refuses a repaired document that
+violates it, so a declaration passed to `repair` is checked rather than
+silently ignored.
+
 Every `tools/list` entry carries a `title`, an `outputSchema` that is a real
 per-tool schema, and annotations that say what the server can do to the world.
 Each `outputSchema` is **closed** (`additionalProperties: false`) and names its
@@ -628,7 +652,7 @@ no network peer to authenticate.
 | JSON-RPC `-32602` with ``unknown tool `…` `` | The call itself is wrong, not the document | Check `tools/list`; the tool name must be one of the four |
 | JSON-RPC `-32602` with `` `arguments` must be an object `` | `arguments` was an array, a string or a number | Send `arguments` as a JSON object |
 | JSON-RPC `-32002` `server not initialized` | A request arrived before `initialize` | Send `initialize` first; only `initialize` and `ping` are answered before the handshake |
-| `result.isError: true` with `E070 SchemaError` | The declaration uses a keyword the subset does not support | Use the listed subset, or drop `schema_json` |
+| `result.isError: true` with `E070 SchemaError` | The declaration uses a keyword the subset does not support, is unsatisfiable, or the value (or the repaired document) violates it | Use the listed subset, or drop `schema_json`; the message names the offending keyword or member |
 | `executable: false` and no error | This is a successful refusal: the gate did its job | Send `retry.prompt` to the model and re-emit |
 | `-32700 message exceeds MAX_LINE` | One request line is over 8 MiB (8,388,608 bytes, measured on the UTF-8 line) | Split the work into smaller calls; the cap is fixed |
 | Client asks for an unknown `protocolVersion` | Only `2025-06-18`, `2025-03-26` and `2024-11-05` are implemented | The server answers `2025-06-18` and never echoes the unknown string; upgrade the client or accept the negotiated revision |

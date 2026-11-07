@@ -1141,12 +1141,23 @@ test "enum admits exactly its literals" {
 }
 
 ///|
-test "a constrained scalar root is checked, a bare kind root is not" {
-  // A bare kind at the root declares no members, and `evaluate` walks members:
-  // this is 0.6.x behaviour and it does not change.
-  assert_eq(schema_or_any("integer").evaluate(Json::string("x")).ok, true)
-  assert_eq(schema_or_any("integer").accepts(Json::string("x")), false)
-  // A constraint is a claim about the value, so it is checked at the root.
+test "a root declaration is checked, constrained or not" {
+  // A root declaration is a claim about the value itself, and it is checked
+  // whether it carries constraints or not: `integer` says "this is an
+  // integer", so `evaluate` against `"x"` is a mismatch. In 1.5.1 and earlier only a
+  // *constrained* root was checked, which meant `{"type":"string"}` accepted
+  // the number `42` -- a declaration the caller wrote and the gate ignored.
+  assert_eq(schema_or_any("integer").evaluate(Json::string("x")).ok, false)
+  assert_eq(
+    schema_or_any("integer").evaluate(Json::string("x")).mismatched[0].path,
+    "<root>",
+  )
+  assert_eq(
+    schema_or_any("integer").evaluate(Json::string("x")).mismatched[0].expected,
+    "integer",
+  )
+  assert_eq(schema_or_any("integer").evaluate(Json::number(1.0)).ok, true)
+  // A constraint is a claim about the value too, so it is checked at the root.
   let s = schema_or_any("integer(minimum:0)")
   assert_eq(s.evaluate(Json::number(-1.0)).ok, false)
   assert_eq(s.evaluate(Json::number(-1.0)).mismatched[0].path, "<root>")

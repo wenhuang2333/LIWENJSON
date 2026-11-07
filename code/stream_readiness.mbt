@@ -276,6 +276,13 @@ pub struct SemanticWatcher {
   priv parser : PartialParser
   priv schema : Schema
   priv watched : Array[WatchedPath]
+  /// Whether the declaration constrains a container's *whole* value
+  /// (`{...}(enum:[...])`, `[...](const:...)`). Such a claim can only be
+  /// judged once that container closes, so the root verdict waits for the root
+  /// closer when this is set. Publishing `RootReady` on the members alone
+  /// would be a verdict about a value that is still being written; a
+  /// declaration that only constrains leaves keeps its early verdict.
+  priv needs_root_close : Bool
   /// Watched indices by their first path segment, so a delta is matched against
   /// the members it could possibly be about instead of against every member.
   /// This is what keeps a 132-member object linear rather than quadratic.
@@ -368,6 +375,7 @@ pub fn SemanticWatcher::new(
     parser,
     schema,
     watched,
+    needs_root_close: schema.has_container_constraint(),
     index,
     settled,
     settled_count: 0,
@@ -388,6 +396,12 @@ pub fn SemanticWatcher::new(
 ///|
 /// Whether a declaration is decided by the required members inside it rather
 /// than by its own value.
+///
+/// The structure is what matters: `{...}(enum:[...])` has the same required
+/// members as `{...}`, and its constraint applies to the whole value, which is
+/// final only once the container closes. It is therefore *not* decided by its
+/// children alone -- the children are followed as well, and the constraint is
+/// checked on the value that holds them.
 fn decided_by_children(decl : Schema) -> Bool {
   match decl {
     Obj(members) => {
@@ -398,6 +412,11 @@ fn decided_by_children(decl : Schema) -> Bool {
       }
       false
     }
+    // A constrained container carries a claim about the whole value (`enum`,
+    // `const`) on top of the shape inside it. That claim is decided by the
+    // container's own value, so the path is followed: skipping it here would
+    // let the watcher conclude on the members alone.
+    Constrained(_, _) => false
     _ => false
   }
 }
@@ -575,12 +594,18 @@ fn SemanticWatcher::on_delta(self : SemanticWatcher, d : Delta) -> Unit {
   // paths, and a skeleton whose members are all decided by their own children
   // is skipped — the value tree is still open, and `evaluate` on a half-read
   // array would report the skeleton satisfied. Those wait for the root closer.
+  //
+  // A declaration that constrains a container's whole value (`{...}(enum:[…])`)
+  // is a third case: the claim is about the container, so it is only decidable
+  // when the container closes. `needs_root_close` is true there and the verdict
+  // waits for the root closer; the members settling early says nothing about
+  // the container as a whole.
   let root_closed = d.path.length() == 0 && d.op is Close
   if !self.concluded &&
     !self.conflict &&
     !self.checked &&
     self.all_settled() &&
-    (self.watched.length() > 0 || root_closed) {
+    (root_closed || (self.watched.length() > 0 && !self.needs_root_close)) {
     self.checked = true
     self.decide()
   }

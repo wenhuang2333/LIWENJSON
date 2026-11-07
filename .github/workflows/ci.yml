@@ -166,6 +166,12 @@ jobs:
       # `docs/MEMORY.md` is a report that only ever gets printed, so a figure
       # in it has drifted before without anything noticing; this measures the
       # same shapes and fails when one grows past its recorded ceiling.
+      - name: Schema subset against an independent JSON Schema validator (must exit 0)
+        working-directory: code
+        run: |
+          python3 tests/json_schema_diff.py \
+            --cli ./_build/native/release/build/cmd/interjson/interjson.exe
+
       - name: Peak memory per shape (must exit 0)
         working-directory: code
         run: |
@@ -300,7 +306,7 @@ jobs:
 
       - name: Install the reference implementations
         run: |
-          python3 -m pip install "json-repair==0.64.0"
+          python3 -m pip install "json-repair==0.64.0" "jsonschema==4.26.0"
           mkdir -p "$RUNNER_TEMP/node-oracle"
           cd "$RUNNER_TEMP/node-oracle"
           npm install --no-audit --no-fund "jsonrepair@3.15.0"

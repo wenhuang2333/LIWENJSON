@@ -52,6 +52,8 @@ pub fn readiness_median(Array[String], step? : Int32) -> Int32 raise InterJSONEr
 
 pub fn repair(String, options? : Options) -> RepairResult raise InterJSONError
 
+pub fn schema_violation(Schema, Json) -> String
+
 pub fn semantic_readiness(String, Schema, step? : Int32, options? : Options) -> SemanticReadiness raise InterJSONError
 
 pub fn syntax_readiness_permille(String, step? : Int32) -> Int32
