@@ -146,6 +146,12 @@ else
  fail "could not read the CLI assertion count from tests/cli_smoke.sh"
 fi
 
+replay_out="$(python3 tests/mcp_client_replay.py --cli "$BIN" 2>&1 | tail -1)"
+case "$replay_out" in
+  ok:*) derive "mcp_client_replay" "pass" "python3 tests/mcp_client_replay.py" ;;
+  *) fail "a real client's handshake did not replay: $replay_out" ;;
+esac
+
 mcp_out="$(python3 tests/mcp_contract_check.py "$BIN" 2>&1 | tail -1)"
 MCP_N="$(printf '%s' "$mcp_out" | sed -n 's#^\([0-9]*\)/\([0-9]*\) responses valid.*#\1#p')"
 if [ -n "$MCP_N" ]; then

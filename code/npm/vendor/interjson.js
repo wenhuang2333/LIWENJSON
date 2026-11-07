@@ -13147,7 +13147,7 @@ function _M0MP211zhanshishan9interjson15SemanticWatcher15value__at__root(self) {
 function _M0MP211zhanshishan9interjson15SemanticWatcher6decide(self) {
   const verdict = _M0MP211zhanshishan9interjson6Schema8evaluate(self.schema, _M0MP211zhanshishan9interjson15SemanticWatcher15value__at__root(self));
   if (verdict.ok) {
-    if (!(self.concluded && self.ready_standing)) {
+    if (!self.concluded) {
       self.concluded = true;
       self.ready_standing = true;
       self.verdict_at = self.cur_at >= 0 ? self.cur_at : self.bytes;

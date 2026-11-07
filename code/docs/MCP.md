@@ -27,6 +27,19 @@ The server also accepts its **own** published `inputSchema` as `schema_json`:
 server publishes are declarations it can enforce. `code/tests/mcp_contract_check.py`
 runs the whole matrix against a built binary.
 
+**A real client's handshake is replayed by a gate.** `code/tests/mcp_client_replay.py`
+replays the requests Claude Code 2.1.308 sends on connect — `server/discover`,
+`initialize`, `notifications/initialized`, `tools/list` — against the built
+binary, and checks that every request is answered, that the handshake
+negotiates a revision the server implements, and that the tool list arrives.
+`code/tests/record_mcp_handshake.sh` re-records it.
+
+The recording found a real defect: Claude Code sends `server/discover` *before*
+`initialize`, and the server answered the probe with `-32002 not initialized`.
+That refuses a question that needs no session, and a client less tolerant than
+Claude Code would simply not connect. `server/discover` is now answered with the
+same identity the handshake reports, plus the tool list.
+
 **JSON-RPC 2.0 is now checked, not assumed.** `jsonrpc` must be exactly `"2.0"`,
 `method` must be a string, `id` must be a string/number/null, `params` must be an
 object or an array; anything else is `-32600`. A JSON-RPC **batch** is answered

@@ -324,6 +324,16 @@ fn ToolStream::push_arguments(
   c : ToolCall,
   fragment : String,
 ) -> Unit raise @interjson.InterJSONError {
+  // A finished parser cannot take another fragment (`E030`). A provider can
+  // send one anyway: `response.function_call_arguments.done` closes the call
+  // and `response.output_item.done` then repeats a *longer* argument string,
+  // which is what one real stream did. The text that arrived is kept for the
+  // record; feeding it to a finished parser is what used to raise, and it
+  // killed a whole response.
+  if c.done {
+    c.text.write_string(fragment)
+    return
+  }
   c.text.write_string(fragment)
   let p = self.parser_of(c)
   p.feed(fragment)

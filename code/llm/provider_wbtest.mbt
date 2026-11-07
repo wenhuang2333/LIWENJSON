@@ -314,3 +314,63 @@ test "TC-FIXTURE-02: every recorded fixture is read by the adapter it was record
     ignore(drain_finish(s))
   }
 }
+
+///|
+test "TC-RESP-05: a repeated item after arguments.done does not kill the stream" {
+  // `function_call_arguments.done` closes the call; `output_item.done` may then
+  // repeat a *longer* argument string. Feeding it to a finished parser raised
+  // `E030 cannot feed a finished parser`, which discarded a whole response.
+  // This is the shape a real stream produced intermittently.
+  let s = ToolStream::new(OpenAIResponses) catch { _ => return }
+  ignore(
+    s.push_event(
+      "{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"fc\",\"type\":\"function_call\",\"call_id\":\"c\",\"name\":\"f\",\"arguments\":\"\"}}",
+    ),
+  ) catch {
+    _ => return
+  }
+  ignore(
+    s.push_event(
+      "{\"type\":\"response.function_call_arguments.done\",\"item_id\":\"fc\",\"output_index\":0,\"arguments\":\"{\\\"a\\\":1}\"}",
+    ),
+  ) catch {
+    _ => return
+  }
+  // `arguments.done` stops mid-string, and the item closes it. This is the
+  // shape that produced `E030` intermittently: the item's argument string is a
+  // *continuation* of the one the done event truncated.
+  let s2 = ToolStream::new(OpenAIResponses) catch { _ => return }
+  ignore(
+    s2.push_event(
+      "{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"fc\",\"type\":\"function_call\",\"call_id\":\"c\",\"name\":\"f\",\"arguments\":\"\"}}",
+    ),
+  ) catch {
+    _ => return
+  }
+  ignore(
+    s2.push_event(
+      "{\"type\":\"response.function_call_arguments.done\",\"item_id\":\"fc\",\"output_index\":0,\"arguments\":\"{\\\"a\\\":1}\"}",
+    ),
+  ) catch {
+    _ => return
+  }
+  // A later item whose arguments extend the string the done event carried.
+  ignore(
+    s2.push_event(
+      "{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"fc\",\"type\":\"function_call\",\"call_id\":\"c\",\"name\":\"f\",\"arguments\":\"{\\\"a\\\":1,\\\"b\\\":2}\",\"status\":\"completed\"}}",
+    ),
+  ) catch {
+    _ => return
+  }
+  let views = drain_finish(s2)
+  assert_eq(views.length(), 1)
+  // The value is the one the parser finished with; the later text is recorded,
+  // not fed into a closed parser.
+  assert_eq(views[0].snapshot.value.unwrap().stringify(), "{\"a\":1}")
+  assert_eq(views[0].end.name(), "complete")
+  // A string that does not extend the recorded one is not a continuation and
+  // is not appended: `{"a":1}` is not a prefix of `{"a":1,"b":2}`.
+  let views0 = drain_finish(s)
+  assert_eq(views0.length(), 1)
+  assert_eq(s.arguments(0), "{\"a\":1}")
+}

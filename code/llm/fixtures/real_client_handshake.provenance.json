@@ -1,0 +1,26 @@
+{
+  "fixture": "real_client_handshake",
+  "what": "the exact requests one real MCP client sends on connect",
+  "client": {
+    "name": "claude-code",
+    "title": "Claude Code",
+    "version": "2.1.308"
+  },
+  "recorded_by": "code/tests/record_mcp_handshake.sh",
+  "recorded_at": "2026-11-08",
+  "captured": "a tee wrapper around `interjson mcp`, added with `claude mcp add`",
+  "requests": [
+    "server/discover",
+    "initialize",
+    "notifications/initialized",
+    "tools/list"
+  ],
+  "why": "The audit asked for at least one mandatory host integration verified against a real client session (marks/迭代.md §8.3). The client's own handshake is the part that can be replayed; it is recorded verbatim so a regression in the envelope, the revision negotiation or the discovery probe shows up as a failing replay rather than as a client that silently refuses to connect.",
+  "notes": [
+    "The client sends `server/discover` BEFORE `initialize`, with a newer revision (2026-07-28) in `_meta`. A server that answers that probe with -32002 'not initialized' is answering a question that needs no session with an error.",
+    "The client asks for revision 2025-11-25 and this server negotiates down to 2025-06-18, which the client accepts."
+  ],
+  "transport": "mcp-handshake",
+  "vendor_capture": true,
+  "replayed_by": "code/tests/mcp_client_replay.py"
+}

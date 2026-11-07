@@ -929,6 +929,16 @@ else
   fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "the Responses reader reads a Responses stream" "$resp_ok"
 fi
 
+# A discovery probe is answered before the handshake. Claude Code 2.1.308
+# sends `server/discover` first; refusing it with "not initialized" answers a
+# question that needs no session with an error (audit 8.3).
+disc="$(printf '{"jsonrpc":"2.0","id":"probe-1","method":"server/discover","params":{}}\n' | "$BIN" mcp 2>&1 | tail -1)"
+if printf '%s' "$disc" | grep -qF '"serverInfo"' && printf '%s' "$disc" | grep -qF '"tools"'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "server/discover is answered"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "server/discover is answered" "$disc"
+fi
+
 # A malformed JSON-RPC envelope is refused.
 rpc_bad="$(printf '{"jsonrpc":"1.0","id":1,"method":"ping"}\n' | "$BIN" mcp 2>&1 | tail -1)"
 if printf '%s' "$rpc_bad" | grep -qF '"code":-32600'; then

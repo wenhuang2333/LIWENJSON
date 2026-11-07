@@ -442,6 +442,19 @@ fn mcp_tool(
 }
 
 ///|
+/// The tools, as a JSON array.
+fn mcp_tool_list() -> Json {
+  match mcp_tools() {
+    Json::Object(m) =>
+      match m.get("tools") {
+        Some(t) => t
+        None => Json::array([])
+      }
+    _ => Json::array([])
+  }
+}
+
+///|
 /// The tool list. The first tool is the product.
 fn mcp_tools() -> Json {
   let tools : Array[Json] = [
@@ -549,6 +562,30 @@ fn mcp_negotiate(params : Map[String, Json]) -> String {
       }
     _ => MCP_PROTOCOL_VERSION
   }
+}
+
+///|
+/// The answer to `server/discover`: who this server is and what it offers.
+///
+/// The same identity the handshake reports, plus the tool list, so a client
+/// can decide whether to talk to this server without a session.
+fn mcp_discovery() -> Json {
+  jobj([
+    ("protocolVersion", Json::string(MCP_PROTOCOL_VERSION)),
+    (
+      "capabilities",
+      jobj([("tools", jobj([("listChanged", Json::boolean(false))]))]),
+    ),
+    (
+      "serverInfo",
+      jobj([
+        ("name", Json::string("interjson")),
+        ("title", Json::string("InterJSON — the execution gate")),
+        ("version", Json::string(ENGINE_VERSION)),
+      ]),
+    ),
+    ("tools", mcp_tool_list()),
+  ])
 }
 
 ///|
@@ -848,6 +885,16 @@ fn mcp_handle(
   // that had skipped `initialize` got a tool list and then found that its
   // captured `instructions` and negotiated revision were missing -- a failure
   // several steps away from its cause.
+  // `server/discover` is a probe, not a session request: a client sends it to
+  // find out what the server is *before* the handshake. Answering it with
+  // "not initialized" is wrong twice over -- it refuses a question that needs
+  // no session, and it answers a probe with an error a client may read as
+  // "this server is broken". Claude Code 2.1.308 sends exactly this before
+  // `initialize`, and then connects anyway; a client that did not tolerate it
+  // would not connect at all.
+  if meth == "server/discover" {
+    return Some(rpc_ok(id, mcp_discovery()))
+  }
   if meth != "initialize" &&
     meth != "ping" &&
     meth != "notifications/initialized" &&

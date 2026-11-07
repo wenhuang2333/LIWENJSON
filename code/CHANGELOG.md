@@ -83,6 +83,15 @@
   批处理在要求它的修订（`2025-03-26`、`2024-11-05`）上返回数组，在 `2025-06-18`
   上用理由拒绝，而不是用一个 `missing method` 回答整个数组。
 
+### 真实客户端：握手探测被当成错误
+
+用真实的 Claude Code 2.1.308 连本服务时发现：它在 `initialize` **之前**先发
+`server/discover`，而服务器用 `-32002 server not initialized` 回答了这个探测。
+它拒绝的是一个不需要会话的问题，而一个没有 Claude Code 这么宽容的客户端会直接
+连不上。`server/discover` 现在用握手会报告的身份加工具列表回答。
+`code/tests/record_mcp_handshake.sh` 记录客户端逐字节请求，
+`code/tests/mcp_client_replay.py` 把它重放成一道门。
+
 ### 执行语义：闸门不宣称它没有的保证
 
 - **`SAFE TO EXECUTE` 超出实际保证。** 真实模型把 `../../etc/passwd` 判成 safe；另一次
@@ -115,8 +124,8 @@
 
 | 验证 | 结果 |
 | --- | --- |
-| `moon test`（wasm / wasm-gc / js / native） | 各 322/322 |
-| `tests/cli_smoke.sh` | 145 项断言 |
+| `moon test`（wasm / wasm-gc / js / native） | 各 323/323 |
+| `tests/cli_smoke.sh` | 146 项断言 |
 | `tests/conformance/run_conformance.py` | 19/19 组 |
 | `tests/json_schema_diff.py` | 52 例，无 gate allow / reference reject |
 | `tests/eval/run_eval_paths.py` | 六条路径各 1200/1200（新增 `openai-responses`） |
@@ -124,6 +133,7 @@
 | `code/tests/mcp_contract_check.py` | 11/11 响应通过自己的 `outputSchema` |
 | `code/tests/live_model_audit_v2.py`（真实 Responses API） | 34/34 |
 | `tests/run_llm_loopback.py` | 8 个 fixture（新增真实 Responses 录像） |
+| `tests/mcp_client_replay.py`（真实 Claude Code 2.1.308 握手） | 通过 |
 
 文档同步：`docs/SPEC.md` 新增 SR-40…SR-44，`docs/PROTOCOL.md` 写明修复记录的单一形状、
 `with_text`、`business_authorized` 与 `refusal.kind`，`docs/MCP.md` 写明输出契约与

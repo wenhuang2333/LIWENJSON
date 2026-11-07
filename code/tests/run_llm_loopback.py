@@ -213,7 +213,13 @@ def regenerate(cli: str, fixtures: str, tmp: str) -> None:
 
 
 def live_fixtures(fixtures: str) -> list:
-    """Captured streams: any `.jsonl` with a sibling `.provenance.json`."""
+    """Captured streams: a `.jsonl` with a sibling `.provenance.json`.
+
+    A provenance file that is not about an LLM stream — the recorded MCP client
+    handshake lives in the same directory and has one — is skipped, because it
+    is a different kind of capture with a different replayer
+    (`tests/mcp_client_replay.py`).
+    """
     out = []
     for entry in sorted(os.listdir(fixtures)):
         if not entry.endswith(".jsonl") or entry.endswith(".adapter.jsonl"):
@@ -221,8 +227,12 @@ def live_fixtures(fixtures: str) -> list:
         base = entry[: -len(".jsonl")]
         if entry.startswith("loopback_"):
             continue
-        if os.path.exists(os.path.join(fixtures, base + ".provenance.json")):
-            out.append(base)
+        prov = os.path.join(fixtures, base + ".provenance.json")
+        if not os.path.exists(prov):
+            continue
+        if not os.path.exists(os.path.join(fixtures, base + ".sse")):
+            continue
+        out.append(base)
     return out
 
 

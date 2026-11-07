@@ -280,11 +280,21 @@ fn ToolStream::push_responses(
       Some(i) => if i != "" && c.id == "" { c.id = i }
       None => ()
     }
+    // The item may repeat the whole argument string, and it may be longer than
+    // what the deltas carried. The difference is recorded as the provider's
+    // own statement of the call; it is *not* fed to the parser, because
+    // `arguments.done` has often already closed it and a fragment fed to a
+    // finished parser is `E030` -- which discarded a whole response.
+    //
+    // It is not fed even when the call is still open, because the value a
+    // caller already received must not change under it: `arguments.done` is
+    // the provider saying "this is the call", and a later item is a second
+    // statement of the same thing.
     match field_string(item, "arguments") {
       Some(full) => {
         let seen = c.text.to_string()
         if full.has_prefix(seen) && full.length() > seen.length() {
-          self.push_arguments(c, full[seen.length():].to_owned())
+          c.text.write_string(full[seen.length():].to_owned())
         }
       }
       None => ()
@@ -399,8 +409,12 @@ fn responses_known_ignorable(kind : String) -> Bool {
   kind == "response.refusal.done" ||
   kind == "response.reasoning.delta" ||
   kind == "response.reasoning.done" ||
+  kind == "response.reasoning_text.delta" ||
+  kind == "response.reasoning_text.done" ||
   kind == "response.reasoning_summary.delta" ||
   kind == "response.reasoning_summary.done" ||
+  kind == "response.reasoning_summary_text.delta" ||
+  kind == "response.reasoning_summary_text.done" ||
   kind == "response.reasoning_summary_part.added" ||
   kind == "response.reasoning_summary_part.done" ||
   kind == "response.queued" ||
