@@ -12,12 +12,12 @@ question for host-side callers (`serve`, npm, pip, HTTP).
 | | |
 | --- | --- |
 | Module | `zhanshishan/interjson` |
-| Version | 1.5.1 |
+| Version | 1.5.2 |
 | License | Apache-2.0 |
 | MCP server | `interjson mcp`, also `interjson-mcp`; JSON-RPC 2.0 over stdio, protocol `2025-06-18` (`2025-03-26` and `2024-11-05` accepted) |
 | Backends | wasm-gc, native, JS, wasm — one test suite, all four |
-| Registry | [`mooncakes.io zhanshishan/interjson`](https://mooncakes.io/docs/zhanshishan/interjson) — 0.13.0 is the 1.5.1 correspondence and **was published on 2026-10-29**; 0.12.0 (the 1.5.0 correspondence) was published on 2026-10-28; 0.11.0 (the 1.4.0 correspondence) was published on 2026-10-27; older releases are under the former name `zhanshishan/jsonmend` |
-| Prebuilt binaries | The GitHub release `v1.5.1`: four binaries across three operating systems (`linux-x86_64`, `linux-arm64`, `macos-arm64`, `windows-x86_64.exe`), the wasm probe, the browser bundle, `SHA256SUMS` and the `interjson-install.sh` one-command installer. There is **no Intel macOS build** — the MoonBit toolchain publishes no `darwin-x86_64` target. Older releases keep the `jsonmend-*` asset prefix |
+| Registry | [`mooncakes.io zhanshishan/interjson`](https://mooncakes.io/docs/zhanshishan/interjson) — 0.14.0 is the 1.5.2 correspondence and is the source on `main`; 0.13.0 (1.5.1) was published on 2026-10-29, 0.12.0 (1.5.0) on 2026-10-28, 0.11.0 (1.4.0) on 2026-10-27; older releases are under the former name `zhanshishan/jsonmend` |
+| Prebuilt binaries | The GitHub release `v1.5.2` (and `v1.5.1` before it): four binaries across three operating systems (`linux-x86_64`, `linux-arm64`, `macos-arm64`, `windows-x86_64.exe`), the wasm probe, the browser bundle, `SHA256SUMS` and the `interjson-install.sh` one-command installer. There is **no Intel macOS build** — the MoonBit toolchain publishes no `darwin-x86_64` target. Older releases keep the `jsonmend-*` asset prefix |
 | Docs | [`docs/MCP.md`](docs/MCP.md) (deployment), [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) (host-side recipes), [`docs/SPEC.md`](docs/SPEC.md) (the normative contract), [../README.md](../README.md) (project front page) |
 
 This page is the package page for mooncakes.io and the **API reference**: the
@@ -34,7 +34,7 @@ the server locally and can then ask:
 
 | Tool | What it answers |
 | --- | --- |
-| `interjson_gate` | **may I execute this?** `decision`, `executable`, `exactness`, ambiguity, schema satisfaction, `value`, and `retry.prompt` when refused |
+| `interjson_gate` | **may I execute this?** `decision`, `executable`, `exactness`, ambiguity, schema satisfaction, `value`, `retry.prompt` when refused, and `refusal.kind` (whether an automatic retry is safe) |
 | `interjson_repair` | what is the repaired document, and what changed? |
 | `interjson_validate` | is this legal JSON, and does it satisfy the declaration? |
 | `interjson_readiness` | at which input fraction is each declared field final? |
@@ -413,7 +413,7 @@ Flags:
 | `--chunk N` | Feed the input in N-code-unit chunks (≤1048576) to exercise the streaming path. |
 | `--batch` | Read `{"id","input"}` objects line by line and write one result object per line. |
 | `-h`, `--help` | Show help. |
-| `--version` | Show the version (`interjson 1.5.1`). |
+| `--version` | Show the version (`interjson 1.5.2`). |
 | file, or `-` | Read a file; `-` or an omitted argument reads standard input. |
 
 `--indent=N`, `--multi-root=MODE`, and `--max-repairs=N` are accepted as
@@ -457,7 +457,7 @@ python3 tests/eval/run_eval.py --cli ./_build/native/release/build/cmd/interjson
 moon run examples/agent_loop --target native --release
 ```
 
-Cross-backend results are identical: **274/274** tests pass on each of wasm-gc,
+Cross-backend results are identical: **322/322** tests pass on each of wasm-gc,
 native, JS and wasm. `.github/workflows/ci.yml` runs the same commands on every
 push, so the numbers are re-derived rather than trusted. The commands above are
 the reproduction path; the figures they produce are in the [repository front

@@ -161,6 +161,73 @@ def openai_events(fragments):
     return events
 
 
+def responses_events(fragments):
+    """The same fragments as a Responses API function call.
+
+    The protocol is different in the two places that matter: the call is
+    identified by `item_id`, and `function_call_arguments.done` repeats the
+    whole argument string, which must not be appended a second time. Putting
+    the whole corpus through this builder is what keeps the reader honest
+    (audit 3.5).
+    """
+    events = [
+        json.dumps(
+            {
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "item": {
+                    "id": "fc_x",
+                    "type": "function_call",
+                    "call_id": "call_x",
+                    "name": "f",
+                    "arguments": "",
+                },
+            }
+        )
+    ]
+    for f in fragments:
+        events.append(
+            json.dumps(
+                {
+                    "type": "response.function_call_arguments.delta",
+                    "item_id": "fc_x",
+                    "output_index": 0,
+                    "delta": f,
+                }
+            )
+        )
+    events.append(
+        json.dumps(
+            {
+                "type": "response.function_call_arguments.done",
+                "item_id": "fc_x",
+                "output_index": 0,
+                "arguments": "".join(fragments),
+            }
+        )
+    )
+    events.append(
+        json.dumps(
+            {
+                "type": "response.completed",
+                "response": {"status": "completed"},
+            }
+        )
+    )
+    return events
+
+
+def responses_text_events(fragments):
+    """The same fragments as Responses output text."""
+    events = [
+        json.dumps({"type": "response.output_text.delta", "delta": f}) for f in fragments
+    ]
+    events.append(
+        json.dumps({"type": "response.completed", "response": {"status": "completed"}})
+    )
+    return events
+
+
 def openai_text_events(fragments):
     """The same fragments as a chat answer: `choices[].delta.content`."""
     events = [
@@ -275,7 +342,11 @@ def main() -> int:
     # The events of one provider overwrite the events of the other, so each
     # provider is built and run before the next one is built.
     llm_rows = {}
-    for provider, builder in (("anthropic", anthropic_events), ("openai", openai_events)):
+    for provider, builder in (
+        ("anthropic", anthropic_events),
+        ("openai", openai_events),
+        ("openai-responses", responses_events),
+    ):
         for c in cases:
             c["events"] = builder(text_chunks(c["input"], rng))
         rows, _ = run_llm_batch(args.cli, cases, provider)
@@ -288,6 +359,7 @@ def main() -> int:
     for provider, builder in (
         ("anthropic", anthropic_text_events),
         ("openai", openai_text_events),
+        ("openai-responses", responses_text_events),
     ):
         for c in cases:
             c["events"] = builder(text_chunks(c["input"], rng))
@@ -299,12 +371,28 @@ def main() -> int:
         return same(row.get("value"), case["truth"])
 
     def llm_ok(row, case):
+        # The audit's point about this harness (8.1): it used to check the
+        # recovered value and nothing else, so a provider that reported a
+        # filtered or truncated response as a normal, exact call scored 100%.
+        # A passing path now also has to end normally and be readable without
+        # a lossy repair.
         if row is None or row["rc"] != 0:
             return False
         calls = row.get("calls") or []
         if len(calls) != 1:
             return False
         call = calls[0]
+        # A normal end is required: a filtered, refused, truncated-without-a-
+        # verdict or errored response must not count as a recovered value.
+        if call.get("end") != "complete":
+            return False
+        # And the call's own executability claim must agree with its exactness.
+        # The corpus contains genuinely lossy families, so "lossy" is not a
+        # failure here -- a *lossy call reported as executable* is, which is
+        # exactly the provider-terminal-state bug the audit found (3.4).
+        expected_executable = call.get("exactness") != "lossy"
+        if call.get("executable") is not expected_executable:
+            return False
         if call.get("value") is None and case["truth"] is None:
             return True
         return same(call.get("value"), case["truth"])
@@ -319,11 +407,11 @@ def main() -> int:
         hits = sum(1 for c in cases if stream_ok(table.get(c["id"]), c))
         paths.append((label, hits, len(cases)))
 
-    for provider in ("anthropic", "openai"):
+    for provider in ("anthropic", "openai", "openai-responses"):
         rows = llm_rows[provider]
         hits = sum(1 for c in cases if llm_ok(rows.get(c["id"]), c))
         paths.append(("llm/" + provider + " (tool args)", hits, len(cases)))
-    for provider in ("anthropic", "openai"):
+    for provider in ("anthropic", "openai", "openai-responses"):
         rows = text_rows[provider]
         hits = sum(1 for c in cases if llm_ok(rows.get(c["id"]), c))
         paths.append(("llm/" + provider + " (text)", hits, len(cases)))
@@ -343,10 +431,10 @@ def main() -> int:
         ]:
             if not stream_ok(table.get(c["id"]), c):
                 regressions.append((c["id"], c["family"], label))
-        for provider in ("anthropic", "openai"):
+        for provider in ("anthropic", "openai", "openai-responses"):
             if not llm_ok(llm_rows[provider].get(c["id"]), c):
                 regressions.append((c["id"], c["family"], "llm/" + provider))
-        for provider in ("anthropic", "openai"):
+        for provider in ("anthropic", "openai", "openai-responses"):
             if not llm_ok(text_rows[provider].get(c["id"]), c):
                 regressions.append((c["id"], c["family"], "text/" + provider))
 

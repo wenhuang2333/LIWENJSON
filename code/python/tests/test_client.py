@@ -41,7 +41,7 @@ class ClientTests(unittest.TestCase):
         result = self.client.repair("{'a':1,}")
         self.assertEqual(result["text"], '{"a":1}')
         self.assertEqual(result["exactness"], "cosmetic")
-        self.assertIn("R005", [r["code"] for r in result["repairs"]])
+        self.assertIn("R005", [r["rule"] for r in result["repairs"]])
 
     def test_analyze_blocks_an_ambiguous_repair(self) -> None:
         plan = self.client.analyze('{"words":["a" "b"]}', profile="execution")

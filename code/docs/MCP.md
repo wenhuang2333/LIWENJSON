@@ -10,6 +10,43 @@ This document is the canonical deployment guide. The host-side surfaces
 [INTEGRATIONS.md](INTEGRATIONS.md); the engine and its guarantees are in
 [../README.md](../README.md).
 
+## 1.5.2: the protocol contract the tools publish is now the one they satisfy
+
+Every MCP tool publishes an `outputSchema`, and a strict client validates
+`structuredContent` against it. Before 1.5.2 none of the four did:
+
+| tool | what failed | what it is now |
+| --- | --- | --- |
+| `interjson_gate` | the schema required `text`, and the default response omits it (it is the rendered form of `value`, sent only for `with_text`) | `text` is optional in the schema; `with_text` is documented as the opt-in |
+| `interjson_repair` | the schema required `rule`/`name`/`confidence_class`; the response had `code`/`threshold`/`confidence` | one record shape, written by `repair_record_json()` and described by `repair_record_fields()`; `analyze`, `repair`, `validate` and all four tools emit it |
+| `interjson_validate` | same repair-record drift | same fix |
+| `interjson_readiness` | the response carried `events`, which the schema neither declared nor allowed | `events` is declared, with `event`, `path`, `permille` |
+
+The server also accepts its **own** published `inputSchema` as `schema_json`:
+`additionalProperties: false` is implemented (SR-43), so the declarations this
+server publishes are declarations it can enforce. `code/tests/mcp_contract_check.py`
+runs the whole matrix against a built binary.
+
+**JSON-RPC 2.0 is now checked, not assumed.** `jsonrpc` must be exactly `"2.0"`,
+`method` must be a string, `id` must be a string/number/null, `params` must be an
+object or an array; anything else is `-32600`. A JSON-RPC **batch** is answered
+with an array exactly on the revisions that require it (`2025-03-26`,
+`2024-11-05`) and refused with a reason on `2025-06-18`, which dropped batching.
+It used to answer a batch with a single `missing method`.
+
+**`executable` is a JSON/schema verdict, not an authorization.** The label is
+`JSON/SCHEMA POLICY PASSED`, the payload carries `business_authorized: false`,
+and the summary the model reads says so in one line. A path that escapes its
+root, a tool the user may not call, a `write` the user did not ask for: none of
+those are visible to this component. Host policy still applies (audit §7.1).
+
+**A refusal says whether a retry is safe.** `refusal.kind` is `syntax`
+(retry it), `schema_or_intent` (do **not** retry automatically: the retry may
+come back with a different action), `host_declaration` (fix the declaration) or
+`provider` (nothing to retry). Only `syntax` has `auto_retry: true`
+(audit §7.2).
+
+
 ## Why local
 
 The gate sits between a model's raw output and the tool call a host is about to
@@ -40,7 +77,7 @@ sentence to send back to the model when the answer is no.
 | Alias | `interjson-mcp` — the same binary under that name starts the MCP server with no arguments |
 | Transport | stdio: one JSON-RPC 2.0 object per line on stdin, one per line on stdout |
 | Protocol revisions | `2025-06-18`, `2025-03-26` and `2024-11-05` are all accepted verbatim; any other requested revision is answered with `2025-06-18` and is **never echoed back** |
-| Server identity | `serverInfo.name = "interjson"`, `serverInfo.title = "InterJSON — the execution gate"`, `serverInfo.version` = engine version (`1.5.1`) |
+| Server identity | `serverInfo.name = "interjson"`, `serverInfo.title = "InterJSON — the execution gate"`, `serverInfo.version` = engine version (`1.5.2`) |
 | Capabilities | `tools.listChanged: false` (tools only; no resources or prompts) |
 | Tools | `interjson_gate` (primary), `interjson_repair`, `interjson_validate`, `interjson_readiness` — all read-only |
 | Request line limit | 8 MiB (8,388,608 bytes); a longer line is answered with JSON-RPC `-32700` and discarded through the next LF |
@@ -61,7 +98,7 @@ Pick one install path; each ends with a working `interjson` binary. Every
 launcher and client below needs that binary, so verify it first:
 
 ```sh
-interjson --version          # interjson 1.5.1
+interjson --version          # interjson 1.5.2
 ```
 
 > **Technical preview.** The prebuilt binary comes from the GitHub release, which
@@ -100,7 +137,7 @@ surface today:
 git clone https://github.com/wenhuang2333/Moonbit-haker
 cd Moonbit-haker/code
 moon build cmd/interjson --target native --release
-./_build/native/release/build/cmd/interjson/interjson.exe --version   # interjson 1.5.1
+./_build/native/release/build/cmd/interjson/interjson.exe --version   # interjson 1.5.2
 ```
 
 Put the binary on `PATH` under the name `interjson` (or point
@@ -126,9 +163,9 @@ so no runner can build one. Releases before v1.4.0 were published as JSONMend
 and keep the `jsonmend-*` asset prefix and the `jsonmend_*` tool names; use
 v1.4.0 or later for the `interjson` CLI and `interjson_gate`.
 
-The 1.5.1 release is tagged `v1.5.1` and is published with those eight assets;
-the mooncakes counterpart `0.13.0` was published on 2026-10-29, so the installer
-above installs the 1.5.1 binaries.
+The 1.5.2 release is tagged `v1.5.2` and is published with those eight assets;
+the mooncakes counterpart `0.14.0` is the 1.5.2 correspondence, so the installer
+above installs the 1.5.2 binaries.
 
 ### pip: `interjson-moonbit`
 
@@ -138,7 +175,7 @@ scripts.
 
 ```sh
 pip install interjson-moonbit
-interjson --version          # interjson 1.5.1: the engine the launcher needs
+interjson --version          # interjson 1.5.2: the engine the launcher needs
 interjson-mcp --version      # same output, through the console script
 interjson-http --help        # HTTP facade; not needed for MCP
 ```
@@ -669,7 +706,7 @@ Run these from a checkout; `B` is the built binary.
 ```sh
 B=./code/_build/native/release/build/cmd/interjson/interjson.exe
 
-"$B" --version                     # interjson 1.5.1
+"$B" --version                     # interjson 1.5.2
 "$B" mcp --print-config=claude     # claude mcp add interjson -- interjson mcp
 "$B" mcp --help                    # names interjson_gate and the six named clients
 ```

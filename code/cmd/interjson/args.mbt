@@ -84,7 +84,8 @@ fn help_text() -> String {
     "", "interjson readiness [选项] [文件]", "  打印字段就绪曲线：每个顶级字段在输入消耗到多少时已定稿。",
     "  --step N            每 N 个码元观察一次，默认按长度自适应",
     "", "interjson llm [选项] [文件]", "  把模型的事件流喂给 provider 适配器，每个工具调用输出一行结果 JSON。",
-    "  --provider NAME     anthropic（默认）或 openai", "  --sse               输入是 SSE 文本（默认按每行一个事件 JSON 读取）",
+    "  --provider NAME     anthropic（默认）、openai（Chat Completions）或 openai-responses（Responses API）",
+    "  --sse               输入是 SSE 文本（默认按每行一个事件 JSON 读取）",
     "  --text              读取文本增量（delta.content / text_delta）而不是工具调用参数（配 --skip-prose 可跳过前言）",
     "  --follow            每次增量都输出一行，而不是只在结束时输出",
     "", "interjson serve [选项]", "  长驻 stdio 协议（PROTOCOL.md）：每行一个请求 JSON，每行一个响应 JSON。",
@@ -442,10 +443,16 @@ fn parse_args(args : Array[String]) -> (CliOpts, String) {
       } else {
         slice_tail(a, 11)
       }
-      if value == "anthropic" || value == "openai" {
+      if value == "anthropic" ||
+        value == "openai" ||
+        value == "openai-chat" ||
+        value == "openai-responses" ||
+        value == "responses" {
         o.provider = value
       } else {
-        err = "--provider 需要 anthropic 或 openai，收到 `" + value + "`"
+        err = "--provider 需要 anthropic、openai（Chat Completions）或 openai-responses（Responses API），收到 `" +
+          value +
+          "`"
       }
     } else if a == "--max-loss" || a.has_prefix("--max-loss=") {
       let value = if a == "--max-loss" {

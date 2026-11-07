@@ -10,7 +10,10 @@ same decision fields the CLI and the MoonBit library produce.
     with Client() as jm:
         plan = jm.analyze(model_output, profile="agent", schema_json=tool["inputSchema"])
         if plan["executable"]:
-            args = json.loads(plan["text"])
+            # `value` is the parsed document; `text` is its rendered form and is
+            # only present when the caller asks for it (`with_text`), so reading
+            # `plan["text"]` raised `KeyError` on the default path.
+            args = plan["value"]
 
 `find_binary()` resolves the engine: `INTERJSON_BIN`, then `PATH`, then a
 bundled `interjson/bin/`, then the development build in this repository.

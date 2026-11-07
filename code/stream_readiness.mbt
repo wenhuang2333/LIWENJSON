@@ -290,6 +290,11 @@ pub struct SemanticWatcher {
   priv settled : Array[Bool]
   mut settled_count : Int32
   mut concluded : Bool
+  /// Whether the `RootReady` that was published is still standing. It stops
+  /// standing when the final value turns out not to satisfy the declaration
+  /// (an optional member arrived later and is wrong), and the watcher then
+  /// publishes the `RootInvalid` it owes the caller.
+  mut ready_standing : Bool
   mut conflict : Bool
   mut checked : Bool
   mut events : Array[ReadinessEvent]
@@ -380,6 +385,7 @@ pub fn SemanticWatcher::new(
     settled,
     settled_count: 0,
     concluded: false,
+    ready_standing: false,
     conflict: false,
     checked: false,
     events: [],
@@ -601,11 +607,22 @@ fn SemanticWatcher::on_delta(self : SemanticWatcher, d : Delta) -> Unit {
   // waits for the root closer; the members settling early says nothing about
   // the container as a whole.
   let root_closed = d.path.length() == 0 && d.op is Close
-  if !self.concluded &&
-    !self.conflict &&
+  // The root closer is the last chance to see the whole value. It re-evaluates
+  // even when a verdict was already published, because a member that arrived
+  // after that verdict can still contradict it: `{"a":"ok",` says
+  // `RootReady`, `"b":"bad"}` makes that promise false, and the refusal has to
+  // be published at the offset where it became true (audit 3.3).
+  if self.conflict {
+    return
+  }
+  if root_closed {
+    self.checked = true
+    self.decide()
+  } else if !self.concluded &&
     !self.checked &&
     self.all_settled() &&
-    (root_closed || (self.watched.length() > 0 && !self.needs_root_close)) {
+    self.watched.length() > 0 &&
+    !self.needs_root_close {
     self.checked = true
     self.decide()
   }
@@ -676,9 +693,17 @@ fn substructure_problem(decl : Schema, v : Json) -> (String, String)? {
 fn SemanticWatcher::decide(self : SemanticWatcher) -> Unit {
   let verdict = self.schema.evaluate(self.value_at_root())
   if verdict.ok {
-    self.concluded = true
-    self.verdict_at = self.offset_now()
-    self.emit(RootReady)
+    // An already standing `RootReady` is not re-published: the final value
+    // still satisfies the declaration, so the promise was kept. A refusal that
+    // was already published is not revoked either -- the stream has told the
+    // caller "no", and a duplicate key that happens to be repaired later does
+    // not turn a refusal into a licence.
+    if !self.concluded {
+      self.concluded = true
+      self.ready_standing = true
+      self.verdict_at = self.offset_now()
+      self.emit(RootReady)
+    }
   } else {
     self.conclude_invalid()
   }
@@ -706,6 +731,17 @@ fn SemanticWatcher::value_at(self : SemanticWatcher, i : Int32) -> Json {
 /// Emit the refusal, once.
 fn SemanticWatcher::conclude_invalid(self : SemanticWatcher) -> Unit {
   if self.concluded {
+    // A `RootReady` was published and the value it described has since been
+    // contradicted. The event was true when it fired -- every required path was
+    // final and valid for the value as it had arrived -- but it is not an
+    // execution licence for the final document, so the refusal is published
+    // too. Silence here is what let a host act on `{"a":"ok"}` after the model
+    // went on to send `"b":"bad"` (audit 3.3).
+    if self.ready_standing {
+      self.ready_standing = false
+      self.verdict_at = self.offset_now()
+      self.emit(RootInvalid(self.offset_now()))
+    }
     return
   }
   self.concluded = true
@@ -879,7 +915,13 @@ pub fn SemanticWatcher::finish(
   if self.syntax_at < 0 {
     self.syntax_at = self.bytes
   }
-  if !self.checked && !self.conflict {
+  // The end of the input is the only moment the *whole* value is known, and an
+  // optional member the declaration does not require still has to satisfy its
+  // own declaration ("optional" says it may be absent, not that it may be
+  // whatever the model likes). So the final verdict is taken here against the
+  // final value even when an earlier one was published, and a standing
+  // `RootReady` is revoked if the value that arrived does not keep the promise.
+  if !self.conflict {
     self.checked = true
     self.decide()
   }
@@ -1011,4 +1053,18 @@ pub fn decided_at_permille(
     }
   }
   -1
+}
+
+///|
+/// Whether a published `RootReady` is still standing.
+///
+/// `RootReady` is a promise about the value as it has arrived: every required
+/// path is final and valid. The end of the stream is the only moment the whole
+/// value is known, and a member that arrives afterwards can make the promise
+/// false. When it does, `RootInvalid` is published at the offset where the
+/// value became wrong and this answers `false` from then on. A host that treats
+/// `RootReady` as permission to execute must therefore stop the model there,
+/// not merely observe that the event fired.
+pub fn SemanticWatcher::ready_standing(self : SemanticWatcher) -> Bool {
+  self.ready_standing
 }

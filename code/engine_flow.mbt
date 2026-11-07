@@ -906,7 +906,15 @@ fn Engine::step_str_pending(
 ) -> Unit raise InterJSONError {
   if is_ws(u) {
     match u.to_char() {
-      Some(c) => self.pending_ws.write_char(c)
+      Some(c) => {
+        self.pending_ws.write_char(c)
+        self.pending_ws_len = self.pending_ws_len + 1
+        // The pending whitespace is part of the token the lookahead may still
+        // produce, so the limit applies to it while it is pending (audit 5.4).
+        if self.parts_len + self.pending_ws_len > self.opts.max_token_len {
+          raise TokenLimit(self.opts.max_token_len, self.tok_start.offset)
+        }
+      }
       None => ()
     }
     return
@@ -914,21 +922,30 @@ fn Engine::step_str_pending(
   let n = u.to_int()
   if n == 0x2C || n == 0x7D || n == 0x5D || n == 0x3A || n == 0x2F {
     self.pending_ws.reset()
+    self.pending_ws_len = 0
     self.tok = TIdle
     self.finish_string(is_key)
     self.step_idle(u)
     return
   }
   self.report(NormalizeQuote, self.pending_quote_pos)
+  // The quote that turned out not to close the string becomes content, and the
+  // whitespace that followed it is content too. Both count towards the token
+  // limit, and the check happens after the merge: the limit is about the token
+  // the caller finally receives, not about the pieces it was assembled from.
+  let ws = self.pending_ws.to_string()
+  self.pending_ws.reset()
+  self.pending_ws_len = 0
   match self.pending_quote.to_char() {
     Some(q) => self.push_char(q)
     None => ()
   }
-  let ws = self.pending_ws.to_string()
-  self.pending_ws.reset()
   if ws.length() > 0 {
     self.parts.push(ws)
     self.parts_len = self.parts_len + ws.length()
+    if self.parts_len > self.opts.max_token_len {
+      raise TokenLimit(self.opts.max_token_len, self.tok_start.offset)
+    }
   }
   self.tok = TStr(kind, is_key)
   self.step_str(u, kind, is_key)
@@ -1591,6 +1608,12 @@ fn Engine::retry_prelude(self : Engine) -> FinalResult? raise InterJSONError {
   for d in retry.drain_deltas() {
     self.push_delta_path(d)
   }
+  // The value itself is adopted too, not only its deltas. Without this the
+  // engine returned the retried value from `finish` while `snapshot()` still
+  // reported no root, so a `SemanticWatcher` fed the same input concluded
+  // `RootInvalid` on a value the parse had just accepted — the bare-scalar
+  // watcher contradiction (audit 5.3). One parser, one value.
+  self.root = Some(result.value)
   Some(result)
 }
 

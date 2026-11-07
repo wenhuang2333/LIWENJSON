@@ -111,3 +111,17 @@ let fx_openai_name_only : String = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.com
 let fx_openai_name_only_calls : Array[(Int32, String, String)] = [
   (0, "noop", ""),
 ]
+
+///|
+/// Events of the `live_responses_tool_call` fixture, one payload per line.
+let fx_live_responses_tool_call : String = "{\"response\":{\"id\":\"resp_fixture\",\"model\":\"deepseek-v4.1-flash\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"type\":\"response.created\"}\n{\"response\":{\"id\":\"resp_fixture\",\"model\":\"deepseek-v4.1-flash\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"type\":\"response.in_progress\"}\n{\"item\":{\"arguments\":\"\",\"call_id\":\"call_fixture\",\"id\":\"fc_fixture\",\"name\":\"get_weather\",\"status\":\"in_progress\",\"type\":\"function_call\"},\"output_index\":0,\"type\":\"response.output_item.added\"}\n{\"delta\":\"{\\\"location\\\": \\\"Paris\\\", \\\"unit\\\": \\\"celsius\\\"}\",\"item_id\":\"fc_fixture\",\"output_index\":0,\"type\":\"response.function_call_arguments.delta\"}\n{\"arguments\":\"{\\\"location\\\": \\\"Paris\\\", \\\"unit\\\": \\\"celsius\\\"}\",\"item_id\":\"fc_fixture\",\"output_index\":0,\"type\":\"response.function_call_arguments.done\"}\n{\"item\":{\"arguments\":\"{\\\"location\\\": \\\"Paris\\\", \\\"unit\\\": \\\"celsius\\\"}\",\"call_id\":\"call_fixture\",\"id\":\"fc_fixture\",\"name\":\"get_weather\",\"status\":\"completed\",\"type\":\"function_call\"},\"output_index\":0,\"type\":\"response.output_item.done\"}\n{\"response\":{\"id\":\"resp_fixture\",\"model\":\"deepseek-v4.1-flash\",\"object\":\"response\",\"output\":[{\"arguments\":\"{\\\"location\\\": \\\"Paris\\\", \\\"unit\\\": \\\"celsius\\\"}\",\"call_id\":\"call_fixture\",\"id\":\"fc_fixture\",\"name\":\"get_weather\",\"status\":\"completed\",\"type\":\"function_call\"}],\"status\":\"completed\"},\"type\":\"response.completed\"}"
+
+///|
+/// Expected calls of the `live_responses_tool_call` fixture (choice, tool index, name, id, arguments).
+let fx_live_responses_tool_call_calls : Array[
+  (Int32, Int32, String, String, String),
+] = [
+  (
+    0, 0, "get_weather", "call_fixture", "{\"location\":\"Paris\",\"unit\":\"celsius\"}",
+  ),
+]

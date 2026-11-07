@@ -24,6 +24,8 @@ pub fn sse_data(String) -> String?
 
 pub fn stop_end(String) -> CallEnd
 
+pub fn stop_end_of(String) -> CallEnd
+
 // Errors
 
 // Types and methods
@@ -33,8 +35,12 @@ pub(all) enum CallEnd {
   MaxTokens
   Interrupted
   ProviderError
+  Refused
+  Unknown
 }
 pub fn CallEnd::equal(Self, Self) -> Bool
+pub fn CallEnd::is_executable(Self) -> Bool
+pub fn CallEnd::is_normal(Self) -> Bool
 pub fn CallEnd::is_truncated(Self) -> Bool
 pub fn CallEnd::name(Self) -> String
 pub fn CallEnd::not_equal(Self, Self) -> Bool
@@ -43,6 +49,7 @@ pub impl Eq for CallEnd
 pub(all) enum Provider {
   Anthropic
   OpenAICompat
+  OpenAIResponses
 }
 pub fn Provider::equal(Self, Self) -> Bool
 pub fn Provider::not_equal(Self, Self) -> Bool
@@ -52,6 +59,7 @@ pub struct SseBuffer {
   pending : StringBuilder
   data : Array[String]
   mut has_data : Bool
+  mut after_cr : Bool
 }
 pub fn SseBuffer::flush(Self) -> Array[String]
 pub fn SseBuffer::new() -> Self
@@ -79,6 +87,7 @@ pub fn TextStream::text(Self) -> String
 type ToolCall
 
 pub(all) struct ToolCallView {
+  choice : Int32
   index : Int32
   id : String
   name : String
@@ -88,6 +97,7 @@ pub(all) struct ToolCallView {
   end : CallEnd
   stop_reason : String
 }
+pub fn ToolCallView::is_executable(Self) -> Bool
 
 pub struct ToolStream {
   provider : Provider
@@ -95,13 +105,16 @@ pub struct ToolStream {
   calls : Array[ToolCall]
   mut error_message : String
   mut ignored : Int32
+  unsupported : Array[String]
 }
 pub fn ToolStream::arguments(Self, Int32) -> String
+pub fn ToolStream::arguments_at(Self, Int32, Int32) -> String
 pub fn ToolStream::error(Self) -> String
 pub fn ToolStream::finish(Self) -> Array[ToolCallView] raise @interjson.InterJSONError
 pub fn ToolStream::ignored_events(Self) -> Int32
 pub fn ToolStream::new(Provider, options? : @interjson.Options) -> Self raise @interjson.InterJSONError
 pub fn ToolStream::push_event(Self, String) -> Array[ToolCallView] raise @interjson.InterJSONError
+pub fn ToolStream::unsupported_events(Self) -> Array[String]
 pub fn ToolStream::views(Self) -> Array[ToolCallView]
 
 // Type aliases

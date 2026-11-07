@@ -1,4 +1,4 @@
-**版本**：1.5.1
+**版本**：1.5.2
 
 # InterJSON — LLM 输出的执行门
 
@@ -14,9 +14,10 @@
 
 | GitHub tag | mooncakes.io | npm | PyPI | 状态 |
 | --- | --- | --- | --- | --- |
-| `v1.5.1` | `0.13.0` | `interjson-moonbit@1.5.1` | `interjson-moonbit@1.5.1` | 当前版本 |
+| `v1.5.2` | `0.14.0` | `interjson-moonbit@1.5.2` | `interjson-moonbit@1.5.2` | 当前版本（`main`，待发包） |
+| `v1.5.1` | `0.13.0` | `interjson-moonbit@1.5.1` | `interjson-moonbit@1.5.1` | 上一版（2026-10-30） |
 
-mooncakes 的 `0.13.0` 已于 2026-10-29 发布（`moon add zhanshishan/interjson`）；npm 上 `npm install interjson-moonbit`、PyPI 上 `pip install interjson-moonbit`，两个语言包的 wheel 与 tarball 里都带着引擎，装完即可调用。
+已发布的是 `0.13.0`（2026-10-29，`moon add zhanshishan/interjson`）、`interjson-moonbit@1.5.1`（npm 与 PyPI，2026-10-30）；`1.5.2` 的源码在 `main` 上，发包顺序见 `code/CHANGELOG.md`。两个语言包的 wheel 与 tarball 里都带着引擎，装完即可调用。
 
 ## 功能亮点
 
@@ -34,15 +35,17 @@ mooncakes 的 `0.13.0` 已于 2026-10-29 发布（`moon add zhanshishan/interjso
 
 | 证据 | 结果 |
 | --- | --- |
-| 四个后端（wasm-gc / native / JS / wasm） | 每个后端 `274/274` 通过 |
-| CLI 冒烟 | `132 项断言` |
+| 四个后端（wasm-gc / native / JS / wasm） | 每个后端 `322/322` 通过 |
+| CLI 冒烟 | `145 项断言` |
 | 协议 / MCP 一致性 | `19 组` |
-| npm 包 | `17 个 Node 测试` |
+| npm 包 | `19 个 Node 测试` |
 | Python 包 | `32 个测试` |
-| 根包行覆盖率 | `4121/4391` |
-| `llm` 包行覆盖率 | `337/391` |
-| 覆盖率门（有未覆盖行的文件口径） | `4383/4707` |
-| wasm-gc 产物体积 | `114.5 KiB` |
+| 根包行覆盖率 | `4409/4672` |
+| `llm` 包行覆盖率 | `464/637` |
+| 覆盖率门（有未覆盖行的文件口径） | `4798/5234` |
+| wasm-gc 产物体积 | `114.7 KiB` |
+| MCP 契约（真实二进制 × 真实 `outputSchema`） | `11/11 响应通过` |
+| 真实模型端到端（Responses API，`code/tests/live_model_audit_v2.py`） | `34/34 检查通过` |
 | 真值评测（协议先冻结） | `1200` 条，恢复率 `100.00%` |
 | 差分测试（对 `jsonrepair` / `json-repair`） | `402` 条，未解释 0 处分歧 |
 | 骨架就绪表 | `10 个场景` |

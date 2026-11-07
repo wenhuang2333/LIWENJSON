@@ -112,6 +112,10 @@ pub(all) struct PlanOp {
   /// `1.0` for `certain`, `0.75` for `probable`, `0.5` for `ambiguous`. A class
   /// label with a numeric spelling for machine consumers, not a probability.
   confidence : Double
+  /// The rule's fixed English sentence, as the protocol reports it. Part of the
+  /// shared record shape (`repair_record_fields`), so the plan and the protocol
+  /// cannot describe the same repair differently (audit 3.7).
+  message : String
 }
 
 ///|
@@ -149,7 +153,51 @@ pub fn PlanOp::of_repair(r : Repair) -> PlanOp {
     ambiguity: r.ambiguity,
     confidence_class: class,
     confidence: value,
+    message: r.message,
   }
+}
+
+///|
+/// One repair record as JSON, with the field names the protocol documents.
+///
+/// This is the single definition of the shape. It used to be written twice --
+/// `serve` emitted `code`/`threshold`/`message`, the plan emitted
+/// `rule`/`name`/`confidence(_value)` -- so `interjson_repair` returned a record
+/// its own published `outputSchema` did not describe, and a strict MCP client
+/// rejected the response (audit 3.7). One function, one shape, and the MCP
+/// output schema is written from this list.
+pub fn repair_record_json(r : Repair) -> Json {
+  let m : Map[String, Json] = Map([])
+  m["rule"] = Json::string(r.code.code())
+  m["name"] = Json::string(r.code.name())
+  m["action"] = Json::string(plan_action(r.code).name())
+  m["offset"] = Json::number(r.position.offset.to_double())
+  m["line"] = Json::number(r.position.line.to_double())
+  m["column"] = Json::number(r.position.column.to_double())
+  m["severity"] = Json::string(
+    match r.severity {
+      Info => "info"
+      Warning => "warning"
+    },
+  )
+  m["ambiguity"] = Json::string(r.ambiguity.name())
+  m["confidence"] = Json::string(PlanOp::of_repair(r).confidence_class)
+  m["confidence_value"] = Json::number(PlanOp::of_repair(r).confidence)
+  m["information_loss"] = Json::boolean(r.severity is Warning)
+  m["message"] = Json::string(r.message)
+  Json::object(m)
+}
+
+///|
+/// The field names `repair_record_json` writes, in the order the schema lists
+/// them. The MCP output schema and the JSON writer are checked against each
+/// other by `tests/mcp_schema.py`, so a field added to one and not the other is
+/// a failing gate rather than a client-side surprise.
+pub fn repair_record_fields() -> Array[String] {
+  [
+    "rule", "name", "action", "offset", "line", "column", "severity", "ambiguity",
+    "confidence", "confidence_value", "information_loss", "message",
+  ]
 }
 
 ///|
@@ -189,6 +237,97 @@ pub(all) struct RepairPlan {
   schema_satisfied : Int32
   /// Required members that the value does not provide, as dotted paths.
   schema_missing : Array[String]
+  /// Why this refusal is a refusal, for a host that decides whether an
+  /// automatic retry is safe (audit §7.2).
+  refusal_kind : RefusalKind
+}
+
+///|
+/// What kind of refusal a plan is, which decides what an automatic retry may do
+/// with it (audit §7.2).
+///
+/// The distinction is the point: a truncated document is a *format* problem the
+/// model can fix by re-emitting the same answer, while a complete, valid
+/// document that violates a declared `const` or range is an *intent* conflict --
+/// asking the model again is how a user's `write` became a `read` and was then
+/// executed. A gate that hands both the same prompt makes the second look like
+/// the first.
+pub(all) enum RefusalKind {
+  /// Nothing was refused: the plan may be executed.
+  NoRefusal
+  /// The text was not (yet) a complete, unambiguous document: a truncation, an
+  /// unclosed container, a code fence, a second reading. Re-emitting is
+  /// meaningful and the value is what the model meant to say.
+  Syntax
+  /// The document was complete and valid JSON, but its values conflict with the
+  /// declaration (a `const`, an `enum`, a range, a closed object's extra
+  /// member). Retrying may produce a different *action*, not a better spelling,
+  /// so the caller must not execute the retry automatically.
+  SchemaOrIntent
+  /// The declaration itself is one this library cannot enforce (an unsupported
+  /// keyword, an unsatisfiable bound). The model cannot fix it: the host must.
+  HostDeclaration
+  /// The provider refused or filtered the response. There is nothing to retry.
+  Provider
+}
+
+///|
+/// Explicit `Eq` implementation for `RefusalKind`.
+pub impl Eq for RefusalKind with fn equal(
+  self : RefusalKind,
+  other : RefusalKind,
+) -> Bool {
+  self.name() == other.name()
+}
+
+///|
+/// Explicit `Eq` extension for `RefusalKind`.
+pub extend RefusalKind with Eq::{not_equal, equal}
+
+///|
+/// Stable lowercase name, e.g. `schema_or_intent`.
+pub fn RefusalKind::name(self : RefusalKind) -> String {
+  match self {
+    NoRefusal => "none"
+    Syntax => "syntax"
+    SchemaOrIntent => "schema_or_intent"
+    HostDeclaration => "host_declaration"
+    Provider => "provider"
+  }
+}
+
+///|
+/// Whether an automatic retry (send the prompt back, run the model again) is
+/// safe for this refusal.
+///
+/// Only a syntax refusal is. The others either cannot be fixed by the model
+/// (`HostDeclaration`, `Provider`) or would be fixed by *changing the action*
+/// (`SchemaOrIntent`), which is a decision for the user or the host policy.
+pub fn RefusalKind::auto_retryable(self : RefusalKind) -> Bool {
+  self is Syntax
+}
+
+///|
+/// Classify a plan's refusal (audit §7.2).
+///
+/// A value that violates the declaration is `SchemaOrIntent`; a document that
+/// never became readable is `Syntax`; a declaration that could not be parsed at
+/// all never reaches a plan (it is a fatal `E070` with no retry prompt), which is
+/// `HostDeclaration`'s definition: it is the host's to fix, not the model's.
+fn classify_refusal(
+  decision : ExecutionDecision,
+  error_code : String,
+) -> RefusalKind {
+  if decision.is_safe() {
+    return NoRefusal
+  }
+  // `E070` from the schema check means "complete document, wrong value". Every
+  // other refusal code is a reading problem: truncation (`E001`/`E002`), a
+  // second reading (`E011`), information loss (`E010`), resource limits.
+  if error_code == "E070" {
+    return SchemaOrIntent
+  }
+  Syntax
 }
 
 ///|
@@ -410,6 +549,14 @@ fn plan_of_final(
     schema_total: verdict.total,
     schema_satisfied: verdict.satisfied,
     schema_missing: verdict.missing,
+    refusal_kind: classify_refusal(
+      decision,
+      if verdict.ok {
+        ""
+      } else {
+        "E070"
+      },
+    ),
   }
 }
 
@@ -606,6 +753,7 @@ fn plan_of_error(e : InterJSONError, input : String) -> RepairPlan {
         ambiguity: a,
         confidence_class: "refused",
         confidence: 0.0,
+        message: m,
       })
       ignore(m)
     }
@@ -634,6 +782,7 @@ fn plan_of_error(e : InterJSONError, input : String) -> RepairPlan {
     schema_total: 0,
     schema_satisfied: 0,
     schema_missing: [],
+    refusal_kind: classify_refusal(decide_error(code), code),
   }
 }
 
@@ -982,11 +1131,16 @@ pub fn RepairPlan::to_json_with_text(
     sb.write_string(",")
     sb.write_string(kv("ambiguity", op.ambiguity.name()))
     sb.write_string(",")
+    // The field names are `repair_record_json`'s, and `repair_record_fields()`
+    // is the list the MCP output schema is written from: one repair record, one
+    // shape, wherever it is emitted (audit 3.7).
     sb.write_string(kv("confidence", op.confidence_class))
     sb.write_string(",\"confidence_value\":")
     sb.write_string(op.confidence.to_string())
     sb.write_string(",\"information_loss\":")
     sb.write_string(op.information_loss().to_string())
+    sb.write_string(",")
+    sb.write_string(kv("message", json_escape(op.message)))
     sb.write_string("}")
   }
   sb.write_string("],\"retry\":")
@@ -1023,6 +1177,26 @@ pub fn RepairPlan::to_json_with_text(
       "{" + kv("code", code) + "," + kv("prompt", json_escape(prompt)) + "}",
     )
   }
+  // The refusal's *kind*, so a host can decide whether an automatic retry is
+  // safe without parsing the prompt (audit §7.2). A syntax refusal may be
+  // retried; a schema/intent conflict must not be retried into a different
+  // action automatically.
+  sb.write_string(",\"refusal\":")
+  if self.refusal_kind is NoRefusal {
+    sb.write_string("null")
+  } else {
+    sb.write_string(
+      "{" +
+      kv("kind", self.refusal_kind.name()) +
+      ",\"auto_retry\":" +
+      self.refusal_kind.auto_retryable().to_string() +
+      "}",
+    )
+  }
+  // The gate checks JSON and the declared schema. It never checks whether the
+  // caller is allowed to perform the action, and saying so in the payload is
+  // cheaper than a documentation page nobody reads (audit §7.1).
+  sb.write_string(",\"business_authorized\":false")
   sb.write_string(",\"repairs_truncated\":")
   sb.write_string(self.repairs_truncated.to_string())
   // The value itself, so a caller that has the right to execute does not have to

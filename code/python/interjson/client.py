@@ -329,9 +329,18 @@ class Client:
         schema_json: Any = None,
         skip_prose: bool | None = None,
         max_loss: str | None = None,
+        with_text: bool | None = None,
     ) -> dict[str, Any]:
-        """The decision plan: `decision`, `executable`, `exactness`, `retry`, ..."""
-        return self.request("analyze", **self._params(text, profile, schema, schema_json, skip_prose, max_loss))
+        """The decision plan: `decision`, `executable`, `exactness`, `retry`, ...
+
+        The plan carries `value`, the parsed document. `text`, its rendered form,
+        is only present when `with_text=True` is asked for, because sending both
+        puts two copies of the document on the wire.
+        """
+        params = self._params(text, profile, schema, schema_json, skip_prose, max_loss)
+        if with_text is not None:
+            params["with_text"] = with_text
+        return self.request("analyze", **params)
 
     def validate(
         self,

@@ -101,6 +101,7 @@ pub fn TextStream::push_event(
   let fragment = match self.provider {
     Anthropic => self.text_of_anthropic(v)
     OpenAICompat => self.text_of_openai(v)
+    OpenAIResponses => self.text_of_responses(v)
   }
   match fragment {
     Some(s) => {
@@ -217,13 +218,72 @@ fn TextStream::text_of_openai(self : TextStream, v : Json) -> String? {
 }
 
 ///|
-/// Map a provider stop word to a `CallEnd`.
-pub fn stop_end(reason : String) -> CallEnd {
-  match reason {
-    "max_tokens" | "length" | "model_context_window_exceeded" => MaxTokens
-    "" => Open
-    _ => Complete
+/// The text fragment of one Responses API event, if it carries one.
+///
+/// Text arrives as `response.output_text.delta`, and the end of the response is
+/// `response.completed` / `response.incomplete` / `response.failed`, whose
+/// `status` and `incomplete_details.reason` say how it ended. A refusal
+/// (`response.refusal.done`) is a `Refused` end, not an empty answer.
+fn TextStream::text_of_responses(self : TextStream, v : Json) -> String? {
+  let kind = match field_string(v, "type") {
+    Some(t) => t
+    None => return None
   }
+  if kind == "response.output_text.delta" {
+    return match field_string(v, "delta") {
+      Some(s) => if s == "" { None } else { Some(s) }
+      None => None
+    }
+  }
+  if kind == "response.refusal.done" {
+    self.end = Refused
+    self.stop_reason = "refusal"
+    return None
+  }
+  if kind == "response.completed" ||
+    kind == "response.incomplete" ||
+    kind == "response.failed" {
+    let response = match field(v, "response") {
+      Some(r) => r
+      None => v
+    }
+    let status = match field_string(response, "status") {
+      Some(s) => s
+      None => "completed"
+    }
+    let incomplete = match field(response, "incomplete_details") {
+      Some(d) =>
+        match field_string(d, "reason") {
+          Some(r) => r
+          None => ""
+        }
+      None => ""
+    }
+    self.end = responses_status_end(status, incomplete)
+    if self.end is ProviderError {
+      self.error_message = match field(response, "error") {
+        Some(e) =>
+          match field_string(e, "message") {
+            Some(m) => m
+            None => "provider error"
+          }
+        None => "provider error"
+      }
+    }
+    if incomplete != "" {
+      self.stop_reason = incomplete
+    }
+    return None
+  }
+  None
+}
+
+///|
+/// Map a provider stop word to a `CallEnd`. The whitelist lives in `llm.mbt`,
+/// beside the tool-call path, so the two readers cannot disagree about what a
+/// `content_filter` means.
+pub fn stop_end(reason : String) -> CallEnd {
+  stop_end_of(reason)
 }
 
 ///|

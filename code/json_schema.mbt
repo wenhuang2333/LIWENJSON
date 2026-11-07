@@ -13,8 +13,11 @@
 //   * a supported keyword is mapped;
 //   * an annotation (`title`, `description`, `default`, `examples`, `$schema`,
 //     `$id`, `deprecated`, `readOnly`, `writeOnly`, `format`) is ignored;
-//   * `additionalProperties: true` is a no-op, `false` is refused because the
-//     skeleton cannot enforce "no other members";
+//   * `additionalProperties: true` is a no-op, `false` closes the object: the
+//     value may not carry a member the declaration does not name (1.5.2). It is
+//     what an OpenAI "strict" declaration says, including the `inputSchema`
+//     this server publishes itself, so refusing it made the server reject its
+//     own tool declarations;
 //   * anything else (`$ref`, `oneOf`, `anyOf`, `allOf`, `not`, `minItems`,
 //     `uniqueItems`, `multipleOf`, …) is an `E070`, never a silent ignore.
 //
@@ -50,10 +53,24 @@ fn json_schema_annotation(key : String) -> Bool {
   key == "$comment" ||
   key == "deprecated" ||
   key == "readOnly" ||
-  key == "writeOnly" ||
-  key == "format" ||
-  key == "contentEncoding" ||
-  key == "contentMediaType"
+  key == "writeOnly"
+}
+
+///|
+/// Keywords that are *annotations* in JSON Schema but assertions to a caller of
+/// an execution gate.
+///
+/// `format` is an annotation in the standard: a validator may ignore it. Here,
+/// ignoring it would mean `{"type":"string","format":"email"}` accepts
+/// `"not-an-email"` while the caller who wrote the declaration believes email
+/// addresses are checked, and this product's contract is "unsupported means
+/// refused, never silently weaker". The whole set is therefore an `E070` with a
+/// sentence that says what to do about it, rather than a keyword dropped on the
+/// floor. The same reasoning applies to `contentEncoding` and
+/// `contentMediaType`: they are claims about the bytes a string carries, and no
+/// check here can back them.
+fn json_schema_unchecked_assertion(key : String) -> Bool {
+  key == "format" || key == "contentEncoding" || key == "contentMediaType"
 }
 
 ///|
@@ -68,13 +85,25 @@ fn json_schema_unsupported(key : String) -> Unit raise InterJSONError {
 
 ///|
 /// A numeric field, accepting an integer or a finite double.
-fn json_schema_number(v : Json, key : String) -> Double raise InterJSONError {
+fn json_schema_number(v : Json, key : String) -> Dec raise InterJSONError {
   match v {
-    Json::Number(d, ..) =>
-      if d.is_nan() || d.is_inf() {
-        raise SchemaError("json schema: `" + key + "` must be finite")
-      } else {
-        d
+    Json::Number(_, ..) =>
+      match number_dec(v) {
+        Some(d) =>
+          // `1e9999999999` is a JSON number whose exact value this library
+          // cannot compare. A bound the gate cannot enforce exactly is refused
+          // at modelling time instead of being silently weakened.
+          if d.text().length() == 0 {
+            raise SchemaError(
+              "json schema: `" + key + "` cannot be normalised exactly",
+            )
+          } else {
+            d
+          }
+        None =>
+          raise SchemaError(
+            "json schema: `" + key + "` cannot be normalised exactly",
+          )
       }
     _ => raise SchemaError("json schema: `" + key + "` must be a number")
   }
@@ -89,18 +118,15 @@ fn json_schema_number(v : Json, key : String) -> Double raise InterJSONError {
 /// clamp.
 fn json_schema_uint(v : Json, key : String) -> Int32 raise InterJSONError {
   let d = json_schema_number(v, key)
-  if !(d >= 0.0) || d > 2147483647.0 {
-    raise SchemaError(
-      "json schema: `" + key + "` must be a non-negative integer",
-    )
+  match d.length_value() {
+    Some(n) => n
+    None =>
+      raise SchemaError(
+        "json schema: `" +
+        key +
+        "` must be a non-negative integer no greater than 2147483647",
+      )
   }
-  let n = d.to_int()
-  if n.to_double() != d || n < 0 {
-    raise SchemaError(
-      "json schema: `" + key + "` must be a non-negative integer",
-    )
-  }
-  n
 }
 
 ///|
@@ -317,6 +343,14 @@ fn json_schema_constraints(
     } else if key == "exclusiveMaximum" {
       c.exclusive_maximum = Some(json_schema_number(value, key))
       any = true
+    } else if key == "additionalProperties" {
+      match value {
+        Json::False => {
+          c.additional_properties_closed = true
+          any = true
+        }
+        _ => ()
+      }
     } else if key == "minLength" {
       c.min_length = Some(json_schema_uint(value, key))
       any = true
@@ -408,7 +442,7 @@ fn json_schema_constraints(
   }
   match (c.minimum, c.maximum) {
     (Some(lo), Some(hi)) =>
-      if lo > hi {
+      if lo.compare(hi) > 0 {
         raise SchemaError(
           "json schema: `minimum` exceeds `maximum`; the declaration can never be satisfied",
         )
@@ -417,7 +451,7 @@ fn json_schema_constraints(
   }
   match (c.minimum, c.exclusive_maximum) {
     (Some(lo), Some(hi)) =>
-      if lo >= hi {
+      if lo.compare(hi) >= 0 {
         raise SchemaError(
           "json schema: `minimum` is not below `exclusiveMaximum`; the declaration can never be satisfied",
         )
@@ -426,7 +460,7 @@ fn json_schema_constraints(
   }
   match (c.exclusive_minimum, c.maximum) {
     (Some(lo), Some(hi)) =>
-      if lo >= hi {
+      if lo.compare(hi) >= 0 {
         raise SchemaError(
           "json schema: `exclusiveMinimum` is not below `maximum`; the declaration can never be satisfied",
         )
@@ -435,7 +469,7 @@ fn json_schema_constraints(
   }
   match (c.exclusive_minimum, c.exclusive_maximum) {
     (Some(lo), Some(hi)) =>
-      if lo >= hi {
+      if lo.compare(hi) >= 0 {
         raise SchemaError(
           "json schema: `exclusiveMinimum` is not below `exclusiveMaximum`; the declaration can never be satisfied",
         )
@@ -452,6 +486,15 @@ fn json_schema_constraints(
   let has_string_constraint = c.min_length is Some(_) ||
     c.max_length is Some(_) ||
     c.pattern is Some(_)
+  if c.additional_properties_closed {
+    match kind.structure() {
+      Obj(_) => ()
+      _ =>
+        raise SchemaError(
+          "json schema: `additionalProperties` applies to `type: \"object\"` only",
+        )
+    }
+  }
   match kind {
     Int | Num =>
       if has_string_constraint {
@@ -518,18 +561,25 @@ fn json_schema_node_at(v : Json, depth : Int32) -> Schema raise InterJSONError {
         }
         if key == "additionalProperties" {
           // `true` (the JSON Schema default) adds nothing the skeleton can
-          // check; `false` is a constraint it cannot enforce.
+          // check. `false` is the closure of the object, which the skeleton
+          // enforces since 1.5.2: it is what every OpenAI "strict" tool
+          // declaration says, so refusing it made the server reject the very
+          // declarations it publishes itself.
           match value {
             Json::True => continue
-            Json::False =>
-              raise SchemaError(
-                "json schema: `additionalProperties: false` is not supported; the skeleton does not close objects",
-              )
+            Json::False => continue
             _ =>
               raise SchemaError(
                 "json schema: `additionalProperties` must be a boolean",
               )
           }
+        }
+        if json_schema_unchecked_assertion(key) {
+          raise SchemaError(
+            "json schema: `" +
+            key +
+            "` is not checked by InterJSON; remove it (it would otherwise read as a guarantee) or validate it in the host",
+          )
         }
         json_schema_unsupported(key)
       }

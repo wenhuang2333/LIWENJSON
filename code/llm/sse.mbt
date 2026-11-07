@@ -18,12 +18,18 @@ pub struct SseBuffer {
   data : Array[String]
   /// Whether any `data:` line was seen for the event being assembled.
   mut has_data : Bool
+  /// The previous chunk ended with CR. A CRLF pair may be split across two
+  /// chunks, and the LF half must not be read as a second empty line, which
+  /// would dispatch the event twice -- once with its payload and once empty.
+  /// The audit named this as a defect with a static reading only (5.6); it is
+  /// a real one, and `TC-SSE-01` pins it.
+  mut after_cr : Bool
 }
 
 ///|
 /// An empty reader.
 pub fn SseBuffer::new() -> SseBuffer {
-  { pending: StringBuilder(), data: [], has_data: false, }
+  { pending: StringBuilder(), data: [], has_data: false, after_cr: false, }
 }
 
 ///|
@@ -34,15 +40,25 @@ pub fn SseBuffer::push(self : SseBuffer, chunk : String) -> Array[String] {
   let n = chunk.length()
   while i < n {
     let u = chunk.at(i).to_int()
+    if u == 0x0A && self.after_cr {
+      // The LF of a CRLF whose CR closed the previous chunk: the line was
+      // already dispatched, so this byte terminates nothing.
+      self.after_cr = false
+      i = i + 1
+      continue
+    }
     if u == 0x0A || u == 0x0D {
+      self.after_cr = u == 0x0D
       let line = self.pending.to_string()
       self.pending.reset()
       self.dispatch_line(line, out)
-      // CRLF is one terminator, not two.
+      // CRLF inside one chunk is one terminator, not two.
       if u == 0x0D && i + 1 < n && chunk.at(i + 1).to_int() == 0x0A {
+        self.after_cr = false
         i = i + 1
       }
     } else {
+      self.after_cr = false
       self.pending.write_char(Int32::unsafe_to_char(u))
     }
     i = i + 1
@@ -54,6 +70,7 @@ pub fn SseBuffer::push(self : SseBuffer, chunk : String) -> Array[String] {
 /// End of input: dispatch a last line and the event being assembled.
 pub fn SseBuffer::flush(self : SseBuffer) -> Array[String] {
   let out : Array[String] = []
+  self.after_cr = false
   let line = self.pending.to_string()
   self.pending.reset()
   if line.length() > 0 {

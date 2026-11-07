@@ -236,3 +236,54 @@ test("a container's constraint does not skip the shape inside it", () => {
   assert.equal(gate('{"items":["bad"]}', { schemaJson }).executable, false);
   assert.equal(gate('{"items":[1]}', { schemaJson }).executable, true);
 });
+
+test("repair honours a declaration instead of ignoring it", () => {
+  // `repair` read only `profile`, so `repair(text, {schemaJson})` returned a
+  // document the Python client and the MCP tool both refuse (audit 4.2).
+  assert.throws(
+    () =>
+      repair('{"a":1}', {
+        schemaJson: {
+          type: "object",
+          properties: { a: { type: "string" } },
+          required: ["a"],
+        },
+      }),
+    (e) => e instanceof InterJSONError && e.code === "E070",
+  );
+  assert.equal(
+    repair('{"a":"x"}', {
+      schemaJson: {
+        type: "object",
+        properties: { a: { type: "string" } },
+        required: ["a"],
+      },
+    }),
+    '{"a":"x"}',
+  );
+});
+
+test("a refusal says whether an automatic retry is safe", () => {
+  // A truncated document is a syntax problem: re-emitting the same answer is
+  // what a retry loop should do.
+  const syntax = gate('{"a":', { profile: "agent" });
+  assert.equal(syntax.executable, false);
+  assert.equal(syntax.refusal.kind, "syntax");
+  assert.equal(syntax.refusal.auto_retry, true);
+  // A complete document that conflicts with the declaration is not: a retry
+  // may come back with a *different action*, which is how a `write` became a
+  // `read` and was executed (audit §7.2).
+  const intent = gate('{"mode":"write"}', {
+    schemaJson: {
+      type: "object",
+      properties: { mode: { type: "string", const: "read" } },
+      required: ["mode"],
+    },
+  });
+  assert.equal(intent.executable, false);
+  assert.equal(intent.refusal.kind, "schema_or_intent");
+  assert.equal(intent.refusal.auto_retry, false);
+  // And every plan says the gate is not an authorization.
+  assert.equal(intent.business_authorized, false);
+  assert.equal(gate('{"a":1}').business_authorized, false);
+});

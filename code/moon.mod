@@ -2,7 +2,7 @@
 // Module manifest for the MoonBit toolchain.
 name = "zhanshishan/interjson"
 
-version = "1.5.1"
+version = "1.5.2"
 
 readme = "README.md"
 

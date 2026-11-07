@@ -164,9 +164,19 @@ test "a malformed event payload raises E060" {
   // An event that is valid JSON but not an event of the provider is ignored.
   let views = s.push_event("{\"type\":\"ping\"}")
   assert_eq(views.length(), 0)
-  // So is a chunk with no choices.
+  // A chunk that names itself as a Chat Completions chunk but carries no
+  // `choices` is not readable, and saying so is what stops a wrong-provider
+  // stream from becoming "no tool calls" (audit 3.5).
   let s2 = ToolStream::new(OpenAICompat)
-  assert_eq(s2.push_event("{\"id\":\"x\"}").length(), 0)
+  let wrong = try {
+    ignore(s2.push_event("{\"id\":\"x\"}"))
+    ""
+  } catch {
+    e => e.to_string()
+  }
+  assert_true(wrong.contains("E060"), msg=wrong)
+  // A payload that is neither is ignored, as before.
+  assert_eq(s2.push_event("{\"ping\":true}").length(), 0)
 }
 
 ///|

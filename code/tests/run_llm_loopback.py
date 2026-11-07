@@ -66,9 +66,29 @@ def sse_payloads(raw: str) -> list:
     return out
 
 
-def run_cli(cli: str, fixture: str, style: str) -> list:
+def provider_of(fixture: str) -> str:
+    """The provider a recording was captured for, from its provenance.
+
+    A fixture directory is no longer all one protocol: a Responses capture is
+    `response.*` events, and reading it with the Chat Completions reader is
+    exactly the bug the audit found (3.5). The protocol is recorded beside the
+    stream, so a replay cannot get it wrong.
+    """
+    prov = fixture + ".provenance.json"
+    if os.path.exists(prov):
+        try:
+            with open(prov, encoding="utf-8") as fh:
+                got = json.load(fh).get("protocol")
+            if got:
+                return got
+        except (OSError, ValueError):
+            pass
+    return "anthropic"
+
+
+def run_cli(cli: str, fixture: str, style: str, provider: str = "anthropic") -> list:
     """Run the real adapter over one fixture. `style` is `sse` or `jsonl`."""
-    cmd = [cli, "llm", "--provider", "anthropic"]
+    cmd = [cli, "llm", "--provider", provider]
     if style == "sse":
         cmd.append("--sse")
     with open(fixture, "r", encoding="utf-8") as fh:
@@ -273,7 +293,7 @@ def main() -> int:
                               % meta.get("transport"))
             if meta.get("vendor_capture") is not True:
                 raise Failure("a live capture must be marked vendor_capture")
-            got = run_cli(args.cli, sse, "sse")
+            got = run_cli(args.cli, sse, "sse", provider_of(base))
             if os.path.exists(golden):
                 with open(golden, encoding="utf-8") as fh:
                     want = [json.loads(l) for l in fh if l.strip()]

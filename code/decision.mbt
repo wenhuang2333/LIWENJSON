@@ -66,11 +66,17 @@ pub fn ExecutionDecision::is_safe(self : ExecutionDecision) -> Bool {
 }
 
 ///|
-/// Upper-case label for a human, e.g. `SAFE TO EXECUTE`.
+/// Upper-case label for a human.
+///
+/// The label says what was checked: "JSON/SCHEMA POLICY PASSED". It used to say
+/// "SAFE TO EXECUTE", which is a claim this gate cannot make -- it does not
+/// canonicalise paths, does not know whether the user may write the file, and
+/// does not know whether the tool the arguments belong to is allowed (audit
+/// §7.1). A label is a promise; this one keeps the promise it can keep.
 pub fn ExecutionDecision::label(self : ExecutionDecision) -> String {
   match self {
-    Safe => "SAFE TO EXECUTE"
-    CosmeticRepair => "SAFE TO EXECUTE (notation normalised)"
+    Safe => "JSON/SCHEMA POLICY PASSED"
+    CosmeticRepair => "JSON/SCHEMA POLICY PASSED (notation normalised)"
     LossyRepair => "REJECT (a value was changed)"
     Ambiguous => "BLOCKED (two readings)"
     Invalid => "REJECT (not repairable)"

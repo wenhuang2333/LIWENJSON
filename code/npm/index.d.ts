@@ -35,7 +35,15 @@ export interface RepairRecord {
   confidence: string;
   confidence_value: number;
   information_loss: boolean;
+  message: string;
 }
+
+export type RefusalKind =
+  | "none"
+  | "syntax"
+  | "schema_or_intent"
+  | "host_declaration"
+  | "provider";
 
 export interface PlanError {
   code: string;
@@ -66,6 +74,20 @@ export interface Plan {
   repairs: RepairRecord[];
   repairs_truncated: boolean;
   retry: RetryHint | null;
+  /**
+   * Why the plan is not executable, or `null` when it is. `kind` is
+   * `"syntax"` (the text was not a complete, unambiguous document -- safe to
+   * re-emit), `"schema_or_intent"` (the document was complete but conflicts
+   * with the declaration -- re-emitting may change the *action*, so the host
+   * must not execute the retry automatically), `"host_declaration"` or
+   * `"provider"`.
+   */
+  refusal: { kind: RefusalKind; auto_retry: boolean } | null;
+  /**
+   * Always `false`. The gate checks JSON and the declared schema; it does not
+   * authorise the action.
+   */
+  business_authorized: boolean;
   text: string;
   value: unknown;
 }

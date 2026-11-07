@@ -5,10 +5,10 @@
 | | |
 | --- | --- |
 | 模块 | `zhanshishan/interjson` |
-| 版本 | 1.5.1 |
+| 版本 | 1.5.2 |
 | 许可证 | Apache-2.0 |
-| 后端 | wasm-gc / native / JS / wasm，同一套测试，各 274/274 通过 |
-| 发行渠道 | GitHub `v1.5.1`（8 个产物：三系统四二进制 + wasm 探针 + 浏览器包 + 安装脚本 + `SHA256SUMS`）；[mooncakes](https://mooncakes.io/docs/zhanshishan/interjson) `0.13.0`（2026-10-29 发布）；npm `interjson-moonbit@1.5.1`（2026-10-30 发布）；PyPI `interjson-moonbit@1.5.1`（2026-10-30 发布，wheel 内自带四平台二进制） |
+| 后端 | wasm-gc / native / JS / wasm，同一套测试，各 322/322 通过 |
+| 发行渠道 | GitHub `v1.5.2`（同 8 个产物：三系统四二进制 + wasm 探针 + 浏览器包 + 安装脚本 + `SHA256SUMS`）；[mooncakes](https://mooncakes.io/docs/zhanshishan/interjson) `0.14.0`（1.5.2 对应版本，源码在 `main`）；npm / PyPI `interjson-moonbit@1.5.2`；上一版 1.5.1 的 `0.13.0` 于 2026-10-29 发布，npm / PyPI 于 2026-10-30 发布 |
 
 **本页是中文 API 速查**：`Options`、`PartialParser`、`Schema`、修复规则、错误码、快照语义。
 项目的 60 秒上手、接入面、证据表与版本映射在[仓库首页](../README.md)；英文完整参考见

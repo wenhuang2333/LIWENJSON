@@ -104,10 +104,13 @@ pub(all) struct SchemaMember {
 /// that a caller can build a declaration in MoonBit as well as in text; the
 /// text form and this struct carry the same information.
 pub(all) struct Constraints {
-  mut minimum : Double?
-  mut exclusive_minimum : Double?
-  mut maximum : Double?
-  mut exclusive_maximum : Double?
+  /// The numeric bounds are exact decimals, not `Double`s: a gate that folds
+  /// `9007199254740993` onto `9007199254740992` allows a value it should
+  /// refuse (see `decimal.mbt`).
+  mut minimum : Dec?
+  mut exclusive_minimum : Dec?
+  mut maximum : Dec?
+  mut exclusive_maximum : Dec?
   mut min_length : Int32?
   mut max_length : Int32?
   /// The exact values `enum` admits, in declaration order.
@@ -115,6 +118,11 @@ pub(all) struct Constraints {
   /// The character class of `pattern`, exactly as written between the brackets
   /// (`a-z0-9_`), including a leading `^` for a negated class.
   mut pattern : String?
+  /// `additionalProperties: false`: the object admits no member the declaration
+  /// does not name (1.5.2). `false` is the default because the skeleton has
+  /// always been a description of what a value must contain, not a gate on what
+  /// it may not; a declaration has to ask for closure explicitly.
+  mut additional_properties_closed : Bool
 }
 
 ///|
@@ -129,6 +137,7 @@ pub fn Constraints::none() -> Constraints {
     max_length: None,
     enum_values: None,
     pattern: None,
+    additional_properties_closed: false,
   }
 }
 
@@ -145,6 +154,7 @@ fn Constraints::is_empty(self : Constraints) -> Bool {
       max_length: None,
       enum_values: None,
       pattern: None,
+      additional_properties_closed: false,
     } => true
     _ => false
   }
@@ -153,8 +163,8 @@ fn Constraints::is_empty(self : Constraints) -> Bool {
 ///|
 /// Canonical text of a constraint number, so that `minimum:0` round trips as
 /// `minimum:0` rather than `minimum:0.0`.
-fn constraint_number_text(d : Double) -> String {
-  Json::number(d).stringify()
+fn constraint_number_text(d : Dec) -> String {
+  d.text()
 }
 
 ///|
@@ -193,6 +203,12 @@ fn Constraints::text(self : Constraints) -> String {
   match self.pattern {
     Some(cls) => parts.push("pattern:[" + cls + "]")
     None => ()
+  }
+  // Written last so the order of the text form is fixed, and only when it says
+  // something: an open object is the default and writing it back would change
+  // the spelling of every declaration that never asked for closure.
+  if self.additional_properties_closed {
+    parts.push("additionalProperties:false")
   }
   parts.join(",")
 }
@@ -291,6 +307,80 @@ fn class_accepts(inner : String, s : String) -> Bool {
 }
 
 ///|
+/// The first member of `map` that `members` does not name, or `None`.
+///
+/// Only a closed object (`additionalProperties: false`) has anything to say
+/// here; an open one admits any member, which is JSON Schema's default and the
+/// skeleton's own default. The map is taken rather than the value because the
+/// caller has already checked the kind: `kind_accepts` ran before closure, so
+/// an `Obj` declaration is only asked about an object. That keeps this function
+/// free of an arm that can never run.
+fn undeclared_member(
+  members : Array[SchemaMember],
+  map : Map[String, Json],
+) -> String? {
+  for k, _ in map {
+    let mut declared = false
+    for m in members {
+      if m.key == k {
+        declared = true
+        break
+      }
+    }
+    if !declared {
+      return Some(k)
+    }
+  }
+  None
+}
+
+///|
+/// The declared member names of a closed object, spelled `{a, b}`.
+fn declared_names(members : Array[SchemaMember]) -> String {
+  let sb = StringBuilder()
+  sb.write_char('{')
+  for i = 0; i < members.length(); i = i + 1 {
+    if i > 0 {
+      sb.write_string(", ")
+    }
+    sb.write_string(members[i].key)
+  }
+  sb.write_char('}')
+  sb.to_string()
+}
+
+///|
+/// The closure violation of `v` under `inner` when `c` closes the object, or
+/// `None`.
+///
+/// Two arms can be reached that the streaming and batch paths never take: a
+/// hand-built `Constrained` can carry the flag on a non-object kind (the text
+/// form and the JSON Schema bridge both refuse that at modelling time, but the
+/// public struct does not), and the value can be of another kind, which the
+/// kind check refuses before closure is asked. Both answer `None`: closure has
+/// nothing to add to a refusal that already happened.
+fn closure_problem(inner : Schema, c : Constraints, v : Json) -> String? {
+  if !c.additional_properties_closed {
+    return None
+  }
+  match (inner.structure(), v) {
+    (Obj(members), Json::Object(map)) =>
+      match undeclared_member(members, map) {
+        Some(k) =>
+          Some(
+            "object with no member outside " +
+            declared_names(members) +
+            " (got `" +
+            k +
+            "`)",
+          )
+        None => None
+      }
+    _ => None
+  }
+}
+
+///|
 /// The first declared constraint `v` violates, as the phrase `evaluate` and the
 /// watcher report it, or `None` when `v` satisfies all of them.
 ///
@@ -302,55 +392,71 @@ fn Constraints::violation(
   base : String,
   v : Json,
 ) -> String? {
-  let d = match v {
-    Json::Number(x, ..) => Some(x)
-    _ => None
-  }
-  match d {
-    Some(x) => {
-      match self.minimum {
-        Some(m) =>
-          if x < m {
-            return Some(base + " >= " + constraint_number_text(m))
+  // A bound is compared on the exact decimal value. A value whose text this
+  // library cannot normalise (`1e9999999999`) cannot be proven to satisfy a
+  // bound, so it is refused rather than guessed: fail closed.
+  let has_bound = self.minimum is Some(_) ||
+    self.exclusive_minimum is Some(_) ||
+    self.maximum is Some(_) ||
+    self.exclusive_maximum is Some(_)
+  match v {
+    Json::Number(_, ..) =>
+      match number_dec(v) {
+        Some(x) => {
+          match self.minimum {
+            Some(m) =>
+              if x.compare(m) < 0 {
+                return Some(base + " >= " + constraint_number_text(m))
+              }
+            None => ()
           }
-        None => ()
-      }
-      match self.exclusive_minimum {
-        Some(m) =>
-          if x <= m {
-            return Some(base + " > " + constraint_number_text(m))
+          match self.exclusive_minimum {
+            Some(m) =>
+              if x.compare(m) <= 0 {
+                return Some(base + " > " + constraint_number_text(m))
+              }
+            None => ()
           }
-        None => ()
-      }
-      match self.maximum {
-        Some(m) =>
-          if x > m {
-            return Some(base + " <= " + constraint_number_text(m))
+          match self.maximum {
+            Some(m) =>
+              if x.compare(m) > 0 {
+                return Some(base + " <= " + constraint_number_text(m))
+              }
+            None => ()
           }
-        None => ()
-      }
-      match self.exclusive_maximum {
-        Some(m) =>
-          if x >= m {
-            return Some(base + " < " + constraint_number_text(m))
+          match self.exclusive_maximum {
+            Some(m) =>
+              if x.compare(m) >= 0 {
+                return Some(base + " < " + constraint_number_text(m))
+              }
+            None => ()
           }
-        None => ()
+        }
+        None =>
+          if has_bound {
+            return Some(base + " with an exactly comparable decimal value")
+          }
       }
-    }
-    None => ()
+    _ => ()
   }
   match v {
     Json::String(s) => {
+      // JSON Schema counts Unicode code points, not UTF-16 code units. `"😀"`
+      // is one character for `minLength`/`maxLength`; `String::length` counts
+      // two, so a `minLength:2` used to pass it and a `maxLength:1` used to
+      // refuse it. Combining marks still count one each: the standard counts
+      // code points, not user-perceived graphemes.
+      let len = code_points(s)
       match self.min_length {
         Some(n) =>
-          if s.length() < n {
+          if len < n {
             return Some("string with length >= " + n.to_string())
           }
         None => ()
       }
       match self.max_length {
         Some(n) =>
-          if s.length() > n {
+          if len > n {
             return Some("string with length <= " + n.to_string())
           }
         None => ()
@@ -986,6 +1092,33 @@ fn sp_constraint_value(
     }
     return
   }
+  if name_eq_ci(name, "additionalProperties") {
+    if kind != "object" {
+      raise SchemaError(
+        " schema: `additionalProperties` applies to `object`, not to `" +
+        kind +
+        "`, at offset " +
+        name_at.to_string(),
+      )
+    }
+    let value = sp_constraint_bare_word(p)
+    if name_eq_ci(value, "false") {
+      out.additional_properties_closed = true
+    } else if name_eq_ci(value, "true") {
+      // The default; accepting it keeps `parse(stringify(s))` lossless for a
+      // declaration a host wrote with the explicit spelling.
+      out.additional_properties_closed = false
+    } else {
+      raise SchemaError(
+        " schema: `additionalProperties` expects `true` or `false` at offset " +
+        name_at.to_string() +
+        ", got `" +
+        value +
+        "`",
+      )
+    }
+    return
+  }
   if name_eq_ci(name, "enum") {
     out.enum_values = Some(sp_constraint_enum(p, base))
     return
@@ -1012,21 +1145,38 @@ fn sp_constraint_value(
 }
 
 ///|
-/// The token of a numeric constraint, parsed as JSON so that the accepted
-/// spellings are exactly JSON's (`1`, `-1`, `1.5`, `1e3`) and nothing else.
+/// The token of a numeric constraint, kept as an exact decimal.
+///
+/// The grammar is JSON's, and it is JSON's own reader that decides it: the
+/// constraint reader hands over a run of number characters, and `@json.parse`
+/// says whether that run is a number literal. Re-walking the grammar here would
+/// be a second copy of it to keep in agreement with the first; the first one is
+/// the one the rest of the library trusts.
+///
+/// The *value* comes from the text, not from the `Double` the JSON reader
+/// produced. A bound of `9007199254740993` in a declaration is a different
+/// bound from `9007199254740992`, and treating them as the same one is a gate
+/// that allows what it should refuse. A bound whose exponent cannot be
+/// normalised is an `E070`, because a declaration the library cannot compare
+/// exactly is one it must not pretend to enforce.
 fn sp_constraint_number(
   p : SchemaParser,
   name : String,
-) -> Double raise InterJSONError {
+) -> Dec raise InterJSONError {
   let at = p.i
   let tok = sp_constraint_token(p)
-  if tok == "" {
+  if tok == "" || !is_json_number_text(tok) {
     raise SchemaError(
-      " schema: `" + name + "` expects a number at offset " + at.to_string(),
+      " schema: `" +
+      name +
+      "` expects a number at offset " +
+      at.to_string() +
+      (if tok == "" { "" } else { ": `" + tok + "`" }),
     )
   }
-  let parsed = @json.parse(tok) catch {
-    _ =>
+  match Dec::parse(tok) {
+    Some(d) => d
+    None =>
       raise SchemaError(
         " schema: `" +
         name +
@@ -1037,19 +1187,30 @@ fn sp_constraint_number(
         "`",
       )
   }
-  match parsed {
-    Json::Number(d, ..) => d
-    _ =>
-      raise SchemaError(
-        " schema: `" +
-        name +
-        "` expects a number at offset " +
-        at.to_string() +
-        ": `" +
-        tok +
-        "`",
-      )
+}
+
+///|
+/// Whether `text` is a JSON number literal, decided by the JSON reader.
+fn is_json_number_text(text : String) -> Bool {
+  let parsed = @json.parse(text) catch { _ => return false }
+  parsed is Json::Number(_, ..)
+}
+
+///|
+/// A bare ASCII word, used by the boolean-valued constraints.
+fn sp_constraint_bare_word(p : SchemaParser) -> String {
+  let n = p.text.length()
+  let sb = StringBuilder()
+  while p.i < n {
+    let c = p.text.at(p.i).to_int()
+    if (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) {
+      sb.write_char(Int32::unsafe_to_char(c))
+      p.i = p.i + 1
+    } else {
+      break
+    }
   }
+  sb.to_string()
 }
 
 ///|
@@ -1083,18 +1244,19 @@ fn sp_constraint_length(
 ) -> Int32 raise InterJSONError {
   let at = p.i
   let d = sp_constraint_number(p, name)
-  if !(d >= 0.0) || d > 2147483647.0 || d != d.to_int().to_double() {
-    raise SchemaError(
-      " schema: `" +
-      name +
-      "` expects a non-negative integer at offset " +
-      at.to_string() +
-      ": `" +
-      constraint_number_text(d) +
-      "`",
-    )
+  match d.length_value() {
+    Some(n) => n
+    None =>
+      raise SchemaError(
+        " schema: `" +
+        name +
+        "` expects a non-negative integer at offset " +
+        at.to_string() +
+        ": `" +
+        constraint_number_text(d) +
+        "`",
+      )
   }
-  d.to_int()
 }
 
 ///|
@@ -1444,10 +1606,16 @@ pub(all) struct SchemaVerdict {
 /// Whether `v` is a whole number.
 fn is_integer(v : Json) -> Bool {
   match v {
-    Json::Number(d, ..) => {
-      let f = d.to_int()
-      f.to_double() == d
-    }
+    // `Int32` round trip made `2147483648` a non-integer, because the
+    // conversion saturates. The exact decimal decides: `1.0`, `1e3` and
+    // `2147483648` are whole numbers, `1.5` is not.
+    Json::Number(d, ..) =>
+      match number_dec(v) {
+        Some(dec) => dec.is_integer()
+        // No exact decimal (a text with an unrepresentable exponent): the
+        // double decides, and an infinity is not a whole number.
+        None => !d.is_nan() && !d.is_inf() && d == d.floor()
+      }
     _ => false
   }
 }
@@ -1484,8 +1652,12 @@ pub fn Schema::accepts(self : Schema, v : Json) -> Bool {
         false
       } else {
         match c.violation(inner.name(), v) {
-          None => true
           Some(_) => false
+          None =>
+            match closure_problem(inner, c, v) {
+              Some(_) => false
+              None => true
+            }
         }
       }
     _ => kind_accepts(self, v)
@@ -1504,7 +1676,11 @@ fn Schema::constraint_problem(self : Schema, v : Json) -> String? {
       } else {
         match c.violation(inner.name(), v) {
           Some(e) => Some(e)
-          None => inner.constraint_problem(v)
+          None =>
+            match closure_problem(inner, c, v) {
+              Some(e) => Some(e)
+              None => inner.constraint_problem(v)
+            }
         }
       }
     _ => None

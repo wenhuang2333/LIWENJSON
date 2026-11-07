@@ -6,15 +6,17 @@ pub const MAX_SCHEMA_DEPTH : Int32 = 256
 
 pub const MAX_VALUE_DEPTH : Int32 = 1048576
 
-pub const REGISTRY_VERSION : String = "0.13.0"
+pub const REGISTRY_VERSION : String = "0.14.0"
 
-pub const VERSION : String = "1.5.1"
+pub const VERSION : String = "1.5.2"
 
 pub fn advice_for(PlanOp) -> String
 
 pub fn analyze(String, options? : Options, readiness? : Int32, schema? : Schema) -> RepairPlan
 
 pub fn auto_step(Int32, Int32) -> Int32
+
+pub fn code_points(String) -> Int32
 
 pub fn copy_json(Json) -> Json
 
@@ -40,6 +42,8 @@ pub fn kind_of(Json) -> String
 
 pub fn lookup_path(Json, String) -> Json?
 
+pub fn number_dec(Json) -> Dec?
+
 pub fn parse(String, options? : Options) -> ParseResult raise InterJSONError
 
 pub fn plan_action(RepairCode) -> PlanAction
@@ -51,6 +55,10 @@ pub fn readiness_events_json(Array[ReadinessEvent]) -> String
 pub fn readiness_median(Array[String], step? : Int32) -> Int32 raise InterJSONError
 
 pub fn repair(String, options? : Options) -> RepairResult raise InterJSONError
+
+pub fn repair_record_fields() -> Array[String]
+
+pub fn repair_record_json(Repair) -> Json
 
 pub fn schema_violation(Schema, Json) -> String
 
@@ -104,16 +112,33 @@ pub fn Completeness::not_equal(Self, Self) -> Bool
 pub impl Eq for Completeness
 
 pub(all) struct Constraints {
-  mut minimum : Double?
-  mut exclusive_minimum : Double?
-  mut maximum : Double?
-  mut exclusive_maximum : Double?
+  mut minimum : Dec?
+  mut exclusive_minimum : Dec?
+  mut maximum : Dec?
+  mut exclusive_maximum : Dec?
   mut min_length : Int32?
   mut max_length : Int32?
   mut enum_values : Array[Json]?
   mut pattern : String?
+  mut additional_properties_closed : Bool
 }
 pub fn Constraints::none() -> Self
+
+pub(all) struct Dec {
+  negative : Bool
+  digits : String
+  exp : Int32
+}
+pub fn Dec::compare(Self, Self) -> Int32
+pub fn Dec::equal(Self, Self) -> Bool
+pub fn Dec::is_integer(Self) -> Bool
+pub fn Dec::is_zero(Self) -> Bool
+pub fn Dec::length_value(Self) -> Int32?
+pub fn Dec::not_equal(Self, Self) -> Bool
+pub fn Dec::of_number(Double, String?) -> Self?
+pub fn Dec::parse(String) -> Self?
+pub fn Dec::text(Self) -> String
+pub impl Eq for Dec
 
 pub(all) struct Delta {
   path : Array[PathSegment]
@@ -342,6 +367,7 @@ pub(all) struct PlanOp {
   ambiguity : Ambiguity
   confidence_class : String
   confidence : Double
+  message : String
 }
 pub fn PlanOp::equal(Self, Self) -> Bool
 pub fn PlanOp::information_loss(Self) -> Bool
@@ -375,6 +401,19 @@ pub(all) struct ReadinessEventAt {
   event : ReadinessEvent
   permille : Int32
 }
+
+pub(all) enum RefusalKind {
+  NoRefusal
+  Syntax
+  SchemaOrIntent
+  HostDeclaration
+  Provider
+}
+pub fn RefusalKind::auto_retryable(Self) -> Bool
+pub fn RefusalKind::equal(Self, Self) -> Bool
+pub fn RefusalKind::name(Self) -> String
+pub fn RefusalKind::not_equal(Self, Self) -> Bool
+pub impl Eq for RefusalKind
 
 pub(all) struct Repair {
   code : RepairCode
@@ -436,6 +475,7 @@ pub(all) struct RepairPlan {
   schema_total : Int32
   schema_satisfied : Int32
   schema_missing : Array[String]
+  refusal_kind : RefusalKind
 }
 pub fn RepairPlan::ambiguity_kind(Self) -> String
 pub fn RepairPlan::execution(Self) -> String
@@ -563,6 +603,7 @@ pub(all) struct SemanticReadiness {
 pub struct SemanticWatcher {
   mut settled_count : Int32
   mut concluded : Bool
+  mut ready_standing : Bool
   mut conflict : Bool
   mut checked : Bool
   mut events : Array[ReadinessEvent]
@@ -585,6 +626,7 @@ pub fn SemanticWatcher::feed(Self, String) -> Unit raise InterJSONError
 pub fn SemanticWatcher::finish(Self) -> FinalResult raise InterJSONError
 pub fn SemanticWatcher::new(Schema, options? : Options) -> Self raise InterJSONError
 pub fn SemanticWatcher::ready_count(Self) -> Int32
+pub fn SemanticWatcher::ready_standing(Self) -> Bool
 pub fn SemanticWatcher::settled_at(Self) -> Int32
 pub fn SemanticWatcher::syntax_at(Self) -> Int32
 pub fn SemanticWatcher::total_required(Self) -> Int32

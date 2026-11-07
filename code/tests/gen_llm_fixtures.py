@@ -248,6 +248,41 @@ def mbt_escape(s: str) -> str:
     return "".join(out)
 
 
+# A recorded fixture is not generated: it is what a real provider sent, and
+# `test/record_responses_fixture.py` writes it. It is embedded here so `moon
+# test` replays it too, and `--check` only verifies that the embedded copy still
+# matches the recorded file.
+RECORDED = {
+    "live_responses_tool_call": [
+        (0, 0, "get_weather", "call_fixture", '{"location":"Paris","unit":"celsius"}'),
+    ],
+}
+
+
+def recorded_block(name: str) -> str:
+    path = FIXDIR / f"{name}.jsonl"
+    if not path.exists():
+        return ""
+    lines = [l for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    block = []
+    block.append(f"///|\n/// Events of the `{name}` fixture, one payload per line.")
+    block.append(f'let fx_{name} : String = "{mbt_escape(chr(10).join(lines))}"')
+    block.append("")
+    block.append(
+        f"///|\n/// Expected calls of the `{name}` fixture (choice, tool index, name, id, arguments)."
+    )
+    block.append(
+        f"let fx_{name}_calls : Array[(Int32, Int32, String, String, String)] = ["
+    )
+    for choice, index, tool, cid, args in RECORDED[name]:
+        block.append(
+            f'  ({choice}, {index}, "{mbt_escape(tool)}", "{mbt_escape(cid)}", "{mbt_escape(args)}"),'
+        )
+    block.append("]")
+    block.append("")
+    return "\n".join(block)
+
+
 def build() -> dict[str, tuple[str, str]]:
     """Return {name: (jsonl_text, mbt_block)}."""
     out: dict[str, tuple[str, str]] = {}
@@ -309,6 +344,8 @@ def main() -> int:
         else:
             path.write_text(jsonl, encoding="utf-8")
     body = HEADER + "\n".join(built[name][1] for name in FIXTURES)
+    for name in RECORDED:
+        body += recorded_block(name)
     if check:
         if not MBT.exists() or MBT.read_text(encoding="utf-8") != body:
             problems.append(str(MBT))

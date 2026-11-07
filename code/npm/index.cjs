@@ -86,6 +86,28 @@ function unwrap(text) {
 function repair(input, options = {}) {
   requireString("repair", input);
   const profile = profileOf(options);
+  // A declaration is honoured, not ignored. This function used to read only
+  // `profile` and silently drop `schema`/`schemaJson`, so
+  // `repair('{"a":1}', {schemaJson: {...a: string}})` returned `{"a":1}` while
+  // the Python client and the MCP `interjson_repair` tool refused it (audit
+  // 4.2). The engine has no separate "repair against a declaration" entry
+  // point, and the decision fields `analyze` computes are the same check the
+  // other two entry points make, so the declaration path goes through
+  // `analyze` and returns its repaired text.
+  if (options.schemaJson !== undefined || options.schema !== undefined) {
+    const plan = analyze(input, {
+      profile: profile || "agent",
+      ...(options.schemaJson !== undefined ? { schemaJson: options.schemaJson } : {}),
+      ...(options.schema !== undefined ? { schema: options.schema } : {}),
+    });
+    if (!plan.executable) {
+      const reason = plan.error && plan.error.message ? plan.error.message : plan.decision;
+      throw new InterJSONError(
+        `${plan.error && plan.error.code ? plan.error.code : "E070"} ${reason}`,
+      );
+    }
+    return plan.text === undefined ? plan.value === null ? "" : JSON.stringify(plan.value) : plan.text;
+  }
   return unwrap(profile ? engine.repair_opts(input, profile) : engine.repair(input));
 }
 

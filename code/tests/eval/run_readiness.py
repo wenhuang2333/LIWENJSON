@@ -178,7 +178,7 @@ def main() -> int:
             m.group(6) == "true",
             int(m.group(7)),
         )
-        executable = '"decision":"safe"' in out or "SAFE TO EXECUTE" in out
+        executable = '"decision":"safe"' in out or "JSON/SCHEMA POLICY PASSED" in out
         if rc not in (0, 5):
             print(f"FAIL {name}: unexpected exit {rc}\n{out}", file=sys.stderr)
             failures += 1

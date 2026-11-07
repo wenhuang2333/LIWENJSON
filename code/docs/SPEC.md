@@ -280,6 +280,32 @@ key        = 裸标识符 | 双引号字符串 ;
 嵌套约束可知的时刻：带容器值约束的声明要等根值闭合后再发布 verdict；
 一次 feed、逐码元 feed 与任意分块大小的最终判定**必须**一致。
 
+**SR-40**（1.5.2）　`RootReady` **不是**永久执行许可。它表示「此刻若停止，已声明的必需字段
+都已定稿且合法」；后续到达的**可选**成员仍可能让它不成立。流结束时**必须**用最终值
+重新评价一次，若不成立**必须**发布 `RootInvalid`（撤销先前的 `RootReady`）。
+`SemanticWatcher::ready_standing()` 报告该许可是否仍然成立。宿主若在 `RootReady` 上执行，
+**必须**同时停止模型：它读到的是一份仍在增长的文档。
+
+**SR-41**（1.5.2）　数值约束**必须**按十进制原值精确比较，不得经过 `Double`：
+`maximum:9007199254740992` **必须**拒绝 `9007199254740993`，
+`minimum:9007199254740993` **必须**拒绝 `9007199254740992`。
+`integer` 判定同理：`2147483648`、`1e3`、`1.0` 是整数，`1.5` 不是。
+无法精确归一化的边界（`1e9999999999`）**必须**在建模阶段是 `E070`；
+无法精确归一化的值在声明了边界时**必须**被拒绝（fail closed）。
+
+**SR-42**（1.5.2）　`minLength` / `maxLength` **必须**按 Unicode 码点计数，不是 UTF-16 码元：
+`"😀"` 的长度是 1。组合字符仍按码点计数（`"e\u0301"` 是 2），不采用字素簇规则。
+
+**SR-43**（1.5.2）　`additionalProperties: false` **必须**实现为**封闭对象**：值中任何未在
+`properties` 里声明的成员**必须**被拒绝，并在 mismatch 里指出该成员名。
+`additionalProperties: true` 是开放语义（默认），`additionalProperties` 出现在非 `object`
+节点上是 `E070`。嵌套对象与数组内对象同样适用。
+
+**SR-44**（1.5.2）　`format`、`contentEncoding`、`contentMediaType` **必须**被显式拒绝
+（`E070`），而不是当作 annotation 静默忽略。JSON Schema 把它们定义为 annotation，
+但本产品的契约是「不支持就拒绝」：一个写了 `format: "email"` 的宿主会以为地址被校验过，
+而这里并没有校验。拒绝时消息**必须**说明该关键字未被检查、以及宿主可以怎么处理。
+
 ```bash
 # 复现：约束在 0.7.0 上逐条生效（退出码 5 = 拒绝执行，2 = E070 声明写错）
 cd code && J=./_build/native/release/build/cmd/interjson/interjson.exe
@@ -297,8 +323,9 @@ printf '%s' '{"a":"x","b":1}' | $J explain --json --schema '{!a:string b:integer
 ## 8. 明确不在范围内
 
 **SR-32**　InterJSON **不是** JSON Schema 实现，也不打算成为：
-不支持 `$ref`、`oneOf`/`allOf`/`anyOf`、`format`、`if`/`then`、正则表达式。
-判定**已完成**的文档是成熟领域；本库的贡献在**流式**这一半。
+不支持 `$ref`、`oneOf`/`allOf`/`anyOf`、`if`/`then`、正则表达式，也不执行 `format`
+断言。判定**已完成**的文档是成熟领域；本库的贡献在**流式**这一半。
+`format` 的契约见 SR-44：它**不是**被忽略的 annotation，而是被拒绝的关键字。
 
 **SR-33**　恢复策略是启发式的，**不是**任何标准的合规实现；规则级的触发条件以规则表为准。
 

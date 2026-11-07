@@ -17,16 +17,17 @@
 // agree, and `tests/claims.sh` asserts the documents quote the same number.
 
 ///|
-/// The version of this release. GitHub tags it `v1.5.0`.
-pub const VERSION : String = "1.5.1"
+/// The version of this release. GitHub tags it `v1.5.2`.
+pub const VERSION : String = "1.5.2"
 
 ///|
 /// The mooncakes version that corresponds to `VERSION`.
 ///
 /// mooncakes currently refuses a major version other than `0`
 /// (`In this very early stage, the major version must be '0'`), so the
-/// registry counterpart of `1.5.0` is `0.12.0`. The mapping is fixed by the
+/// registry counterpart of `1.5.2` is `0.14.0`. The mapping is fixed by the
 /// release order -- `1.1.x` ↔ `0.8.x`, `1.2.x` ↔ `0.9.x`, `1.3.x` ↔ `0.10.x`,
-/// `1.4.x` ↔ `0.11.x`, `1.5.x` ↔ `0.12.x` -- and `serve`'s `hello` reports
-/// both, so a client can always tell which registry build it is talking to.
-pub const REGISTRY_VERSION : String = "0.13.0"
+/// `1.4.x` ↔ `0.11.x`, `1.5.0` ↔ `0.12.x`, `1.5.1` ↔ `0.13.x`,
+/// `1.5.2` ↔ `0.14.x` -- and `serve`'s `hello` reports both, so a client can
+/// always tell which registry build it is talking to.
+pub const REGISTRY_VERSION : String = "0.14.0"

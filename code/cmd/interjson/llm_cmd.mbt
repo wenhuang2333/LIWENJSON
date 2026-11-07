@@ -9,32 +9,52 @@
 // the fixtures are checked against.
 
 ///|
-/// Split a recorded stream into event payloads.
+/// The exact sentinel a Chat Completions stream ends with.
+const SSE_DONE : String = "[DONE]"
+
+///|
+/// Split a recorded stream into event payloads, dropping the `[DONE]`
+/// terminator.
+///
+/// `data: [DONE]` is not JSON and is not an event: it is the standard
+/// end-of-stream marker. Feeding it to the JSON reader raised `E060` after a
+/// perfectly good stream and, worse, discarded the calls already accumulated
+/// (audit 5.1).
 fn llm_payloads(text : String, sse : Bool) -> Array[String] {
   let out : Array[String] = []
   if sse {
     let b = @llm.SseBuffer::new()
     for e in b.push(text) {
-      out.push(e)
+      push_payload(out, e)
     }
     for e in b.flush() {
-      out.push(e)
+      push_payload(out, e)
     }
   } else {
     for line in text.split("\n") {
-      if line.length() > 0 {
-        out.push(line.to_owned())
-      }
+      push_payload(out, line.to_owned())
     }
   }
   out
 }
 
 ///|
+/// Append one payload unless it is the `[DONE]` sentinel or empty.
+fn push_payload(out : Array[String], payload : String) -> Unit {
+  let trimmed = payload.trim()
+  if trimmed == "" || trimmed == SSE_DONE {
+    return
+  }
+  out.push(payload)
+}
+
+///|
 /// One result line, in the same shape as `--batch`.
 fn llm_line(v : @llm.ToolCallView) -> String {
   let sb = StringBuilder()
-  sb.write_string("{\"index\":")
+  sb.write_string("{\"choice\":")
+  sb.write_string(v.choice.to_string())
+  sb.write_string(",\"index\":")
   sb.write_string(v.index.to_string())
   sb.write_string(",\"id\":")
   sb.write_string(Json::string(v.id).stringify())
@@ -48,6 +68,10 @@ fn llm_line(v : @llm.ToolCallView) -> String {
   sb.write_string(Json::string(v.end.name()).stringify())
   sb.write_string(",\"stop_reason\":")
   sb.write_string(Json::string(v.stop_reason).stringify())
+  // The one field a host must read before executing: a filtered or refused
+  // response is not a normal end even when its arguments parse exactly.
+  sb.write_string(",\"executable\":")
+  sb.write_string(v.is_executable().to_string())
   sb.write_string(",\"value\":")
   match v.snapshot.value {
     Some(x) => sb.write_string(x.stringify())
@@ -60,8 +84,14 @@ fn llm_line(v : @llm.ToolCallView) -> String {
 ///|
 /// Provider named on the command line.
 fn provider_of(name : String) -> @llm.Provider? {
-  if name == "openai" {
+  // `openai` keeps meaning Chat Completions: it is what every recorded fixture
+  // and the demo use. The Responses API has its own name so that a stream can
+  // never be read by the wrong reader -- that is exactly how a real Responses
+  // stream produced zero calls and exit 0 (audit 3.5).
+  if name == "openai" || name == "openai-chat" {
     Some(@llm.OpenAICompat)
+  } else if name == "openai-responses" || name == "responses" {
+    Some(@llm.OpenAIResponses)
   } else if name == "anthropic" {
     Some(@llm.Anthropic)
   } else {
@@ -163,6 +193,10 @@ fn text_line(
   sb.write_string(Json::string(end.name()).stringify())
   sb.write_string(",\"stop_reason\":")
   sb.write_string(Json::string(stop_reason).stringify())
+  sb.write_string(",\"executable\":")
+  sb.write_string(
+    (end is @llm.Complete && !(exactness is @ij.Lossy)).to_string(),
+  )
   sb.write_string(",\"value\":")
   match snapshot {
     Some(x) => sb.write_string(x.stringify())
@@ -276,7 +310,9 @@ fn run_llm(o : CliOpts) -> Unit {
   let provider = match provider_of(o.provider) {
     Some(p) => p
     None => {
-      eprintln("interjson: --provider 需要 anthropic 或 openai")
+      eprintln(
+        "interjson: --provider 需要 anthropic、openai（Chat Completions）或 openai-responses（Responses API）",
+      )
       return quit(2)
     }
   }
@@ -321,6 +357,11 @@ fn run_llm(o : CliOpts) -> Unit {
         Some(f) => println(text_line(Some(f.value), f.exactness, end, reason))
         None => println(text_line(None, @ij.Exact, end, reason))
       }
+      let provider_error = s.error()
+      if provider_error != "" {
+        eprintln("interjson: provider error: " + provider_error)
+        quit(4)
+      }
       quit(0)
     } catch {
       e => {
@@ -339,6 +380,11 @@ fn run_llm(o : CliOpts) -> Unit {
   let payloads = llm_payloads(text, o.sse)
   try {
     let s = @llm.ToolStream::new(provider, options~)
+    // `--follow` prints updates as they arrive; without it only the final view
+    // of each call is printed. Either way the *final* view is printed once, so
+    // a call that ends during `finish()` -- a truncated stream, a stream with
+    // no terminator -- is reported, and a provider error is a non-zero exit
+    // (audit 5.2).
     for p in payloads {
       for v in s.push_event(p) {
         if o.follow {
@@ -346,10 +392,38 @@ fn run_llm(o : CliOpts) -> Unit {
         }
       }
     }
-    for v in s.finish() {
-      if !o.follow {
+    let finals = s.finish()
+    if o.follow {
+      // The final view of every call, so a reader of the follow stream can see
+      // the last word even though it was printed as an update earlier. The
+      // lines are de-duplicated against what the updates already said by the
+      // `done` flag: only calls that ended during `finish()` are re-printed.
+      for v in finals {
+        if v.end is @llm.Interrupted || v.end is @llm.MaxTokens {
+          println(llm_line(v))
+        }
+      }
+    } else {
+      for v in finals {
         println(llm_line(v))
       }
+    }
+    let unknown = s.unsupported_events()
+    if unknown.length() > 0 {
+      // Visible, not silent: a reader that skipped an event it did not know
+      // says which ones, so "no tool calls" is a statement rather than an
+      // assumption.
+      eprintln(
+        "interjson: 跳过了本版本不认识的 " +
+        unknown.length().to_string() +
+        " 个事件: " +
+        unknown.join(", "),
+      )
+    }
+    let provider_error = s.error()
+    if provider_error != "" {
+      eprintln("interjson: provider error: " + provider_error)
+      quit(4)
     }
     quit(0)
   } catch {

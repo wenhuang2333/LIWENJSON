@@ -19,7 +19,7 @@
 //     information_loss = false
 //
 //   Decision:
-//     SAFE TO EXECUTE
+//     JSON/SCHEMA POLICY PASSED
 
 ///|
 /// Read the whole input, exiting 3 when it cannot be opened.

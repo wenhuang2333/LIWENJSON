@@ -12,16 +12,31 @@ pub(all) enum Provider {
   /// `content_block_start` / `content_block_delta` / `content_block_stop`,
   /// with `delta.type == "input_json_delta"` carrying `partial_json`.
   Anthropic
-  /// `choices[].delta.tool_calls[]`, with `function.name` and
-  /// `function.arguments` fragments.
+  /// Chat Completions: `choices[].delta.tool_calls[]`, with
+  /// `function.name` and `function.arguments` fragments.
   OpenAICompat
+  /// The Responses API: `response.output_item.added` /
+  /// `response.function_call_arguments.delta` /
+  /// `response.function_call_arguments.done` /
+  /// `response.output_item.done` / `response.completed` /
+  /// `response.incomplete` / `response.failed`.
+  ///
+  /// It is a different protocol from Chat Completions with different event
+  /// names, a different call identity (`item_id`, `output_index`) and a
+  /// different completeness story (`delta` is incremental, `done` carries the
+  /// whole argument string). One enum variant per protocol, so a caller cannot
+  /// select the wrong reader by accident: naming it `openai` for both was how
+  /// a real Responses stream was read as a Chat Completions stream and
+  /// produced zero calls and exit 0 (audit 3.5).
+  OpenAIResponses
 }
 
 ///|
 /// Explicit `Eq` implementation for `Provider`.
 pub impl Eq for Provider with fn equal(self : Provider, other : Provider) -> Bool {
   (self is Anthropic && other is Anthropic) ||
-  (self is OpenAICompat && other is OpenAICompat)
+  (self is OpenAICompat && other is OpenAICompat) ||
+  (self is OpenAIResponses && other is OpenAIResponses)
 }
 
 ///|
@@ -43,6 +58,17 @@ pub(all) enum CallEnd {
   MaxTokens
   Interrupted
   ProviderError
+  /// The provider stopped for a policy reason: `content_filter`, `refusal`, a
+  /// safety or guardrail verdict. It is not a normal end, and the arguments
+  /// that arrived are *not* what the model wanted to say (audit 3.4). A caller
+  /// that only reads `done`/`exactness` used to treat the empty or partial
+  /// arguments of a filtered response as a complete, exact call.
+  Refused
+  /// The provider ended with a reason this adapter does not recognise. The
+  /// default end used to be `Complete`, which meant every future stop reason
+  /// became "the model finished normally"; a whitelist makes an unknown
+  /// verdict visible instead (audit 3.4).
+  Unknown
 }
 
 ///|
@@ -64,6 +90,8 @@ pub fn CallEnd::name(self : CallEnd) -> String {
     MaxTokens => "max_tokens"
     Interrupted => "interrupted"
     ProviderError => "provider_error"
+    Refused => "refused"
+    Unknown => "unknown"
   }
 }
 
@@ -71,6 +99,34 @@ pub fn CallEnd::name(self : CallEnd) -> String {
 /// Whether the call ended because the provider ran out of tokens.
 pub fn CallEnd::is_truncated(self : CallEnd) -> Bool {
   self is MaxTokens
+}
+
+///|
+/// Whether this is a *normal* end: the provider said the response finished and
+/// meant it.
+///
+/// This is a whitelist, not a blacklist. `Complete` is the only normal end, and
+/// the adapters map a stop reason to it only when the reason is one they know
+/// to mean "finished" (`stop`, `tool_calls`, `function_call`, `end_turn`,
+/// `tool_use`, `stop_sequence`). Everything else -- a token limit, a refusal, a
+/// filter, a connection that just stopped, an error, or a reason added to a
+/// provider after this build -- is not normal, which is the safe default for a
+/// gate.
+pub fn CallEnd::is_normal(self : CallEnd) -> Bool {
+  self is Complete
+}
+
+///|
+/// Whether arguments that arrived under this end may be executed.
+///
+/// A refusal and a filter are *cannot happen* rather than *did not finish*: the
+/// provider withdrew the response, so the arguments are not a reading of
+/// anything the model committed to. `MaxTokens` and `Interrupted` leave a
+/// partial argument string whose exactness the parser reports; that is a
+/// separate, narrower claim (the bytes that arrived were readable), and a
+/// caller must still refuse to execute a truncated call.
+pub fn CallEnd::is_executable(self : CallEnd) -> Bool {
+  self is Complete
 }
 
 ///|
@@ -82,7 +138,13 @@ pub fn CallEnd::is_truncated(self : CallEnd) -> Bool {
 /// is normally `Lossy`, and it becomes `Exact` only when the model happened to
 /// emit a complete, valid argument object.
 pub(all) struct ToolCallView {
-  /// Provider index of the call, used to route the result back.
+  /// Provider index of the choice the call belongs to. A stream may carry more
+  /// than one (`choices[]` with `n > 1`), and two choices can both use tool
+  /// index 0; keying only on the tool index merged their arguments and closed
+  /// them together (audit 3.6). `0` for the single-choice providers.
+  choice : Int32
+  /// Provider index of the tool call *within its choice*, used to route the
+  /// result back.
   index : Int32
   /// Provider id of the call, when the provider sent one.
   id : String
@@ -102,9 +164,30 @@ pub(all) struct ToolCallView {
 }
 
 ///|
+/// Whether this call's arguments may be executed.
+///
+/// Two conditions, and the second is the one the provider cannot give: the
+/// end must be a normal one, and the arguments must have been read *without*
+/// being changed. A provider can report `completed` for a response whose
+/// argument string was cut off -- the real backend does exactly that at a low
+/// token limit -- and the engine then closes the truncated string, which is a
+/// repair that invents the missing brace. The value parses, the provider is
+/// happy, and the arguments are not what the model wrote. `exactness` is what
+/// says so, and a host that reads only `end` would execute an invented value.
+pub fn ToolCallView::is_executable(self : ToolCallView) -> Bool {
+  self.end.is_executable() && !(self.exactness is @interjson.Lossy)
+}
+
+///|
 /// One call being accumulated.
 struct ToolCall {
+  choice : Int32
   index : Int32
+  /// The provider's identity for the *item* that carries the arguments. The
+  /// Responses API repeats it (`item_id`) on every event, while `call_id` is the
+  /// id the host routes the result back by. The two are different strings and
+  /// used to share one field, which meant the first one seen won.
+  mut item_id : String
   mut id : String
   mut name : String
   mut parser : @interjson.PartialParser?
@@ -128,6 +211,16 @@ pub struct ToolStream {
   /// event types, text deltas in tool mode. The provider may add event types at
   /// any time, so they are counted and ignored rather than rejected.
   mut ignored : Int32
+  /// The `response.*` event types this build does not know, in arrival order.
+  ///
+  /// A real provider adds them: the backend this was tested against sends
+  /// `response.reasoning_summary_text.delta`, which carries no arguments and
+  /// must not fail a stream that also carries a tool call. An unknown event is
+  /// therefore recorded here rather than refused immediately -- and a stream
+  /// that produced *no* call at all while carrying unknown events is refused at
+  /// `finish`, because "the arguments were in an event this build does not
+  /// read" is exactly the silent-success failure the audit found (3.5).
+  unsupported : Array[String]
 }
 
 ///|
@@ -142,19 +235,32 @@ pub fn ToolStream::new(
     None => @interjson.Options::for_llm()
   }
   opts.validate()
-  { provider, options: opts, calls: [], error_message: "", ignored: 0, }
+  {
+    provider,
+    options: opts,
+    calls: [],
+    error_message: "",
+    ignored: 0,
+    unsupported: [],
+  }
 }
 
 ///|
 /// The call at `index`, created on first use.
-fn ToolStream::call_at(self : ToolStream, index : Int32) -> ToolCall {
+fn ToolStream::call_at(
+  self : ToolStream,
+  choice : Int32,
+  index : Int32,
+) -> ToolCall {
   for c in self.calls {
-    if c.index == index {
+    if c.choice == choice && c.index == index {
       return c
     }
   }
   let c : ToolCall = {
+    choice,
     index,
+    item_id: "",
     id: "",
     name: "",
     parser: None,
@@ -199,6 +305,7 @@ fn ToolStream::view(self : ToolStream, c : ToolCall) -> ToolCallView {
       }
   }
   {
+    choice: c.choice,
     index: c.index,
     id: c.id,
     name: c.name,
@@ -247,12 +354,9 @@ fn ToolStream::close_call(
 /// Record the provider's own word for why the stream ended, on every call that
 /// is not already in an error state.
 fn ToolStream::note_stop(self : ToolStream, reason : String) -> Unit {
-  let end = match reason {
-    "max_tokens" | "length" | "model_context_window_exceeded" => MaxTokens
-    _ => Complete
-  }
+  let end = stop_end_of(reason)
   for c in self.calls {
-    if c.end is ProviderError {
+    if c.end is ProviderError || c.end is Refused {
       continue
     }
     // The provider's word is recorded even when the block already closed
@@ -261,8 +365,74 @@ fn ToolStream::note_stop(self : ToolStream, reason : String) -> Unit {
     if reason != "" {
       c.stop_reason = reason
     }
-    if c.end is Open || end is MaxTokens {
+    // A verdict that is not a normal completion replaces a normal one: a
+    // `content_filter` that arrives after `end_turn` still means the provider
+    // withdrew the response. Only a call that already ended abnormally keeps
+    // its first, more specific verdict.
+    let replace = c.end is Open ||
+      (end is Refused || end is MaxTokens || end is Unknown) ||
+      (end is Complete && c.end is Complete)
+    if replace {
       c.end = end
+    }
+  }
+}
+
+///|
+/// The `CallEnd` a provider stop word means.
+///
+/// The normal ends are enumerated; anything else is *not* normal. That is the
+/// difference between this and the mapping it replaces, which defaulted to
+/// `Complete` and therefore reported a `content_filter` or a `refusal` as a
+/// finished response with exact, executable arguments (audit 3.4).
+pub fn stop_end_of(reason : String) -> CallEnd {
+  match reason {
+    // Chat Completions, Responses API and Anthropic normal ends.
+    "stop"
+    | "tool_calls"
+    | "function_call"
+    | "end_turn"
+    | "tool_use"
+    | "stop_sequence"
+    | "completed" => Complete
+    "length"
+    | "max_tokens"
+    | "max_output_tokens"
+    | "model_context_window_exceeded" => MaxTokens
+    "content_filter" | "refusal" | "guardrail" | "safety" | "blocked" => Refused
+    "" => Open
+    _ => Unknown
+  }
+}
+
+///|
+/// Whether a Responses-API `response.status` / `incomplete_details.reason` is a
+/// normal completion.
+fn responses_status_end(status : String, incomplete_reason : String) -> CallEnd {
+  if status == "completed" {
+    Complete
+  } else if status == "incomplete" {
+    stop_end_of(incomplete_reason)
+  } else if status == "failed" {
+    ProviderError
+  } else if status == "cancelled" {
+    Interrupted
+  } else {
+    Unknown
+  }
+}
+
+///|
+/// Mark every call that has not ended as withdrawn by the provider (a refusal
+/// or a filter). The arguments are still finalised, so a caller can see what the
+/// model had said -- but the call is not executable, whatever its arguments
+/// parse to (audit 3.4).
+fn ToolStream::note_refusal(self : ToolStream, reason : String) -> Unit {
+  self.error_message = reason
+  for c in self.calls {
+    if c.end is Open || c.end is Complete {
+      c.end = Refused
+      c.stop_reason = reason
     }
   }
 }
@@ -294,6 +464,7 @@ pub fn ToolStream::push_event(
   let touched = match self.provider {
     Anthropic => self.push_anthropic(v)
     OpenAICompat => self.push_openai(v)
+    OpenAIResponses => self.push_responses(v)
   }
   if touched.length() == 0 {
     self.ignored = self.ignored + 1
@@ -312,6 +483,15 @@ pub fn ToolStream::error(self : ToolStream) -> String {
 }
 
 ///|
+/// The `response.*` event types this build did not know, in arrival order. A
+/// non-empty list is not an error by itself: a stream can carry a reasoning
+/// summary *and* a tool call. It is the evidence a caller needs to tell "no
+/// call was made" from "a call may have been missed".
+pub fn ToolStream::unsupported_events(self : ToolStream) -> Array[String] {
+  self.unsupported.copy()
+}
+
+///|
 /// How many payloads were not understood and ignored.
 pub fn ToolStream::ignored_events(self : ToolStream) -> Int32 {
   self.ignored
@@ -326,6 +506,13 @@ pub fn ToolStream::ignored_events(self : ToolStream) -> Int32 {
 pub fn ToolStream::finish(
   self : ToolStream,
 ) -> Array[ToolCallView] raise @interjson.InterJSONError {
+  if self.calls.length() == 0 && self.unsupported.length() > 0 {
+    raise @interjson.InvalidEvent(
+      "the stream carried events this build does not read (" +
+      self.unsupported.join(", ") +
+      ") and produced no tool call; the arguments cannot be claimed to be absent",
+    )
+  }
   let out : Array[ToolCallView] = []
   for c in self.calls {
     // A call the provider never closed was cut off: the stream stopped without
@@ -348,7 +535,28 @@ pub fn ToolStream::views(self : ToolStream) -> Array[ToolCallView] {
 }
 
 ///|
-/// Raw argument text accumulated for `index`, or the empty string.
+/// Raw argument text accumulated for tool call `index` of choice `choice`, or
+/// the empty string.
+pub fn ToolStream::arguments_at(
+  self : ToolStream,
+  choice : Int32,
+  index : Int32,
+) -> String {
+  for c in self.calls {
+    if c.choice == choice && c.index == index {
+      return c.text.to_string()
+    }
+  }
+  ""
+}
+
+///|
+/// Raw argument text accumulated for the first call with tool index `index`,
+/// whatever its choice, or the empty string.
+///
+/// Kept because most streams have one choice and a caller that routes by tool
+/// index only is still reading one call. A caller that must not confuse two
+/// choices uses `arguments_at`.
 pub fn ToolStream::arguments(self : ToolStream, index : Int32) -> String {
   for c in self.calls {
     if c.index == index {

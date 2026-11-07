@@ -1,0 +1,41 @@
+{
+  "fixture": "live_responses_tool_call",
+  "model": "deepseek-v4.1-flash",
+  "endpoint": "https://dawan.fan/v1/responses",
+  "protocol": "openai-responses",
+  "prompt": "Call get_weather exactly once with location Paris and unit celsius. Do not explain.",
+  "tools": [
+    {
+      "type": "function",
+      "name": "get_weather",
+      "description": "Report the weather for a city",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "celsius",
+              "fahrenheit"
+            ]
+          }
+        },
+        "required": [
+          "location"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "transport": "live-http-sse",
+  "vendor_capture": true,
+  "recorded_by": "test/record_responses_fixture.py",
+  "desensitised": "response/item/call ids replaced; nothing else changed",
+  "events": 7,
+  "terminal": [
+    "response.completed"
+  ]
+}

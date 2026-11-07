@@ -40,7 +40,7 @@ fn ToolStream::push_anthropic(
       Some(i) => i
       None => 0
     }
-    let c = self.call_at(index)
+    let c = self.call_at(0, index)
     match field_string(block, "name") {
       Some(n) => c.name = n
       None => ()
@@ -83,7 +83,7 @@ fn ToolStream::push_anthropic(
       Some(s) => s
       None => return out
     }
-    let c = self.call_at(index)
+    let c = self.call_at(0, index)
     self.push_arguments(c, fragment)
     out.push(c)
     return out

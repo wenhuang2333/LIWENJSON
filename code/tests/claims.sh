@@ -146,6 +146,14 @@ else
  fail "could not read the CLI assertion count from tests/cli_smoke.sh"
 fi
 
+mcp_out="$(python3 tests/mcp_contract_check.py "$BIN" 2>&1 | tail -1)"
+MCP_N="$(printf '%s' "$mcp_out" | sed -n 's#^\([0-9]*\)/\([0-9]*\) responses valid.*#\1#p')"
+if [ -n "$MCP_N" ]; then
+ derive "mcp_contract" "$MCP_N/$(printf '%s' "$mcp_out" | sed -n 's#^[0-9]*/\([0-9]*\) responses valid.*#\1#p')" "python3 tests/mcp_contract_check.py"
+else
+ fail "the MCP contract check did not report a pass count: $mcp_out"
+fi
+
 conf_out="$(python3 tests/conformance/run_conformance.py --cli "$BIN" 2>&1 | tail -3)"
 CONF_N="$(printf '%s' "$conf_out" | sed -n 's#^\([0-9]*\)/\([0-9]*\) conformance.*#\1#p' | head -1)"
 if [ -n "$CONF_N" ]; then

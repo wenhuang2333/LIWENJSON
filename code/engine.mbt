@@ -114,6 +114,11 @@ priv struct Engine {
   bare : StringBuilder
   mut bare_len : Int32
   pending_ws : StringBuilder
+  /// Length of `pending_ws`, counted against `max_token_len` while it is still
+  /// pending: the whitespace a quote lookahead holds is part of the token it
+  /// may become, and a limit that only applies once the token is merged lets an
+  /// unbounded run of whitespace through (audit 5.4).
+  mut pending_ws_len : Int32
   mut pending_quote : Int32
   mut pending_quote_pos : Position
   mut fence_start : Position
@@ -616,6 +621,7 @@ fn Engine::make(opts : Options) -> Engine {
     bare: StringBuilder(),
     bare_len: 0,
     pending_ws: StringBuilder(),
+    pending_ws_len: 0,
     pending_quote: 0,
     pending_quote_pos: start,
     fence_start: start,

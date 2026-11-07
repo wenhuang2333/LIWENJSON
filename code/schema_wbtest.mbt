@@ -699,6 +699,7 @@ fn advice_op(name : String, ambiguity : Ambiguity) -> PlanOp {
     ambiguity,
     confidence_class: "certain",
     confidence: 1.0,
+    message: "",
   }
 }
 
@@ -791,7 +792,7 @@ test "the explanation says which of the three shapes it is" {
   let clean = analyze("{\"a\":1}")
   let text = clean.explain_text()
   assert_true(text.contains("none (valid JSON)"), msg=text)
-  assert_true(text.contains("SAFE TO EXECUTE"), msg=text)
+  assert_true(text.contains("JSON/SCHEMA POLICY PASSED"), msg=text)
   assert_true(clean.prompt().contains("accepted"), msg=clean.prompt())
   // A refusal with no recorded operation says `none` rather than claiming the
   // input was valid.
@@ -884,7 +885,10 @@ test "operations and decisions compare by the reading they denote" {
   assert_eq(Ambiguous.worse_of(Safe).name(), "ambiguous")
   assert_true(Safe == Safe, msg="decision equality")
   assert_true(Safe != Invalid, msg="decision inequality")
-  assert_eq(CosmeticRepair.label(), "SAFE TO EXECUTE (notation normalised)")
+  assert_eq(
+    CosmeticRepair.label(),
+    "JSON/SCHEMA POLICY PASSED (notation normalised)",
+  )
   assert_eq(Invalid.label(), "REJECT (not repairable)")
   // The safety profiles are named by the string a command line accepts.
   assert_eq(SafetyPolicy::for_agent().name(), "agent")
@@ -1059,10 +1063,15 @@ test "a string constraint measures code units and a character class" {
     len.evaluate(jv("{\"name\":\"abcd\"}")).mismatched[0].expected,
     "string with length <= 3",
   )
-  // An emoji is one character and two code units, which is the unit the rest of
-  // the library counts in (BR-20).
+  // JSON Schema counts Unicode code points, not UTF-16 code units (BR-20 is
+  // about deltas and positions, not about `minLength`). An emoji is therefore
+  // *one* character here: `"x😀"` and `"😀😀"` are both length 2, and
+  // `minLength:3` refuses them.
   assert_eq(len.evaluate(jv("{\"name\":\"x😀\"}")).ok, true)
-  assert_eq(len.evaluate(jv("{\"name\":\"😀😀\"}")).ok, false)
+  assert_eq(len.evaluate(jv("{\"name\":\"😀😀\"}")).ok, true)
+  let three = schema_or_any("{!name:string(minLength:3)}")
+  assert_eq(three.evaluate(jv("{\"name\":\"😀😀\"}")).ok, false)
+  assert_eq(len.evaluate(jv("{\"name\":\"😀a\"}")).ok, true)
   // A character class: every code unit of the value must be in the set.
   let cls = schema_or_any("{!code:string(pattern:[A-Za-z0-9_])}")
   assert_eq(cls.evaluate(jv("{\"code\":\"AZ_9\"}")).ok, true)

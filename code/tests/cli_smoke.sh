@@ -413,7 +413,7 @@ fi
 # ---------------------------------------------------------------------------
 
 STDIN='{"name":"Alice","age":18,}'
-check_has "explain cosmetic repair" 0 "SAFE TO EXECUTE" out -- explain
+check_has "explain cosmetic repair" 0 "JSON/SCHEMA POLICY PASSED" out -- explain
 check_has "explain prints the repaired value" 0 '"name":"Alice","age":18' out -- explain
 
 STDIN='{"words":["colour" "color"]}'
@@ -425,7 +425,7 @@ check_has "explain refuses a truncated value" 5 "REJECT (a value was changed)" o
 check_has "explain says what the model should change" 5 "Do not truncate string values." out -- explain
 
 STDIN='{"query":"MoonBit","limit":10}'
-check_has "explain passes the skeleton" 0 "SAFE TO EXECUTE" out -- explain --schema '{!query:string,!limit:integer}'
+check_has "explain passes the skeleton" 0 "JSON/SCHEMA POLICY PASSED" out -- explain --schema '{!query:string,!limit:integer}'
 STDIN='{"query":"MoonBit"}'
 check_has "explain refuses a missing member" 5 "missing limit" out -- explain --schema '{!query:string,!limit:integer}'
 check_has "explain reports both readiness numbers" 5 "syntax-ready" out -- explain --schema '{!query:string,!limit:integer}'
@@ -822,6 +822,119 @@ if [ "$deep_rc" -lt 128 ]; then
   pass=$((pass + 1)); printf 'ok   %-34s\n' "deep declaration refused, not crashed"
 else
   fail=$((fail + 1)); printf 'FAIL %-34s\n     rc=%s\n' "deep declaration refused, not crashed" "$deep_rc"
+fi
+
+# --- 1.5.2 regressions -------------------------------------------------------
+# Each of these shipped in 1.5.1 and is one command away from being checked.
+# `test/live_model_audit_v2.py` exercises the same behaviours against a real
+# provider; these keep the cheapest gate honest without a network.
+
+# A numeric bound past 2^53 is compared exactly, not folded onto a double.
+gate_json() { # <text> <schema-json>
+  printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"analyze\",\"params\":{\"text\":$1,\"schema_json\":$2}}" \
+    | "$BIN" serve | tail -1
+}
+g="$(gate_json '"{\"n\":9007199254740993}"' '{"type":"object","properties":{"n":{"type":"number","maximum":9007199254740992}},"required":["n"]}')"
+if printf '%s' "$g" | grep -qF '"executable":false'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "2^53 bound refuses its neighbour"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "2^53 bound refuses its neighbour" "$g"
+fi
+g="$(gate_json '"{\"n\":9007199254740992}"' '{"type":"object","properties":{"n":{"type":"number","maximum":9007199254740992}},"required":["n"]}')"
+if printf '%s' "$g" | grep -qF '"executable":true'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "2^53 bound allows its own value"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "2^53 bound allows its own value" "$g"
+fi
+
+# `minLength` counts code points: one emoji is one character.
+g="$(gate_json '"{\"s\":\"\ud83d\ude00\"}"' '{"type":"object","properties":{"s":{"type":"string","maxLength":1}},"required":["s"]}')"
+if printf '%s' "$g" | grep -qF '"executable":true'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "maxLength counts code points"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "maxLength counts code points" "$g"
+fi
+
+# A closed object refuses an undeclared member, and accepts its own.
+g="$(gate_json '"{\"query\":\"MoonBit\",\"x\":1}"' '{"type":"object","properties":{"query":{"type":"string"}},"required":["query"],"additionalProperties":false}')"
+if printf '%s' "$g" | grep -qF '"executable":false'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "additionalProperties:false closes the object"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "additionalProperties:false closes the object" "$g"
+fi
+
+# `format` is refused instead of silently unchecked.
+if printf '%s' '{"a":"x"}' | "$BIN" explain --json --schema_json '{"type":"object","properties":{"a":{"type":"string","format":"email"}}}' >/dev/null 2>&1; then
+  fail=$((fail + 1)); printf 'FAIL %-34s\n' "format is refused, not ignored"
+else
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "format is refused, not ignored"
+fi
+
+# The refusal says whether an automatic retry is safe.
+g="$(printf '%s' '{"mode":"write"}' | "$BIN" explain --json --schema '{!mode:string(enum:["read"])}' 2>&1)"
+if printf '%s' "$g" | grep -qF '"kind":"schema_or_intent"' \
+   && printf '%s' "$g" | grep -qF '"auto_retry":false'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "an intent conflict is not auto-retryable"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "an intent conflict is not auto-retryable" "$g"
+fi
+g="$(printf '%s' '{"a":' | "$BIN" explain --json 2>&1)"
+if printf '%s' "$g" | grep -qF '"kind":"syntax"'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "a truncation is auto-retryable"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "a truncation is auto-retryable" "$g"
+fi
+
+# The gate never claims business authorization, and says so in the label.
+g="$(printf '%s' '{"a":1}' | "$BIN" explain --json 2>&1)"
+if printf '%s' "$g" | grep -qF '"business_authorized":false' \
+   && printf '%s' "$g" | grep -qF 'JSON/SCHEMA POLICY PASSED'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "the gate claims no authorization"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "the gate claims no authorization" "$g"
+fi
+
+# A filtered provider answer is not executable.
+if printf 'data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"f","arguments":"{}"}}]}}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"content_filter"}]}\n\n' \
+     | "$BIN" llm --provider openai --sse 2>/dev/null | grep -qF '"executable":false'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "a filtered call is not executable"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n' "a filtered call is not executable"
+fi
+
+# `[DONE]` ends a stream without losing the call.
+done_out="$(printf 'data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c","function":{"name":"f","arguments":"{\\"a\\":1}"}}]}}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n' \
+     | "$BIN" llm --provider openai --sse 2>&1)"
+if printf '%s' "$done_out" | grep -qF '"name":"f"'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "[DONE] keeps the calls before it"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "[DONE] keeps the calls before it" "$done_out"
+fi
+
+# A Responses stream read by the Chat Completions reader is refused by name.
+resp_out="$(printf 'data: {"type":"response.output_item.added","item":{"type":"function_call"}}\n\n' \
+     | "$BIN" llm --provider openai --sse 2>&1)"
+if printf '%s' "$resp_out" | grep -qF 'openai-responses'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "a Responses stream names its reader"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "a Responses stream names its reader" "$resp_out"
+fi
+
+# And the right reader reads it.
+resp_ok="$(printf 'data: {"type":"response.output_item.added","output_index":0,"item":{"id":"fc","type":"function_call","call_id":"c","name":"f","arguments":""}}\n\ndata: {"type":"response.function_call_arguments.delta","item_id":"fc","output_index":0,"delta":"{\\"a\\":1}"}\n\ndata: {"type":"response.function_call_arguments.done","item_id":"fc","output_index":0,"arguments":"{\\"a\\":1}"}\n\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n' \
+     | "$BIN" llm --provider openai-responses --sse 2>&1)"
+if printf '%s' "$resp_ok" | grep -qF '"value":{"a":1}'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "the Responses reader reads a Responses stream"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "the Responses reader reads a Responses stream" "$resp_ok"
+fi
+
+# A malformed JSON-RPC envelope is refused.
+rpc_bad="$(printf '{"jsonrpc":"1.0","id":1,"method":"ping"}\n' | "$BIN" mcp 2>&1 | tail -1)"
+if printf '%s' "$rpc_bad" | grep -qF '"code":-32600'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "a malformed JSON-RPC envelope is refused"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "a malformed JSON-RPC envelope is refused" "$rpc_bad"
 fi
 
 if [ "$skipped" -gt 0 ]; then

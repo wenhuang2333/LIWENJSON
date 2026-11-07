@@ -5,7 +5,132 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.5.2] - 2026-11-08
+
+第二轮审计（`marks/迭代.md`）以「把一个真实模型的后端接到闸门上，看会错在哪」为问题。
+上一次审计修的是「声明的语义」，这一次发现的是**执行语义、provider 终态与协议契约**上
+的错误放行。每一条都由 `code/tests/live_model_audit_v2.py` 用真实 Responses API 复现或验证。
+
+### 安全：闸门仍会错误放行
+
+- **2^53 以上的数值边界被 `Double` 折叠。** `maximum:9007199254740992` 放过
+  `9007199254740993`，`minimum:9007199254740993` 放过 `9007199254740992`——两个相邻
+  整数在 `Double` 里是同一个值。约束比较改为在**十进制原值**上做（`decimal.mbt`）：
+  引擎本就保留了数字的源文本，比较覆盖符号、小数点、指数与前导零。`integer` 判定
+  同样改精确：`2147483648`、`1e3`、`1.0` 是整数（旧版用 `Int32` 往返，`2147483648`
+  被截断成非整数）。无法精确归一化的边界在建模阶段是 `E070`，无法归一化的值在声明了
+  边界时被拒绝（fail closed），而不是退回 `Double` 猜测。SR-41。
+- **`minLength`/`maxLength` 数的是 UTF-16 码元，不是码点。** `"😀"` 是 2，所以
+  `minLength:2` 放过一个字，`maxLength:1` 拒绝一个字。改为按码点计数。SR-42。
+- **`format` 被当 annotation 静默忽略。** JSON Schema 允许这样做，但一个写了
+  `format: "email"` 的宿主以为地址被校验过。现在 `format`、`contentEncoding`、
+  `contentMediaType` 是 `E070`，消息说明它们未被检查以及宿主可以怎么处理。SR-44。
+- **`additionalProperties: false` 是 `E070`，所以标准 strict 工具声明无法过门。**
+  真实模型用最常见的 OpenAI strict 声明生成了完全合法的 `{"query":"MoonBit"}`，闸门
+  拒绝；更糟的是本服务自己 `tools/list` 公布的每个 `inputSchema` 都带
+  `additionalProperties:false`，把它原样作为 `schema_json` 传回来也会被自己拒绝。
+  现在实现封闭对象语义：未声明成员被拒绝并指出成员名，`true` 是开放语义（默认），
+  出现在非 `object` 节点上是 `E070`。嵌套对象与数组内对象同样适用。SR-43。
+
+### 流式：最终判定与 `RootReady` 的语义
+
+- **可选字段让最终判定消失。** `{!a:string,?b:integer}` 收到 `{"a":"ok",` 后发布
+  `root_ready`，随后 `"b":"bad"}` 没有任何事件，`finish()` 之后仍然没有
+  `root_invalid`——而同一完整文档走 `analyze` 是 E070。现在流结束时用最终值重新评价，
+  不成立则发布 `RootInvalid` 撤销先前的 `RootReady`；`ready_standing()` 报告该许可
+  是否仍然成立，`root_ready` 不会被重复发布。SR-40。
+- **裸标量根的 watcher 与 `analyze` 矛盾。** `skip_prose` 重试恢复了值并把它返回，
+  却没有把它交给引擎，于是 `watcher_final.value` 是 `42` 而事件是 `root_invalid`。
+  重试现在把值也采纳进引擎：一个解析器，一个值。
+
+### Provider：终态、协议与并发
+
+- **`content_filter` / `refusal` 被标成正常结束。** 两个适配器都把任意未知
+  `stop_reason` 映射为 `Complete`，于是被撤回的响应是 `done: true, exactness: exact`。
+  改为白名单：`stop` / `tool_calls` / `end_turn` / `tool_use` / `stop_sequence` 等才是
+  正常结束；过滤与拒绝是新的 `Refused` 终态，无法识别的词是 `Unknown`。`CallEnd`
+  新增 `is_normal()` / `is_executable()`，`ToolCallView::is_executable()` 还要求参数
+  没有经过有损修复——provider 可以在参数字符串被截断时仍然说 `completed`。
+- **真实的 Responses API 流被静默丢弃。** `--provider openai` 只读 Chat Completions 的
+  `choices`，而真实事件是 `response.output_item.*` / `response.function_call_arguments.*`
+  / `response.completed`：两路命令都退出 0、无输出、无 stderr——一个评测 harness 会把它
+  读成「模型没有发起工具调用」。新增 `openai-responses` provider 与完整读取器
+  （`item_id` 身份、`delta` 增量而 `done` 是全量），Chat Completions 读取器现在对
+  Responses 事件报 `E060` 并点名正确的 provider。未知的 `response.*` 事件被记录，
+  而**一个没有任何调用却带着未知事件**的流在 `finish` 时被拒绝。
+- **多 choice 混参、丢调用或崩溃。** 调用只用 `tool_calls[].index` 定位，任意 choice
+  结束还会关闭全部调用：两个 choice 都用 tool index 0 时参数被并进第一个，choice 1
+  先结束时 `E030 cannot feed a finished parser`。改为以 `(choice.index, tool_call.index)`
+  为键、按 choice 关闭、`finish_reason` 只作用于本 choice。
+- **`data: [DONE]` 让一次成功的流失败。** 终止哨兵不是 JSON，喂给读取器会 `E060` 并
+  丢弃已经累积的调用。分帧处丢弃它。
+- **`--follow` 在截断流上什么都不打印，provider 错误退出 0。** `finish()` 产生的调用
+  现在一定会打印；provider 错误是退出码 4。
+- **SSE 的 CRLF 跨 chunk 被读成两个终止符。** 一个事件被派发两次——一次带载荷，
+  一次为空。
+
+### MCP：公布的契约与实际响应
+
+- **四个工具的真实 `structuredContent` 全部不能通过自己公布的 `outputSchema`。**
+  `interjson_gate` 缺 required `text`（默认不发送，是 `value` 的渲染形式）；
+  `interjson_repair`/`interjson_validate` 的修复记录是 `code/threshold` 而 schema 要求
+  `rule/name/confidence_class`；`interjson_readiness` 返回了未声明的 `events`。
+  修复记录现在只有**一份定义**（`repair_record_json()` 写、`repair_record_fields()` 列、
+  `outputSchema` 从它生成），四个入口（analyze / repair / validate / 工具）形状一致。
+  `code/tests/mcp_contract_check.py` 对真实二进制跑完整矩阵。
+- **JSON-RPC 2.0 信封从不校验。** `{"jsonrpc":"1.0","method":"ping"}` 与
+  `{"method":"ping"}` 都成功。现在校验 `jsonrpc`/`method`/`id`/`params`，错误是 `-32600`；
+  批处理在要求它的修订（`2025-03-26`、`2024-11-05`）上返回数组，在 `2025-06-18`
+  上用理由拒绝，而不是用一个 `missing method` 回答整个数组。
+
+### 执行语义：闸门不宣称它没有的保证
+
+- **`SAFE TO EXECUTE` 超出实际保证。** 真实模型把 `../../etc/passwd` 判成 safe；另一次
+  真实重试把用户要求的 `write` 改成 `read` 后通过。标签改为
+  `JSON/SCHEMA POLICY PASSED`，载荷新增 `business_authorized: false`（恒为 false），
+  工具摘要明确说明路径、权限与用户意图策略仍由宿主负责。
+- **拒绝现在说明能不能自动重试。** `refusal.kind` 是 `syntax`（可以重试）、
+  `schema_or_intent`（**不要**自动重试：重试可能换成一个不同的动作）、
+  `host_declaration`（改声明）或 `provider`（无可重试）；只有 `syntax` 有
+  `auto_retry: true`。宿主因此不必记住哪些错误值得回灌模型。
+
+### 客户端与命令行
+
+- **npm 的 `repair` 静默忽略 `schema`/`schemaJson`。** 同一份输入在 npm 上被接受，在
+  Python 与 MCP 上被拒绝。现在声明被遵守，违反时抛 `E070`。
+- **Python 文档示例读 `plan["text"]`。** 默认的 `analyze` 不发送 `text`，示例会
+  `KeyError`。示例改用 `value`，客户端新增 `with_text` 参数。
+- **`--quote-lookahead` 的空白不受 `--max-token-len` 约束。** 候选引号与其后的空白
+  最终会成为 token 内容，上限必须覆盖它们。
+- **`--batch` 先读完整个 stdin 才回答第一行。** 改为逐行读取（同一个 `LineReader`），
+  并给每行加上限。
+
+### 版本
+
+引擎 **1.5.2**，mooncakes 对应版本 **0.14.0**（`1.1.x`↔`0.8.x` … `1.5.1`↔`0.13.x`
+之后的下一个）。`moon.mod`、`version.mbt`、`npm/package.json`、`python/pyproject.toml`
+与所有公开文档同步。**没有覆盖已发布的 1.5.1**：它仍在 npm 与 PyPI 上，是另一个版本号。
+
+### 证据
+
+| 验证 | 结果 |
+| --- | --- |
+| `moon test`（wasm / wasm-gc / js / native） | 各 322/322 |
+| `tests/cli_smoke.sh` | 145 项断言 |
+| `tests/conformance/run_conformance.py` | 19/19 组 |
+| `tests/json_schema_diff.py` | 52 例，无 gate allow / reference reject |
+| `tests/eval/run_eval_paths.py` | 六条路径各 1200/1200（新增 `openai-responses`） |
+| `tests/coverage.sh` | 库 91.7%，五个核心文件 ≥ 90% |
+| `code/tests/mcp_contract_check.py` | 11/11 响应通过自己的 `outputSchema` |
+| `code/tests/live_model_audit_v2.py`（真实 Responses API） | 34/34 |
+| `tests/run_llm_loopback.py` | 8 个 fixture（新增真实 Responses 录像） |
+
+文档同步：`docs/SPEC.md` 新增 SR-40…SR-44，`docs/PROTOCOL.md` 写明修复记录的单一形状、
+`with_text`、`business_authorized` 与 `refusal.kind`，`docs/MCP.md` 写明输出契约与
+JSON-RPC 检查，`docs/LLM_EVENTS.md` 写明 Responses 协议与终态语义。
+
+### 前一轮：Schema 闸门的合取语义（同一版本，`marks/审计.md`）
+
 
 ### 安全：Schema 闸门错误放行（`marks/审计.md`）
 

@@ -156,6 +156,23 @@ fn mcp_any_value() -> Json {
 }
 
 ///|
+/// A JSON Schema fragment for the error object or `null`.
+fn mcp_error_schema_or_null() -> Json {
+  let inner = mcp_error_schema()
+  match inner {
+    Json::Object(m) => {
+      let out : Map[String, Json] = Map([])
+      for k, v in m {
+        out[k] = v
+      }
+      out["type"] = Json::array([Json::string("object"), Json::string("null")])
+      Json::object(out)
+    }
+    other => other
+  }
+}
+
+///|
 /// A JSON Schema fragment for an object or `null`.
 fn mcp_object_or_null() -> Json {
   jobj([("type", Json::array([Json::string("object"), Json::string("null")]))])
@@ -163,25 +180,55 @@ fn mcp_object_or_null() -> Json {
 
 ///|
 /// A JSON Schema fragment for one repair record.
+///
+/// The field names are the ones `@ij.repair_record_json` writes, which is the
+/// only definition of the shape. `tests/mcp_schema.py` validates every tool's
+/// real response against this schema, so a field cannot be added on one side
+/// and forgotten on the other (audit 3.7).
 fn mcp_repair_schema() -> Json {
+  let members : Array[(String, Json)] = []
+  for field in @ij.repair_record_fields() {
+    members.push(
+      (
+        field,
+        match field {
+          "offset" | "line" | "column" | "confidence_value" => mcp_number()
+          "information_loss" => mcp_boolean()
+          _ => mcp_string()
+        },
+      ),
+    )
+  }
+  mcp_object(members, @ij.repair_record_fields())
+}
+
+///|
+/// A JSON Schema fragment for the error object a refusal or fatal condition
+/// carries.
+fn mcp_error_schema() -> Json {
   mcp_object(
     [
-      ("rule", mcp_string()),
-      ("name", mcp_string()),
-      ("action", mcp_string()),
+      ("code", mcp_string()),
+      ("message", mcp_string()),
+      ("exit", mcp_number()),
+      ("retry_hint", mcp_string()),
       ("offset", mcp_number()),
-      ("line", mcp_number()),
-      ("column", mcp_number()),
-      ("severity", mcp_string()),
-      ("ambiguity", mcp_string()),
-      ("confidence_class", mcp_string()),
-      ("confidence", mcp_number()),
-      ("information_loss", mcp_boolean()),
     ],
+    ["code", "message"],
+  )
+}
+
+///|
+/// A JSON Schema fragment for one readiness event, as the readiness tool
+/// serialises it (`event`, `path`, `permille`).
+fn mcp_readiness_event_schema() -> Json {
+  mcp_object(
     [
-      "rule", "name", "action", "offset", "line", "column", "severity", "ambiguity",
-      "confidence_class", "confidence", "information_loss",
+      ("event", mcp_string()),
+      ("path", mcp_string()),
+      ("permille", mcp_number()),
     ],
+    ["event", "path", "permille"],
   )
 }
 
@@ -195,39 +242,91 @@ fn mcp_repair_schema() -> Json {
 /// gate actually returns, so a host can read `executable` and `retry.prompt`
 /// as typed members.
 fn mcp_gate_output_schema() -> Json {
-  mcp_object(
-    [
-      ("decision", mcp_string()),
-      ("label", mcp_string()),
-      ("exactness", mcp_string()),
-      ("ambiguous", mcp_boolean()),
-      ("information_loss", mcp_boolean()),
-      ("valid_json", mcp_boolean()),
-      ("normalized", mcp_boolean()),
-      ("ambiguity", mcp_string()),
-      ("execution", mcp_string()),
-      ("executable", mcp_boolean()),
-      ("syntax_ready_permille", mcp_number()),
-      ("schema_total", mcp_number()),
-      ("schema_satisfied", mcp_number()),
-      ("schema_missing", mcp_string_array()),
-      ("error", mcp_object_or_null()),
-      (
-        "repairs",
-        jobj([("type", Json::string("array")), ("items", mcp_repair_schema())]),
-      ),
-      ("retry", mcp_object_or_null()),
-      ("repairs_truncated", mcp_boolean()),
-      ("value", mcp_any_value()),
-      ("text", mcp_string()),
-    ],
-    [
-      "decision", "label", "exactness", "ambiguous", "information_loss", "valid_json",
-      "normalized", "ambiguity", "execution", "executable", "syntax_ready_permille",
-      "schema_total", "schema_satisfied", "schema_missing", "error", "repairs", "retry",
-      "repairs_truncated", "value", "text",
-    ],
-  )
+  let props : Array[(String, Json)] = [
+    ("decision", mcp_string()),
+    ("label", mcp_string()),
+    ("exactness", mcp_string()),
+    ("ambiguous", mcp_boolean()),
+    ("information_loss", mcp_boolean()),
+    ("valid_json", mcp_boolean()),
+    ("normalized", mcp_boolean()),
+    ("ambiguity", mcp_string()),
+    ("execution", mcp_string()),
+    ("executable", mcp_boolean()),
+    (
+      "business_authorized",
+      jobj([
+        (
+          "description",
+          Json::string(
+            "Always `false`: the gate checks JSON and the declared schema, never path/URL/permission/business authorization. A host must apply its own policy before executing (audit §7.1).",
+          ),
+        ),
+        ("type", Json::string("boolean")),
+      ]),
+    ),
+    ("syntax_ready_permille", mcp_number()),
+    ("schema_total", mcp_number()),
+    ("schema_satisfied", mcp_number()),
+    ("schema_missing", mcp_string_array()),
+    ("error", mcp_error_schema_or_null()),
+    (
+      "repairs",
+      jobj([("type", Json::string("array")), ("items", mcp_repair_schema())]),
+    ),
+    (
+      "retry",
+      jobj([
+        (
+          "description",
+          Json::string(
+            "Present when `executable` is false: `code`, `prompt` and `kind` (why the refusal cannot be retried the same way).",
+          ),
+        ),
+        ("type", Json::array([Json::string("object"), Json::string("null")])),
+        (
+          "properties",
+          Json::object(
+            Map([
+              ("code", mcp_string()),
+              ("prompt", mcp_string()),
+              ("kind", mcp_string()),
+            ]),
+          ),
+        ),
+      ]),
+    ),
+    (
+      "refusal",
+      jobj([
+        (
+          "description",
+          Json::string(
+            "`null` when executable; otherwise `kind` (syntax / schema_or_intent / host_declaration / provider) and `auto_retry`.",
+          ),
+        ),
+        ("type", Json::array([Json::string("object"), Json::string("null")])),
+        (
+          "properties",
+          Json::object(
+            Map([("kind", mcp_string()), ("auto_retry", mcp_boolean())]),
+          ),
+        ),
+      ]),
+    ),
+    ("repairs_truncated", mcp_boolean()),
+    ("value", mcp_any_value()),
+    ("text", mcp_string()),
+  ]
+  // `text` is optional: the gate omits it unless the caller asks with
+  // `with_text`, because it is the rendered form of `value`. Listing it as
+  // required made every real response fail its own schema (audit 3.7).
+  mcp_object(props, [
+    "decision", "label", "exactness", "ambiguous", "information_loss", "valid_json",
+    "normalized", "ambiguity", "execution", "executable", "business_authorized",
+    "syntax_ready_permille", "schema_total", "schema_satisfied", "schema_missing",
+    "error", "repairs", "retry", "refusal", "repairs_truncated", "value",
+  ])
 }
 
 ///|
@@ -253,12 +352,16 @@ fn mcp_repair_output_schema() -> Json {
 
 ///|
 /// The output schema of the validation tool.
+///
+/// Every field is optional: `validate` answers `{"valid": true}` and nothing
+/// else for a legal document without a declaration, and a schema that required
+/// more would be one its own response fails.
 fn mcp_validate_output_schema() -> Json {
   mcp_object(
     [
       ("valid", mcp_boolean()),
       ("schema", mcp_object_or_null()),
-      ("error", mcp_object_or_null()),
+      ("error", mcp_error_schema_or_null()),
       ("repaired", mcp_string()),
       ("exactness", mcp_string()),
       ("ambiguous", mcp_boolean()),
@@ -281,8 +384,19 @@ fn mcp_readiness_output_schema() -> Json {
       ("settled_permille", mcp_number()),
       ("step", mcp_number()),
       ("verdict", mcp_object_or_null()),
+      // The tool's description promises "when each required field becomes
+      // final", and the per-field answer is what `events` carries. It was
+      // returned and not declared, so a strict client rejected the response
+      // (audit 3.7).
+      (
+        "events",
+        jobj([
+          ("type", Json::string("array")),
+          ("items", mcp_readiness_event_schema()),
+        ]),
+      ),
     ],
-    ["syntax_permille", "schema_permille", "settled_permille", "step"],
+    ["syntax_permille", "schema_permille", "settled_permille", "step", "events"],
   )
 }
 
@@ -407,6 +521,18 @@ fn mcp_instructions() -> String {
 }
 
 ///|
+/// Whether the negotiated revision requires JSON-RPC batch support.
+///
+/// `2025-03-26` says a server *MUST* accept batches; `2025-06-18` removed that
+/// requirement and the `2025-07-28` draft removed batching entirely. This
+/// server therefore supports a batch exactly on the revision that requires it
+/// and refuses one elsewhere with the standard "batch not supported" error,
+/// instead of answering a batch with a single `missing method` (audit 5.5).
+fn mcp_revision_supports_batch(version : String) -> Bool {
+  version == MCP_PROTOCOL_MID || version == MCP_PROTOCOL_LEGACY
+}
+
+///|
 /// Negotiate the protocol revision: echo a revision this server implements,
 /// otherwise offer the newest one. Never echo an arbitrary string back: a
 /// client that asked for `1999-01-01` and got it would believe the server
@@ -487,6 +613,13 @@ fn mcp_summary(meth : String, result : Json) -> String {
         sb.write_string(json_field(m, "executable"))
         sb.write_string(" exactness=")
         sb.write_string(json_field(m, "exactness"))
+        // The summary is what the model reads, so it says what the flag means.
+        // `executable` is a JSON/schema verdict, not an authorization: the
+        // words "SAFE TO EXECUTE" read as one and caused a real audit finding
+        // (audit §7.1).
+        sb.write_string(
+          "\nnote: this checks JSON and the declared schema only; your own path, permission and user-intent policy still applies.",
+        )
         match m.get("error") {
           Some(Json::Object(e)) => {
             sb.write_string("\nerror=")
@@ -625,6 +758,55 @@ fn mcp_call_tool(
 }
 
 ///|
+/// Why `message` is not a JSON-RPC 2.0 request, or `None` when it is one.
+///
+/// JSON-RPC 2.0 has four requirements a permissive reader skips: `jsonrpc` must
+/// be exactly `"2.0"`, `method` must be a string, `id` must be a string, a
+/// number or null, and `params` (when present) must be an object or an array.
+/// Nothing here was checked, so `{"jsonrpc":"1.0","method":"ping"}` and
+/// `{"method":"ping"}` both answered successfully -- a peer that is not speaking
+/// this protocol got a valid answer to a request that was never well-formed
+/// (audit 5.5).
+fn mcp_envelope_error(message : Json) -> String? {
+  match message {
+    Json::Object(m) => {
+      match m.get("jsonrpc") {
+        Some(Json::String(v)) =>
+          if v != "2.0" {
+            return Some("`jsonrpc` must be the string \"2.0\"")
+          }
+        Some(_) => return Some("`jsonrpc` must be the string \"2.0\"")
+        None => return Some("missing `jsonrpc`: \"2.0\"")
+      }
+      match m.get("method") {
+        Some(Json::String(_)) => ()
+        Some(_) => return Some("`method` must be a string")
+        None =>
+          if m.contains("result") || m.contains("error") {
+            // A response, not a request: a server has nothing to answer.
+            return Some("this is a response, not a request")
+          } else {
+            return Some("missing `method`")
+          }
+      }
+      match m.get("id") {
+        Some(Json::String(_)) | Some(Json::Number(_, ..)) | Some(Json::Null) =>
+          ()
+        Some(_) => return Some("`id` must be a string, a number or null")
+        None => ()
+      }
+      match m.get("params") {
+        Some(Json::Object(_)) | Some(Json::Array(_)) | Some(Json::Null) => ()
+        Some(_) => return Some("`params` must be an object or an array")
+        None => ()
+      }
+      None
+    }
+    _ => Some("a JSON-RPC message must be an object")
+  }
+}
+
+///|
 /// Handle one JSON-RPC message. `None` means "a notification, answer nothing".
 fn mcp_handle(
   state : ServeState,
@@ -635,6 +817,21 @@ fn mcp_handle(
   let has_id = match message {
     Json::Object(m) => m.contains("id")
     _ => false
+  }
+  match mcp_envelope_error(message) {
+    Some(why) =>
+      return Some(
+        rpc_err(
+          if has_id {
+            id
+          } else {
+            Json::null()
+          },
+          -32600,
+          "invalid request: " + why,
+        ),
+      )
+    None => ()
   }
   let meth = request_method(message)
   let params = request_params(message)
@@ -662,11 +859,12 @@ fn mcp_handle(
   }
   let result : String? = if meth == "initialize" {
     state.initialized = true
+    state.protocol_version = mcp_negotiate(params)
     Some(
       rpc_ok(
         id,
         jobj([
-          ("protocolVersion", Json::string(mcp_negotiate(params))),
+          ("protocolVersion", Json::string(state.protocol_version)),
           (
             "capabilities",
             jobj([("tools", jobj([("listChanged", Json::boolean(false))]))]),
@@ -730,6 +928,72 @@ fn mcp_handle(
     None
   }
   result
+}
+
+///|
+/// Handle one parsed message, batching included.
+///
+/// A JSON-RPC batch is an array of requests. The MCP revision `2025-03-26` (and
+/// `2024-11-05`) requires a server to accept one; `2025-06-18` dropped the
+/// requirement. This server answers a batch with an array of responses exactly
+/// when the negotiated revision requires it, and with a single `-32600` naming
+/// the reason otherwise -- never with a lone `missing method`, which is what a
+/// batch used to get (audit 5.5).
+///
+/// An empty array is invalid by the spec (`-32600`), and a batch whose every
+/// member is a notification answers nothing at all, because a batch of
+/// notifications has no responses to send.
+fn mcp_dispatch(
+  state : ServeState,
+  base : @ij.Options,
+  message : Json,
+) -> String? {
+  match message {
+    Json::Array(items) => {
+      if items.length() == 0 {
+        return Some(
+          rpc_err(Json::null(), -32600, "invalid request: empty batch"),
+        )
+      }
+      if !mcp_revision_supports_batch(state.protocol_version) {
+        return Some(
+          rpc_err(
+            Json::null(),
+            -32600,
+            "JSON-RPC batches are not supported by protocol revision `" +
+            state.protocol_version +
+            "`; send one message per line",
+          ),
+        )
+      }
+      let out : Array[String] = []
+      for item in items {
+        match mcp_handle(state, base, item) {
+          Some(text) => out.push(text)
+          None => ()
+        }
+      }
+      if out.length() == 0 {
+        // Every member was a notification: a batch of notifications has no
+        // response at all, which is not the same as an empty array.
+        None
+      } else {
+        let sb = StringBuilder()
+        sb.write_string("[")
+        for i = 0; i < out.length(); i = i + 1 {
+          if i > 0 {
+            sb.write_string(",")
+          }
+          sb.write_string(out[i])
+        }
+        sb.write_string("]")
+        Some(sb.to_string())
+      }
+    }
+    _ =>
+      // A single message must be an object; `mcp_handle` reports the rest.
+      mcp_handle(state, base, message)
+  }
 }
 
 ///|
@@ -841,7 +1105,7 @@ fn run_mcp(o : CliOpts) -> Unit {
             continue
           }
         }
-        match mcp_handle(state, base, message) {
+        match mcp_dispatch(state, base, message) {
           Some(out) => write_line(proto, out)
           None => ()
         }

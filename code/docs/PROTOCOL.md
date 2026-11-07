@@ -111,23 +111,72 @@ classify failures the same way. `retry_hint`, when present, is the exact text
 
 Result: `text`, `exactness` (`exact`/`cosmetic`/`lossy`), `ambiguous`,
 `completeness` (`empty`/`partial`/`complete`), `repairs[]`,
-`repairs_truncated`. Each repair has `code`, `threshold` (the rule name),
-`line`, `column`, `offset`, `severity`, `message`, `ambiguity`.
+`repairs_truncated`.
+
+Each repair record has exactly the fields `repair_record_fields()` names, and
+`repair_record_json()` is the only writer of them — `analyze`, `repair`,
+`validate` and the MCP tools all emit the same shape:
+
+| field | meaning |
+| --- | --- |
+| `rule` | the rule code, `R001`–`R022` |
+| `name` | the rule name, e.g. `RemoveExtraComma` |
+| `action` | `remove` / `replace` / `insert` / `append_text` / `close` / `merge` / `synthesize` |
+| `offset`, `line`, `column` | where it happened, 1-based line/column, 0-based offset |
+| `severity` | `info` or `warning` (`warning` = information was lost) |
+| `ambiguity` | `unambiguous`, `bare_word`, `adjacent_strings`, `concat_operator` or `trailing_content` |
+| `confidence` | the class word: `certain`, `probable`, `ambiguous` or `refused` |
+| `confidence_value` | its numeric spelling: `1.0`, `0.75`, `0.5`, `0.0` |
+| `information_loss` | `true` for a `warning` record |
+| `message` | the rule's own sentence |
+
+Before 1.5.2 the two serialisers had drifted: `repair`/`validate` wrote
+`code`/`threshold`/`message` and `analyze` wrote `rule`/`name`/`confidence`,
+so a client that read one could not read the other, and the MCP tools returned
+a record their own published `outputSchema` did not describe.
 
 A fatal condition is the error envelope, not a partial result. A lossy or
 ambiguous repair that the profile refuses is also an error (`E010`/`E011`).
 
 ### `analyze`
 
-The never-raising decision call. Same params as `repair`.
+The decision call. Same params as `repair`, plus `with_text` (default
+`false`): `text` is the rendered form of `value`, so sending both puts two
+copies of the document on the wire, and it is therefore opt-in.
+
+**Never raises for model output.** A malformed document is `ok: true` with
+`decision: "invalid"` and a `retry` prompt. **A host declaration that cannot be
+enforced *is* fatal**: an unsupported keyword, an unsatisfiable bound, a
+`schema_json` that is not a schema — those are `E070` in the error envelope,
+because the model cannot fix them and sending them to the model is a loop that
+never converges (audit §4.1).
 
 Result: the complete `RepairPlan` object — `decision`, `label`, `exactness`,
-`ambiguous`, `valid_json`, `normalized`, `ambiguity`, `execution`,
-`executable`, `schema_total`, `schema_satisfied`, `schema_missing`, `error`,
-`repairs`, `retry`, `value`, `text`.
+`ambiguous`, `information_loss`, `valid_json`, `normalized`, `ambiguity`,
+`execution`, `executable`, `business_authorized`, `syntax_ready_permille`,
+`schema_total`, `schema_satisfied`, `schema_missing`, `error`, `repairs`,
+`retry`, `refusal`, `repairs_truncated`, `value`, and `text` when `with_text`.
 
-Even a malformed input returns `ok: true` with `decision: "invalid"`; that is
-the contract of `analyze`. Use `repair` when a fatal error should be raised.
+`business_authorized` is always `false`. The gate checks JSON and the declared
+schema; it does not canonicalise paths, does not know whether the user may
+write the file, and does not know whether the tool is allowed. The label says
+`JSON/SCHEMA POLICY PASSED`, not `SAFE TO EXECUTE`, because a label is a
+promise and that is the promise this component can keep (audit §7.1).
+
+`refusal` is `null` when `executable` is true; otherwise it names why, so a host
+can decide whether an automatic retry is safe without parsing the prompt:
+
+| `kind` | meaning | `auto_retry` |
+| --- | --- | --- |
+| `syntax` | the text was not a complete, unambiguous document | `true` |
+| `schema_or_intent` | the document was complete and conflicts with the declaration | `false` |
+| `host_declaration` | the declaration is one this library cannot enforce | `false` |
+| `provider` | the model provider refused or filtered the response | `false` |
+
+Only `syntax` is `auto_retry: true`. A retry of a `schema_or_intent` refusal
+may come back with a *different action* — that is how a `write` became a `read`
+in the audit and was then executed — so the host must look, not loop
+(audit §7.2).
 
 ### `validate`
 

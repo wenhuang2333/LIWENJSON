@@ -83,22 +83,48 @@ test "arrays, enums, const and pattern map onto the skeleton" {
 
 ///|
 test "annotations are ignored, not refused" {
-  let text = "{\"title\":\"search\",\"description\":\"find things\",\"default\":{},\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\",\"format\":\"email\",\"examples\":[\"a\"]}},\"required\":[\"q\"]}"
+  let text = "{\"title\":\"search\",\"description\":\"find things\",\"default\":{},\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\",\"examples\":[\"a\"]}},\"required\":[\"q\"]}"
   assert_eq(js_schema(text).stringify(), "{!q:string}")
 }
 
 ///|
-test "additionalProperties is a no-op when true and refused when false" {
+test "`format` is refused instead of silently unchecked" {
+  // JSON Schema treats `format` as an annotation, but a caller who writes
+  // `format: email` believes the value is checked. This library cannot check
+  // it, so it says so rather than dropping the keyword.
+  for key in ["format", "contentEncoding", "contentMediaType"] {
+    let code = js_code("{\"type\":\"string\",\"" + key + "\":\"email\"}")
+    assert_eq(code, "E070", msg=key)
+  }
+  // The message names the keyword and what to do about it.
+  let text = try {
+    ignore(
+      Schema::parse_json_schema("{\"type\":\"string\",\"format\":\"email\"}"),
+    )
+    ""
+  } catch {
+    e => e.to_string()
+  }
+  assert_true(text.contains("`format` is not checked"), msg=text)
+}
+
+///|
+test "additionalProperties is a no-op when true and closes the object when false" {
   assert_eq(
     js_schema(
       "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}},\"additionalProperties\":true}",
     ).stringify(),
     "{?a:string}",
   )
+  let closed = js_schema(
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+  )
+  assert_eq(closed.stringify(), "{?a:string}(additionalProperties:false)")
+  assert_eq(closed.accepts(jv("{\"a\":\"x\"}")), true)
+  assert_eq(closed.accepts(jv("{\"a\":\"x\",\"b\":1}")), false)
+  // Only an object can be closed.
   assert_eq(
-    js_code(
-      "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}},\"additionalProperties\":false}",
-    ),
+    js_code("{\"type\":\"string\",\"additionalProperties\":false}"),
     "E070",
   )
 }
@@ -151,9 +177,12 @@ test "a malformed schema is refused, never silently empty" {
 ///|
 test "a realistic OpenAI-style tool schema translates whole" {
   let text = "{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\",\"description\":\"City name\"},\"unit\":{\"type\":\"string\",\"enum\":[\"celsius\",\"fahrenheit\"]}},\"required\":[\"location\"],\"additionalProperties\":false}"
-  // `additionalProperties: false` is the one common keyword the skeleton cannot
-  // enforce, so the whole declaration is refused rather than half-checked.
-  assert_eq(js_code(text), "E070")
+  // `additionalProperties: false` is what every OpenAI "strict" tool
+  // declaration says, and the skeleton closes the object for it (1.5.2).
+  assert_eq(
+    js_schema(text).stringify(),
+    "{!location:string,?unit:string(enum:[\"celsius\",\"fahrenheit\"])}(additionalProperties:false)",
+  )
   let without = "{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\",\"description\":\"City name\"},\"unit\":{\"type\":\"string\",\"enum\":[\"celsius\",\"fahrenheit\"]}},\"required\":[\"location\"]}"
   assert_eq(
     js_schema(without).stringify(),

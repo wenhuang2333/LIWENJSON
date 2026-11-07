@@ -51,7 +51,7 @@ test "a cosmetic repair says what it did" {
   assert_eq(op.confidence, 1.0)
   assert_eq(op.information_loss(), false)
   assert_true(
-    plan.explain_text().contains("SAFE TO EXECUTE"),
+    plan.explain_text().contains("JSON/SCHEMA POLICY PASSED"),
     msg=plan.explain_text(),
   )
 }
@@ -253,6 +253,7 @@ test "every rule has an action and the actions are total" {
       ambiguity: Unambiguous,
       confidence_class: "certain",
       confidence: 1.0,
+      message: "",
     }
     assert_eq(op.rule.length(), 4)
     assert_true(op.name.length() > 0, msg=op.rule)

@@ -1,0 +1,7 @@
+{"response":{"id":"resp_fixture","model":"deepseek-v4.1-flash","object":"response","output":[],"status":"in_progress"},"type":"response.created"}
+{"response":{"id":"resp_fixture","model":"deepseek-v4.1-flash","object":"response","output":[],"status":"in_progress"},"type":"response.in_progress"}
+{"item":{"arguments":"","call_id":"call_fixture","id":"fc_fixture","name":"get_weather","status":"in_progress","type":"function_call"},"output_index":0,"type":"response.output_item.added"}
+{"delta":"{\"location\": \"Paris\", \"unit\": \"celsius\"}","item_id":"fc_fixture","output_index":0,"type":"response.function_call_arguments.delta"}
+{"arguments":"{\"location\": \"Paris\", \"unit\": \"celsius\"}","item_id":"fc_fixture","output_index":0,"type":"response.function_call_arguments.done"}
+{"item":{"arguments":"{\"location\": \"Paris\", \"unit\": \"celsius\"}","call_id":"call_fixture","id":"fc_fixture","name":"get_weather","status":"completed","type":"function_call"},"output_index":0,"type":"response.output_item.done"}
+{"response":{"id":"resp_fixture","model":"deepseek-v4.1-flash","object":"response","output":[{"arguments":"{\"location\": \"Paris\", \"unit\": \"celsius\"}","call_id":"call_fixture","id":"fc_fixture","name":"get_weather","status":"completed","type":"function_call"}],"status":"completed"},"type":"response.completed"}

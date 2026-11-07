@@ -136,27 +136,11 @@ fn completeness_name(c : @ij.Completeness) -> String {
 }
 
 ///|
-/// `Severity` as the stable word the protocol uses.
-fn severity_name(s : @ij.Severity) -> String {
-  match s {
-    @ij.Info => "info"
-    @ij.Warning => "warning"
-  }
-}
-
-///|
-/// One repair record.
+/// One repair record. The shape is defined once, in `plan.mbt`, because the
+/// plan (`analyze`) and the protocol (`repair`/`validate`) both return it and
+/// two hand-written shapes had already drifted apart (audit 3.7).
 fn repair_json(r : @ij.Repair) -> Json {
-  jobj([
-    ("code", Json::string(r.code.code())),
-    ("threshold", Json::string(r.code.name())),
-    ("line", jnum(r.position.line)),
-    ("column", jnum(r.position.column)),
-    ("offset", jnum(r.position.offset)),
-    ("severity", Json::string(severity_name(r.severity))),
-    ("message", Json::string(r.message)),
-    ("ambiguity", Json::string(r.ambiguity.name())),
-  ])
+  @ij.repair_record_json(r)
 }
 
 ///|
@@ -266,6 +250,7 @@ fn verdict_json(v : @ij.SchemaVerdict) -> Json {
 /// One tool call as the provider stream sees it.
 fn tool_call_json(v : @llm.ToolCallView) -> Json {
   jobj([
+    ("choice", jnum(v.choice)),
     ("index", jnum(v.index)),
     ("id", Json::string(v.id)),
     ("name", Json::string(v.name)),
@@ -273,6 +258,7 @@ fn tool_call_json(v : @llm.ToolCallView) -> Json {
     ("exactness", Json::string(v.exactness.name())),
     ("end", Json::string(v.end.name())),
     ("stop_reason", Json::string(v.stop_reason)),
+    ("executable", Json::boolean(v.is_executable())),
     (
       "value",
       match v.snapshot.value {
@@ -436,6 +422,9 @@ struct ServeState {
   /// answering it anyway hides the bug behind a response the client cannot
   /// place. Only `initialize`, `ping` and notifications are answered before
   /// it; anything else gets `-32002`.
+  /// The revision negotiated in `initialize`, which decides whether a JSON-RPC
+  /// batch is accepted (audit 5.5).
+  mut protocol_version : String
   mut initialized : Bool
 }
 
@@ -447,6 +436,7 @@ fn ServeState::new() -> ServeState {
     watch_watcher: None,
     llm_stream: None,
     initialized: false,
+    protocol_version: "2025-06-18",
   }
 }
 

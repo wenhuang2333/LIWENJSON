@@ -115,10 +115,29 @@ fn run_batch(opts : @ij.Options, chunk : Int32) -> Unit {
     eprintln("interjson: 无法读取 <stdin>")
     return
   }
-  let text = read_all(stream)
-  close_input(stream)
+  // The input is read a line at a time, not with one `read_all`. A batch is a
+  // harness driver: it is fed thousands of cases, and reading the whole of
+  // standard input before answering the first one made the process hold the
+  // entire corpus in memory and answer nothing until the input ended (audit
+  // 5.6). The reader is the same byte-at-a-time one `serve` uses, so a line
+  // that crosses a chunk boundary is still one line.
+  let reader = LineReader::new(stream)
   let mut n = 0
-  for line in text.split("\n") {
+  while true {
+    let line = match reader.read_line() {
+      None => break
+      Some(l) => l
+    }
+    if reader.overflow {
+      reader.overflow = false
+      println(
+        "{\"id\":" +
+        Json::string("line-" + n.to_string()).stringify() +
+        ",\"rc\":2,\"exactness\":\"none\",\"ambiguous\":false,\"codes\":[],\"value\":null,\"text\":\"\",\"error\":\"input line exceeds MAX_LINE\"}",
+      )
+      n = n + 1
+      continue
+    }
     if line.length() == 0 {
       continue
     }
@@ -152,4 +171,5 @@ fn run_batch(opts : @ij.Options, chunk : Int32) -> Unit {
     }
     println(batch_line(real_id, input, opts, chunk))
   }
+  close_input(stream)
 }
