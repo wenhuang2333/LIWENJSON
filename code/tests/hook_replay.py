@@ -148,6 +148,22 @@ def main() -> int:
     if allowed_tools != ["Bash"]:
         problems.append(f"the allowed session is not a plain Bash call: {allowed_tools}")
 
+    # 4b. The interactive capture is the same story in the terminal UI: the
+    #     refusal text is in it, and the model's own summary says the file was
+    #     not created. A capture where the tool had run would say something
+    #     else, and would be the failure this gate exists to catch.
+    interactive = e2e / "interactive-turn2.txt"
+    if not interactive.exists():
+        problems.append("the interactive capture is missing")
+    else:
+        body = interactive.read_text(encoding="utf-8")
+        if "InterJSON refused" not in body:
+            problems.append("the interactive capture does not show the refusal")
+        if "PreToolUse" not in body:
+            problems.append("the interactive capture does not name the hook")
+        if "pwned.txt was created" in body or "The command ran" in body:
+            problems.append("the interactive capture shows the command running")
+
     # 5. A *broken* gate must block, and blocking means exit 2: Claude Code
     #    treats exit 1 as "the hook errored" and runs the tool anyway. This was
     #    found by the real session and is why the recipe now exits 2.

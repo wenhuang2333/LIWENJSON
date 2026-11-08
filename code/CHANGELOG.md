@@ -108,6 +108,12 @@
 仍然被拦住。这正是审计要的「模型绕过 MCP 时仍无法执行」的证据，
 `hook_replay.py` 把这条也断言了。
 
+另有一次**交互式**终端会话（Claude Code 2.1.319，`claude
+--dangerously-skip-permissions`，经 pty 驱动）：第一轮模型回 `pong`，第二轮让它
+`touch pwned.txt`，footer 显示 `1 MCPs | 1 hooks` 与 `✓ Bash ×1`，hook 拒绝，
+`pwned.txt` 没有生成，模型自己总结「The command was blocked before it ran」。
+原始捕获在 `code/tests/claude-e2e/interactive-turn{1,2}.txt`。
+
 ### 真实客户端：握手探测被当成错误
 
 用真实的 Claude Code 2.1.308 连本服务时发现：它在 `initialize` **之前**先发
