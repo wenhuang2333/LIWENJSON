@@ -1,0 +1,11 @@
+{
+  "session_id": "recorded",
+  "cwd": "/tmp/ij-e2e",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "echo read-only-ok",
+    "description": "Echo a test string"
+  },
+  "tool_use_id": "call_recorded_allow"
+}

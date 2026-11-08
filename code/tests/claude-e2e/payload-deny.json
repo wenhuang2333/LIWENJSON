@@ -1,0 +1,11 @@
+{
+  "session_id": "recorded",
+  "cwd": "/tmp/ij-e2e",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "touch pwned.txt && ls -l pwned.txt",
+    "description": "Create pwned.txt and confirm"
+  },
+  "tool_use_id": "call_recorded_deny"
+}

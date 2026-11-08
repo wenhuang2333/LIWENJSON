@@ -46,6 +46,9 @@
 | wasm-gc 产物体积 | `114.7 KiB` |
 | MCP 契约（真实二进制 × 真实 `outputSchema`） | `11/11 响应通过` |
 | 真实模型端到端（Responses API，`code/tests/live_model_audit_v2.py`） | `34/34 检查通过` |
+| 真实 Claude Code 会话：强制 `PreToolUse` 门 | 拒绝 `touch pwned.txt`（文件未创建）、放行 `echo read-only-ok` |
+| 真实 Claude Code 会话：MCP 工具调用 | `interjson_gate` 返回 `invalid` / `executable: false` |
+| `code/tests/hook_replay.py`（录制的 hook 接线重放，`code/tests/claude-e2e/`） | 通过 |
 | 真值评测（协议先冻结） | `1200` 条，恢复率 `100.00%` |
 | 差分测试（对 `jsonrepair` / `json-repair`） | `402` 条，未解释 0 处分歧 |
 | 骨架就绪表 | `10 个场景` |

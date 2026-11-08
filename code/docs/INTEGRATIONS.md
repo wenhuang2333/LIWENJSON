@@ -71,6 +71,20 @@ Below are the two shapes that work.
 
 ### Claude Code `PreToolUse` hook
 
+The wiring below is shipped and installable:
+
+```sh
+bash code/tests/install_gate_hook.sh /path/to/project
+```
+
+It copies the hook, writes the declarations file, adds the `PreToolUse` entry to
+`.claude/settings.json` (keeping whatever was there), and points
+`env.INTERJSON_BIN` at the binary. The exact wiring it installs is the one
+recorded in `code/tests/claude-e2e/`, and `code/tests/hook_replay.py` replays the
+recorded `PreToolUse` payloads through it — including the branch where the gate
+binary is missing, which must block.
+
+
 Claude Code fires `PreToolUse` after it has built a tool call and before it
 executes it. The hook receives the call as JSON on stdin and can return
 `permissionDecision: "deny"` to block it, with a reason the model reads. That is
@@ -99,6 +113,7 @@ Configuration, in `.claude/settings.json` (project scope; use
 
 ```json
 {
+  "env": { "INTERJSON_BIN": "/usr/local/bin/interjson" },
   "hooks": {
     "PreToolUse": [
       {
@@ -115,6 +130,10 @@ Configuration, in `.claude/settings.json` (project scope; use
   }
 }
 ```
+
+`env.INTERJSON_BIN` is not decoration: a hook process inherits almost no
+`PATH`, so a bare `interjson` is `exit 127` — a hook error, which Claude Code
+reports and then ignores, so the tool runs.
 
 `matcher` is a tool-name filter. `mcp__orders__.*` matches every tool from an MCP
 server named `orders`; `Bash|Edit|Write` matches built-in tools by exact name.
@@ -144,21 +163,33 @@ declarations="${CLAUDE_PROJECT_DIR:-.}/.claude/interjson-schemas.json"
 decl=$(jq -r --arg t "$tool" '.[$t] // empty' "$declarations")
 [ -n "$decl" ] || exit 0
 
+# A hook inherits almost no PATH, so a bare `interjson` is usually exit 127 --
+# and the call then runs, because a 127 is just another hook error. Name the
+# binary, in the hook's `env` (see the settings example) or here.
 gate="${INTERJSON_BIN:-interjson}"
+if [ ! -x "$gate" ] && ! command -v "$gate" >/dev/null 2>&1; then
+  echo "interjson gate: \"$gate\" is not executable; refusing to run $tool" >&2
+  exit 2
+fi
 plan=$(printf '%s' "$tool_input" | "$gate" explain \
   --policy agent --schema "$decl" --json 2>/dev/null)
 status=$?
 
 # 5 is the CLI's documented "refused": E010 over budget, E011 ambiguity, or
 # E070 declaration mismatch. 0 means executable. Anything else is the gate
-# itself failing -- exit 1 there and let Claude Code surface a broken hook
-# rather than silently allowing the call.
+# itself failing.
+#
+# **Exit 2, not 1.** Claude Code treats exit 1 as "the hook errored": it shows
+# the error and then runs the tool anyway. Exit 2 is the one that blocks. This
+# was found by running the gate in a real session -- the first version of this
+# recipe exited 1, and `touch pwned.txt` was created by a hook that had just
+# failed to find its binary.
 case "$status" in
   0) exit 0 ;;                       # no decision: normal permission flow
   5) ;;
   *)
-    echo "interjson gate failed (exit $status); refusing to execute" >&2
-    exit 1
+    echo "interjson gate failed (exit $status); refusing to run $tool" >&2
+    exit 2
     ;;
 esac
 
@@ -192,25 +223,28 @@ install `jq`. Three behaviours worth knowing:
 - **A tool with no declaration is not gated.** `interjson explain` without
   `--schema` still checks syntax and exactness, but it cannot check a schema it
   was not given. Listing a tool is a deliberate act.
-- **Fail closed on a broken hook.** A non-zero exit that is not `5` prints to
-  stderr and exits `1`; Claude Code reports the hook as failed rather than
-  treating the call as allowed. This is the opposite of the `exit 0` default an
-  unconfigured hook has, and it is the point: a gate that fails open is not a
-  gate.
+- **Fail closed on a broken hook — with `exit 2`.** A non-zero exit that is not
+  `5` prints to stderr and exits `2`, which blocks the call. `exit 1` does
+  **not** block: Claude Code shows "hook error" and then runs the tool, which is
+  fail-open wearing an error message. The "gate binary missing" branch is in the
+  script for the same reason and takes the same exit code.
 
-> **Status of this recipe: verified by hand, not by CI.** The configuration
-> schema above (event name, `matcher`, `hooks[].type: "command"`, `timeout`,
-> `hookSpecificOutput.permissionDecision` / `permissionDecisionReason`) is taken
-> from Claude Code's hooks reference. The script was run by hand against the
-> JSON input shape that reference documents, and all three branches were
-> confirmed — allow, deny, and an ungated tool — with `tool_input` given both
-> as an object (the real shape) and as a JSON string: a mismatched argument
-> produced
-> `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"…"}}`,
-> and a matching one produced no output and exit 0. What is **not** tested here
-> is a real Claude Code session running the hook — that needs the client, and it
-> is not in this repository's test suite. Treat the wiring as a sketch to adapt,
-> not as a configuration this project ships and supports.
+> **Status: verified against a real client session (2026-11-08).** Claude Code
+> 2.1.145 with this hook installed:
+>
+> * ran `touch pwned.txt` — the hook denied it, the refusal reached the model,
+>   and **the file was never created**;
+> * ran `echo read-only-ok`, which is the one command the declaration admits —
+>   the hook allowed it and the command ran;
+> * called `mcp__interjson__interjson_gate` and reported
+>   `decision: invalid, executable: false`.
+>
+> The wiring, the declarations and both sessions are in `test/claude-e2e/`
+> (with a README), and `code/tests/hook_replay.py` replays the recorded
+> `PreToolUse` payloads through the installed script — including the
+> "gate binary missing" branch, which must exit 2 — so the wiring cannot rot
+> between recordings. What the session changed in this recipe: **exit 1 does
+> not block** (it ran the tool), and the binary must be named in `env`.
 
 ### Host SDK: `gate(args) -> execute | retry`
 

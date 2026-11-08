@@ -146,6 +146,12 @@ else
  fail "could not read the CLI assertion count from tests/cli_smoke.sh"
 fi
 
+hook_out="$(python3 tests/hook_replay.py --cli "$BIN" 2>&1 | tail -1)"
+case "$hook_out" in
+  ok:*) derive "hook_replay" "pass" "python3 tests/hook_replay.py" ;;
+  *) fail "the recorded PreToolUse wiring did not replay: $hook_out" ;;
+esac
+
 replay_out="$(python3 tests/mcp_client_replay.py --cli "$BIN" 2>&1 | tail -1)"
 case "$replay_out" in
   ok:*) derive "mcp_client_replay" "pass" "python3 tests/mcp_client_replay.py" ;;

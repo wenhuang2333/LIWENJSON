@@ -1,0 +1,3 @@
+{
+  "Bash": "{!command:string(enum:[\"echo read-only-ok\"]),?description:string}"
+}

@@ -83,6 +83,31 @@
   批处理在要求它的修订（`2025-03-26`、`2024-11-05`）上返回数组，在 `2025-06-18`
   上用理由拒绝，而不是用一个 `missing method` 回答整个数组。
 
+### 真实客户端：强制门真的拦住了
+
+把 `PreToolUse` hook 装进真实的 Claude Code 2.1.145 会话（`claude -p ...`），
+让模型执行 `touch pwned.txt`：hook 拒绝，模型读到 gate 的 `retry.prompt`，
+**文件从未被创建**；同一会话里 `echo read-only-ok`（声明里唯一允许的命令）
+通过并执行。另一次会话里模型直接调用 `mcp__interjson__interjson_gate`，
+得到 `decision: invalid, executable: false` 并按此回答。
+
+真实会话推翻了配方里的一条结论：**`exit 1` 不阻止调用**。第一版 hook 在
+找不到 gate 二进制时 `exit 127`、脚本兜底 `exit 1`，Claude Code 报「hook error」
+之后**照常执行**了 `touch`——那是带错误信息的 fail-open。现在一律 `exit 2`
+（`permissionDecision: deny` 那条路径 exit 0 也可以，两者都验证过）。
+另一个真实条件：hook 进程几乎没有 `PATH`，二进制必须显式命名。
+
+证据在 `code/tests/claude-e2e/`（包含真实的 deny/allow 会话记录与 hook 配置），
+`code/tests/hook_replay.py` 把录制的 payload 重放进那个脚本，包含
+「gate 二进制缺失必须 exit 2」这一支，所以接线不会在两次录制之间腐坏。
+接线本身是可安装的：`code/tests/install_gate_hook.sh [项目目录]` 会装好 hook、
+声明文件与 `settings.json`，并把 `INTERJSON_BIN` 指到二进制（hook 几乎没有
+`PATH`，不指名字就是 exit 127，然后工具照常执行）。
+
+被拒的那次会话里模型**只调用了 Bash、从未调用 MCP 工具**——它绕过了 MCP，
+仍然被拦住。这正是审计要的「模型绕过 MCP 时仍无法执行」的证据，
+`hook_replay.py` 把这条也断言了。
+
 ### 真实客户端：握手探测被当成错误
 
 用真实的 Claude Code 2.1.308 连本服务时发现：它在 `initialize` **之前**先发
@@ -134,6 +159,7 @@
 | `code/tests/live_model_audit_v2.py`（真实 Responses API） | 34/34 |
 | `tests/run_llm_loopback.py` | 8 个 fixture（新增真实 Responses 录像） |
 | `tests/mcp_client_replay.py`（真实 Claude Code 2.1.308 握手） | 通过 |
+| `tests/hook_replay.py`（真实 PreToolUse 拒绝/放行） | 通过 |
 
 文档同步：`docs/SPEC.md` 新增 SR-40…SR-44，`docs/PROTOCOL.md` 写明修复记录的单一形状、
 `with_text`、`business_authorized` 与 `refusal.kind`，`docs/MCP.md` 写明输出契约与
