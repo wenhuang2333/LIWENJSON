@@ -334,6 +334,13 @@ fn ToolStream::push_arguments(
     c.text.write_string(fragment)
     return
   }
+  // An empty fragment is not argument bytes. Creating a parser for it and
+  // calling `finish` would raise E001, so one empty `partial_json` (or the
+  // empty first `arguments` chunk OpenAI-compatible endpoints send) used to
+  // kill a whole response. A call with no bytes is decided in `close_call`.
+  if fragment.length() == 0 {
+    return
+  }
   c.text.write_string(fragment)
   let p = self.parser_of(c)
   p.feed(fragment)
@@ -342,15 +349,23 @@ fn ToolStream::push_arguments(
 ///|
 /// Mark a call's arguments as complete.
 fn ToolStream::close_call(
-  _self : ToolStream,
+  self : ToolStream,
   c : ToolCall,
   end : CallEnd,
 ) -> Unit raise @liwenjson.LIWENJSONError {
   match c.parser {
     Some(p) => if !c.done { ignore(p.finish()) }
     // A call whose name arrived but whose arguments never did has no parser:
-    // there is nothing to finish and `finish` would raise `E001`.
-    None => ()
+    // there is nothing to finish and `finish` would raise `E001`. A normal end
+    // is still a legal no-argument call, whose value is the empty object; only
+    // an abnormal end leaves it unresolved.
+    None =>
+      if end is Complete && !c.done {
+        let p = @liwenjson.PartialParser::new(options=self.options)
+        c.parser = Some(p)
+        p.feed("{}")
+        ignore(p.finish())
+      }
   }
   c.done = true
   // A verdict that is already known wins: `content_block_stop` says "this block

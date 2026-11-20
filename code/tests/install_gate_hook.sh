@@ -43,12 +43,18 @@ settings="$PROJECT/.claude/settings.json"
 jq --arg bin "$BIN" '
   .env = ((.env // {}) + {LIWENJSON_BIN: $bin})
   | .hooks = (.hooks // {})
-  | .hooks.PreToolUse = ((.hooks.PreToolUse // []) + [{
-      matcher: "Bash",
-      hooks: [{type: "command",
-                command: "${CLAUDE_PROJECT_DIR}/.claude/hooks/liwenjson-gate.sh",
-                timeout: 30}]
-    }])
+  | .hooks.PreToolUse = (
+      ((.hooks.PreToolUse // [])
+        | map(select(([.hooks[]? | (.command // "") | contains("liwenjson-gate.sh")] | any) | not)))
+      + [{
+          matcher: "Bash",
+          hooks: [{type: "command",
+                    # The quotes are part of the value: Claude Code runs this
+                    # through /bin/sh, and a project path with a space would
+                    # otherwise be split, exit 127, and let the tool run.
+                    command: "\"${CLAUDE_PROJECT_DIR}/.claude/hooks/liwenjson-gate.sh\"",
+                    timeout: 30}]
+        }])
 ' "$settings" > "$settings.new" && mv "$settings.new" "$settings"
 
 cat <<NOTE

@@ -459,7 +459,7 @@ fn run_readiness(o : CliOpts) -> Unit {
     eprintln("liwenjson: 无法读取 " + name)
     return quit(3)
   }
-  let text = read_all(stream)
+  let text = read_all_or_exit(stream)
   close_input(stream)
   let fields = @lj.field_readiness(text, step=o.step) catch {
     e => {

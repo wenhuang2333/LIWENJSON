@@ -36,7 +36,7 @@
 /// text and emoji that is a silent wrong result — the command reports success
 /// and the document it read is not the document that was written. Reading the
 /// bytes first and decoding once removes the boundary entirely.
-fn read_all(stream : Int64) -> String {
+fn read_all(stream : Int64) -> String? {
   // `stream` is a stdio `FILE *`, the same handle the single document path
   // reads from.
   let all : Array[Byte] = []
@@ -47,7 +47,33 @@ fn read_all(stream : Int64) -> String {
     }
     piece = read_chunk(stream, 65536)
   }
-  @utf8.decode_lossy(Bytes::from_array(all[:])[:])
+  // Strict, for the same reason as the batch line reader: an input that was
+  // not text must not become a document with U+FFFD substituted for bytes the
+  // caller never wrote. `repair` already streams through `feed_bytes` and
+  // raises E040; this is the one-shot reader, so it has to say the same thing.
+  let bytes = Bytes::from_array(all[:])
+  let text : String? = Some(@utf8.decode(bytes[:])) catch {
+    @utf8.Malformed(suffix) => {
+      let offset = bytes.length() - suffix.length()
+      eprintln("liwenjson: " + @lj.InvalidUtf8(offset).to_string())
+      None
+    }
+  }
+  text
+}
+
+///|
+/// Read all of a stream, exiting 3 on malformed UTF-8. Every one-shot input in
+/// the CLI (`explain`, `readiness`, `llm`) goes through this, so they cannot
+/// disagree with `repair` about what a byte sequence is.
+fn read_all_or_exit(stream : Int64) -> String {
+  match read_all(stream) {
+    Some(text) => text
+    None => {
+      quit(3)
+      ""
+    }
+  }
 }
 
 ///|

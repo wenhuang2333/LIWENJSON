@@ -121,7 +121,7 @@ Configuration, in `.claude/settings.json` (project scope; use
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/liwenjson-gate.sh",
+            "command": "\"${CLAUDE_PROJECT_DIR}/.claude/hooks/liwenjson-gate.sh\"",
             "timeout": 30
           }
         ]
@@ -134,6 +134,13 @@ Configuration, in `.claude/settings.json` (project scope; use
 `env.LIWENJSON_BIN` is not decoration: a hook process inherits almost no
 `PATH`, so a bare `liwenjson` is `exit 127` — a hook error, which Claude Code
 reports and then ignores, so the tool runs.
+
+The `command` value carries **literal double quotes** around the path. Claude
+Code passes the string to `/bin/sh`; a project directory containing a space
+would otherwise be split, the hook would exit 127, and the tool would run
+ungated. The installer writes this form and `code/tests/hook_replay.py` runs
+the recorded command through `/bin/sh` under a directory whose name contains a
+space, so the wiring cannot regress silently.
 
 `matcher` is a tool-name filter. `mcp__orders__.*` matches every tool from an MCP
 server named `orders`; `Bash|Edit|Write` matches built-in tools by exact name.

@@ -438,7 +438,7 @@ fn run_llm(o : CliOpts) -> Unit {
       eprintln("liwenjson: 无法读取输入")
       return quit(3)
     }
-    let body = read_all(stream)
+    let body = read_all_or_exit(stream)
     close_input(stream)
     let payloads = llm_payloads(body, o.sse)
     try {
@@ -482,7 +482,7 @@ fn run_llm(o : CliOpts) -> Unit {
     eprintln("liwenjson: 无法读取输入")
     return quit(3)
   }
-  let text = read_all(stream)
+  let text = read_all_or_exit(stream)
   close_input(stream)
   let payloads = llm_payloads(text, o.sse)
   try {

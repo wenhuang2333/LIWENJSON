@@ -10,8 +10,27 @@
 第三轮审计（`marks/1120优化.md`）以「让真实宿主按文档使用 CLI、serve/MCP、包装层」为问题：
 上一轮修的是执行语义与 provider 终态，这一轮发现的是**协议帧、参数显式性、资源算术与
 公开 API 边界**上的错误放行。每一条都有定向回归（`test/1120/`、`code/tests/`），且在旧
-实现上会失败。当前树：四个后端 `351/351`、CLI 冒烟 165 项、npm 21 个 Node 测试、
+实现上会失败。当前树：四个后端 `356/356`、CLI 冒烟 169 项、npm 21 个 Node 测试、
 Python 66 个测试、协议一致性 19 组、MCP 契约 13/13。
+
+### 真实 Claude Code 会话（1121）
+
+用 `claude --dangerously-skip-permission` 跑真实模型会话，把 19 个真实 tool_use
+（含一个 2857 字符的 `edit_file` 流）喂给 `llm`、`serve` 与 MCP。引擎与 adapter 的
+分块/前缀/变异回放全部一致；会话暴露的是**接入配方与终态**上的四处错误放行：
+
+- **没有参数的 tool call 变成 `null` 或让整条流失败。** `push_arguments` 现在忽略空
+  片段，`close_call` 在 `Complete` 且从未收到参数字节时合成 `{}`（`exact` 且可执行）；
+  中断/超预算仍不可执行。OpenAI 的 `finish_reason` 分片即使没有 `delta` 也会关闭调用。
+  新增 `llm/noarg_wbtest.mbt` 五个用例。P1-1。
+- **`explain` / `readiness` / `llm --sse` 把非法 UTF-8 替换成 U+FFFD 后当成 `exact`。**
+  一次性读取改为严格 `@utf8.decode`，`E040` 带偏移、exit 3，与 `repair`/`serve`/`MCP`
+  一致；合法 U+FFFD 仍放行。CLI 冒烟加四条回归。P1-2。
+- **Claude Code hook 在带空格的工程路径上 fail-open。** 安装器与文档示例给
+  `${CLAUDE_PROJECT_DIR}/...` 加引号，因为 Claude Code 把 command 交给 `/bin/sh`；
+  路径含空格时旧写法 127 退出，工具照常执行。重复安装改为替换而不是追加。P0-1、P2-2。
+- **hook 的两个 fail-open。** 缺 `jq` 或缺声明文件时旧脚本直接 exit 0；现在都打印原因
+  并 exit 2。`hook_replay.py` 用录制下来的 settings 命令覆盖这些分支。P1-3、P2-1。
 
 ### 协议与参数（CLI / serve / MCP）
 

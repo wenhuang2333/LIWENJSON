@@ -82,9 +82,13 @@ fn ToolStream::push_openai(
       Some(i) => i
       None => 0
     }
+    // A final chunk may carry `finish_reason` without a `delta` (the published
+    // Chat Completions examples include `delta: {}`, but not every compatible
+    // endpoint does). Skipping the whole choice used to leave the call open
+    // and report `interrupted` for a stream the provider had finished.
     let delta = match field(choice, "delta") {
       Some(d) => d
-      None => continue
+      None => Json::null()
     }
     match field(delta, "tool_calls") {
       Some(tc) =>

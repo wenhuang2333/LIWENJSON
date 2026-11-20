@@ -12,6 +12,12 @@
 #     Code reports and then ignores; exit 2 is "block this call". The first
 #     version exited 1, and `touch pwned.txt` was created anyway.
 set -u
+# jq is a hard runtime dependency: without it every `decl` below is empty and
+# the hook would allow the call. Say so and block, like any other broken gate.
+command -v jq >/dev/null 2>&1 || {
+  echo "liwenjson gate: jq is required; refusing to run" >&2
+  exit 2
+}
 input=$(cat)
 tool=$(printf '%s' "$input" | jq -r '.tool_name // empty')
 
@@ -22,7 +28,13 @@ tool_input=$(printf '%s' "$input" |
   jq -c '.tool_input // empty | if type == "string" then (fromjson? // .) else . end')
 
 declarations="${CLAUDE_PROJECT_DIR:-.}/.claude/liwenjson-schemas.json"
-[ -f "$declarations" ] || exit 0
+# A missing file is not the same as "this project declares only some tools":
+# it means the gate was installed and then lost its declarations, so fail
+# closed instead of silently ungating every tool.
+if [ ! -f "$declarations" ]; then
+  echo "liwenjson gate: $declarations is missing; refusing to run $tool" >&2
+  exit 2
+fi
 decl=$(jq -r --arg t "$tool" '.[$t] // empty' "$declarations")
 # A tool this project does not declare is not gated. Gating everything by
 # accident makes the hook unusable; listing a tool is a deliberate act.

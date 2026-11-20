@@ -32,8 +32,10 @@ fn fx_expect(
     assert_eq(v.done, true)
     assert_eq(s.arguments(index), args)
     if args.length() == 0 {
-      assert_eq(v.snapshot.value is None, true)
+      // A finished no-argument call is the empty object, not `null`.
+      assert_eq(v.snapshot.value.unwrap().stringify(), "{}")
       assert_eq(v.exactness.name(), "exact")
+      assert_eq(v.is_executable(), true)
     } else {
       // The streamed value equals repairing the accumulated text in one shot.
       let once = @liwenjson.parse(args)

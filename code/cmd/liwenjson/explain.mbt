@@ -34,7 +34,7 @@ fn read_stdin_or_file(path : String?) -> String {
     quit(3)
     return ""
   }
-  let text = read_all(stream)
+  let text = read_all_or_exit(stream)
   close_input(stream)
   text
 }

@@ -26,8 +26,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -185,6 +187,75 @@ def main() -> int:
         )
     if "refusing to run" not in proc.stderr:
         problems.append(f"a broken gate said nothing useful: {proc.stderr[:120]!r}")
+
+
+    # 6. The settings `command` is executed by /bin/sh, so it must survive a
+    #    project path with a space. The first version was unquoted: the path
+    #    split, the hook exited 127, Claude Code treated that as a hook error
+    #    and ran `touch pwned.txt` anyway. Replaying the install-time string
+    #    (not the script by itself) is what catches that class of bug.
+    with tempfile.TemporaryDirectory(prefix="liwen replay ") as tmp:
+        space = Path(tmp) / "space dir"
+        shutil.copytree(e2e, space)
+        settings = json.loads((space / ".claude" / "settings.json").read_text(encoding="utf-8"))
+        command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        space_env = dict(env)
+        space_env["CLAUDE_PROJECT_DIR"] = str(space)
+        payload = (space / "payload-deny.json").read_text(encoding="utf-8")
+
+        proc = subprocess.run(
+            ["/bin/sh", "-c", command], input=payload, capture_output=True,
+            text=True, env=space_env, timeout=60,
+        )
+        try:
+            denied = json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+        except (json.JSONDecodeError, KeyError, TypeError):
+            denied = False
+        if proc.returncode != 0 or not denied:
+            problems.append(
+                f"the recorded command did not deny under a path with a space: "
+                f"exit {proc.returncode}, stderr {proc.stderr.strip()[:160]!r}"
+            )
+
+        # 7. Losing the declarations file must fail closed, not ungate.
+        (space / ".claude" / "liwenjson-schemas.json").unlink()
+        proc = subprocess.run(
+            ["/bin/sh", "-c", command], input=payload, capture_output=True,
+            text=True, env=space_env, timeout=60,
+        )
+        if proc.returncode != 2 or "missing" not in proc.stderr:
+            problems.append(
+                f"a missing declarations file was not fail-closed: exit "
+                f"{proc.returncode}, stderr {proc.stderr.strip()[:160]!r}"
+            )
+
+        # 8. jq is a hard dependency; without it the hook must block.
+        empty = Path(tmp) / "empty-path"
+        empty.mkdir()
+        no_jq = dict(space_env)
+        no_jq["PATH"] = str(empty)
+        proc = subprocess.run(
+            ["/bin/bash", str(space / ".claude" / "hooks" / "liwenjson-gate.sh")],
+            input=payload, capture_output=True, text=True, env=no_jq, timeout=60,
+        )
+        if proc.returncode != 2 or "jq" not in proc.stderr:
+            problems.append(
+                f"a hook without jq was not fail-closed: exit {proc.returncode}, "
+                f"stderr {proc.stderr.strip()[:160]!r}"
+            )
+
+        # 9. Re-installing must replace the managed entry, not append a second.
+        subprocess.run(
+            ["bash", str(ROOT / "code/tests/install_gate_hook.sh"), str(space),
+             "--bin", args.cli],
+            capture_output=True, text=True, timeout=120, check=False,
+        )
+        again = json.loads((space / ".claude" / "settings.json").read_text(encoding="utf-8"))
+        if len(again["hooks"]["PreToolUse"]) != 1:
+            problems.append(
+                "a second install appended another PreToolUse entry "
+                f"({len(again['hooks']['PreToolUse'])} present)"
+            )
 
     print("deny payload   -> denied, with the retry prompt")
     print("allow payload  -> allowed")

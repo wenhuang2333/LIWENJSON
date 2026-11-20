@@ -224,6 +224,34 @@ else
   fail=$((fail + 1)); printf 'FAIL %-34s rc=%s %s\n' "invalid UTF-8" "$rc" "$(cat "$TMP/err")"
 fi
 
+# Every one-shot input path must agree with `repair` about malformed bytes.
+# Before this, `explain` and `readiness` used a lossy decode and reported a
+# U+FFFD document as exact and executable while `repair` exited 3.
+for sub in "explain --policy agent --json" "readiness"; do
+  printf '{"s":"\xff"}' | "$BIN" $sub >/dev/null 2>"$TMP/err"; rc=$?
+  if [ "$rc" = 3 ] && grep -q "E040" "$TMP/err"; then
+    pass=$((pass + 1)); printf 'ok   %-34s rc=%s\n' "$sub refuses invalid UTF-8" "$rc"
+  else
+    fail=$((fail + 1)); printf 'FAIL %-34s rc=%s %s\n' "$sub refuses invalid UTF-8" "$rc" "$(cat "$TMP/err")"
+  fi
+done
+# A legal U+FFFD sequence is text, not a decoding failure.
+printf '{"s":"\xef\xbf\xbd"}' | "$BIN" explain --policy agent --json >"$TMP/out" 2>"$TMP/err"; rc=$?
+if [ "$rc" = 0 ] && grep -q '"exactness":"exact"' "$TMP/out"; then
+  pass=$((pass + 1)); printf 'ok   %-34s rc=%s\n' "explain accepts legal U+FFFD" "$rc"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s rc=%s %s\n' "explain accepts legal U+FFFD" "$rc" "$(cat "$TMP/err")"
+fi
+# The SSE reader is the same one-shot reader: a bad byte in a data frame is
+# E040, not a value with three replacement characters in it.
+printf 'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"t1","name":"f","input":{}}}\n\nevent: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"s\\":\\"\xff\\"}"}}\n\nevent: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n' \
+  | "$BIN" llm --provider anthropic --sse >/dev/null 2>"$TMP/err"; rc=$?
+if [ "$rc" = 3 ] && grep -q "E040" "$TMP/err"; then
+  pass=$((pass + 1)); printf 'ok   %-34s rc=%s\n' "llm --sse refuses invalid UTF-8" "$rc"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s rc=%s %s\n' "llm --sse refuses invalid UTF-8" "$rc" "$(cat "$TMP/err")"
+fi
+
 # depth limit: 600 nested arrays (max_depth 512)
 python3 -c "print('['*600 + ']'*600)" >"$TMP/deep.json"
 "$BIN" "$TMP/deep.json" >/dev/null 2>"$TMP/err"; rc=$?
