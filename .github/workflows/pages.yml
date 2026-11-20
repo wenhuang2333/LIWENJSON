@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  actions: read   # deploy-pages lists this run's artifacts with this token
   pages: write
   id-token: write
 
@@ -57,3 +58,39 @@ jobs:
 
       - id: deployment
         uses: actions/deploy-pages@v4
+
+      # A failed deployment is otherwise opaque without the step log, which
+      # anonymous readers cannot fetch. On failure, say which artifacts this
+      # run's token can see and what the Pages site thinks of itself.
+      - name: Explain a deployment failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          API: ${{ github.api_url }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          echo "::error::deploy outcome=${{ steps.deployment.outcome }} url=${{ steps.deployment.outputs.page_url }}"
+          curl -sS -m 20 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"             "$API/repos/$REPO/actions/runs/$RUN/artifacts?per_page=20" -o /tmp/artifacts.json -w 'artifacts_http=%{http_code}\n' || true
+          python3 - <<'PY' || true
+          import json
+          try:
+              d = json.load(open("/tmp/artifacts.json"))
+          except Exception as exc:
+              print(f"::error::artifacts unreadable: {exc}")
+          else:
+              names = [a.get("name") for a in d.get("artifacts", [])]
+              print(f"::error::artifacts visible={len(names)} names={names}")
+          PY
+          curl -sS -m 20 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"             "$API/repos/$REPO/pages" -o /tmp/pages.json -w 'pages_http=%{http_code}\n' || true
+          python3 - <<'PY' || true
+          import json
+          try:
+              d = json.load(open("/tmp/pages.json"))
+          except Exception as exc:
+              print(f"::error::pages unreadable: {exc}")
+          else:
+              keep = {k: d.get(k) for k in ("status", "build_type", "cname", "html_url", "source")}
+              print(f"::error::pages site={json.dumps(keep)[:800]}")
+          PY
