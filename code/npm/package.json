@@ -55,5 +55,8 @@
   ],
   "bin": {
     "liwenjson-mcp": "mcp.cjs"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
   }
 }
