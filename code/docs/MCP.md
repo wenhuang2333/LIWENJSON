@@ -120,8 +120,10 @@ liwenjson --version          # liwenjson 1.5.2
 > from source needs the MoonBit toolchain `moon 0.1.20261016`. The mooncakes
 > counterpart **0.13.0 was published on 2026-10-29**, and `interjson-moonbit@1.5.1`
 > reached npm and PyPI on 2026-10-30, so both language packages install with one
-> command. **1.5.2 is `liwenjson` on npm and on PyPI (2026-11-20)**; the mooncakes
-> counterpart `0.14.0` is not published there yet.
+> command. **1.5.2 is `liwenjson` on npm, on PyPI and on mooncakes** — npm/PyPI and
+> the GitHub release on 2026-11-20, and the mooncakes counterpart `0.14.0` the same
+> day, as the new module `zhanshishan/liwenjson` (the registry has no rename, so
+> 0.11.0–0.13.0 stay under `zhanshishan/interjson`).
 
 ### One command: `install.sh`
 
@@ -186,8 +188,8 @@ assets already published keep the name of the release that produced them:
 retroactively, so use the release whose prefixes match the CLI you install.
 
 The 1.5.2 release is tagged `v1.5.2` and is published with those eight assets;
-the mooncakes counterpart `0.14.0` is the 1.5.2 correspondence, so the installer
-above installs the 1.5.2 binaries.
+the mooncakes counterpart `0.14.0` (published 2026-11-20 as `zhanshishan/liwenjson`)
+is the 1.5.2 correspondence, so the installer above installs the 1.5.2 binaries.
 
 ### pip: `liwenjson`
 

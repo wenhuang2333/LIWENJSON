@@ -224,9 +224,30 @@ sync」上红（`tests/gen_llm_fixtures.py` 拿未格式化的文本和 `moon fm
 差分与基准）。npm `liwenjson@1.5.2`（2026-11-20）与 PyPI `liwenjson-1.5.2`
 （wheel + sdist，wheel 内带四平台引擎，装完即可用）已上传；
 `curl -fsSL .../releases/latest/download/liwenjson-install.sh | sh` 端到端验证装到
-`liwenjson 1.5.2`。**未做的两件事**：mooncakes `zhanshishan/liwenjson@0.14.0`
-尚未发布；旧名 `interjson-moonbit` 在 npm 上尚未标 deprecated（发布用的
-Automation token 只授权了新包，需要覆盖旧包的 token 或 `npm login` 才能改）。
+`liwenjson 1.5.2`。**当天未做的一件事**：旧名 `interjson-moonbit` 在 npm 上尚未标
+deprecated（发布用的 Automation token 只授权了新包，需要覆盖旧包的 token 或
+`npm login` 才能改）。
+
+### mooncakes `0.14.0`（2026-11-20）
+
+第四个渠道补齐：`zhanshishan/liwenjson@0.14.0` 已上传，`moon publish` 返回
+`Server status: 200 OK`。三点值得记下：
+
+- **模块名换了，注册表不认改名。** mooncakes 上这个包的历史是三个名字：
+  0.3.0–0.8.1 是 `zhanshishan/jsonmend`，0.11.0–0.13.0 是 `zhanshishan/interjson`，
+  0.14.0 起是 `zhanshishan/liwenjson`。旧条目留在原名上，不会被新包接管。
+- **发布号由平台规则决定，不由我们决定。** `moon.mod` 写 `1.5.2` 时服务器直接
+  `403 Publishing versions with a major version greater than 0 is not enabled`，
+  所以 1.5.2 的注册表对应号是 `0.14.0`（映射见 `version.mbt`）。发布用的是仓库外
+  的一份副本，只把副本 `moon.mod` 的 `version` 改成 `0.14.0`；工作树里的
+  `moon.mod` 仍是 `1.5.2`——`tests/cli_smoke.sh`、`python/build_wheel.sh` 和
+  `python/tests/version.py` 都把它当引擎版本读。
+- **拉回验证。** 全新模块 `moon add zhanshishan/liwenjson` 解析到 `0.14.0`，native
+  编译通过，`analyze("{\"a\":")` 返回 `REJECT (a value was changed)` /
+  `executable=no` / `normalized=yes`，与标签上的黄金用例一致；把注册表解出来的源码
+  与 `v1.5.2` 逐文件比，`.mbt`/`.mbti`/C/JS/JSON 全部一致，`moon.mod` 只差那一行版本，
+  其余差异只有 `.md`。附带一条既有行为：`moon publish` 会打包 `docs/` 里的本地文档
+  （0.13.0 同样如此），发布前值得确认这些文档没有不该外传的内容。
 
 ## [1.5.1] - 2026-10-29
 
