@@ -18,7 +18,7 @@
 | `v1.5.2` | `0.14.0` | `liwenjson@1.5.2` | `liwenjson@1.5.2` | **四个渠道全部已发布**（GitHub Release / npm / PyPI 2026-11-20，mooncakes 同日） |
 | `v1.5.1` | `0.13.0` | `interjson-moonbit@1.5.1` | `interjson-moonbit@1.5.1` | 上一版（mooncakes 2026-10-29，npm / PyPI 2026-10-30，重命名前） |
 
-改名前后是三个不同的模块名：mooncakes 上 0.11.0–0.13.0 是 `zhanshishan/interjson`，更早是 `zhanshishan/jsonmend`，`zhanshishan/liwenjson` 是 0.14.0 才出现的新模块（注册表不支持改名，只能新增包名）。已发布的是 mooncakes `zhanshishan/interjson@0.13.0`（2026-10-29）与 npm / PyPI 的 `interjson-moonbit@1.5.1`（2026-10-30）；**`1.5.2` 四个渠道都已发布**——GitHub Release、npm、PyPI 在 2026-11-20，mooncakes `zhanshishan/liwenjson@0.14.0` 同一天，拉回后 `VERSION=1.5.2` / `REGISTRY_VERSION=0.14.0`、门调用返回 `REJECT (a value was changed)`。发包顺序与发布记录见 `code/CHANGELOG.md`。两个语言包的 wheel 与 tarball 里都带着引擎，装完即可调用。
+改名前后是三个不同的模块名：mooncakes 上 0.11.0–0.13.0 是 `zhanshishan/interjson`，更早是 `zhanshishan/jsonmend`，`zhanshishan/liwenjson` 是 0.14.0 才出现的新模块（注册表不支持改名，只能新增包名；两个旧模块 `zhanshishan/interjson`、`zhanshishan/jsonmend` 已于 2026-11-20 `moon deprecate` 标为废弃并把新名写进理由）。已发布的是 mooncakes `zhanshishan/interjson@0.13.0`（2026-10-29）与 npm / PyPI 的 `interjson-moonbit@1.5.1`（2026-10-30）；**`1.5.2` 四个渠道都已发布**——GitHub Release、npm、PyPI 在 2026-11-20，mooncakes `zhanshishan/liwenjson@0.14.0` 同一天，拉回后 `VERSION=1.5.2` / `REGISTRY_VERSION=0.14.0`、门调用返回 `REJECT (a value was changed)`。发包顺序与发布记录见 `code/CHANGELOG.md`。两个语言包的 wheel 与 tarball 里都带着引擎，装完即可调用。
 
 ## 功能亮点
 

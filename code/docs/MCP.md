@@ -123,7 +123,9 @@ liwenjson --version          # liwenjson 1.5.2
 > command. **1.5.2 is `liwenjson` on npm, on PyPI and on mooncakes** — npm/PyPI and
 > the GitHub release on 2026-11-20, and the mooncakes counterpart `0.14.0` the same
 > day, as the new module `zhanshishan/liwenjson` (the registry has no rename, so
-> 0.11.0–0.13.0 stay under `zhanshishan/interjson`).
+> 0.11.0–0.13.0 stay under `zhanshishan/interjson` and earlier under
+> `zhanshishan/jsonmend`; both old modules were deprecated on 2026-11-20 and their
+> deprecation reason names the new module).
 
 ### One command: `install.sh`
 

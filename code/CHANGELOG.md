@@ -249,6 +249,20 @@ deprecated（发布用的 Automation token 只授权了新包，需要覆盖旧�
   其余差异只有 `.md`。附带一条既有行为：`moon publish` 会打包 `docs/` 里的本地文档
   （0.13.0 同样如此），发布前值得确认这些文档没有不该外传的内容。
 
+注册表不能改名，能做的只有把旧名指过去：同一天用 `moon deprecate` 把两个旧模块
+标为废弃，理由文本写明新名（`moon deprecate <模块> --undo` 可撤销，模块级生效）：
+
+```
+Deprecated zhanshishan/interjson (existing versions: 3).
+Deprecated zhanshishan/jsonmend (existing versions: 8).
+```
+
+之后 `moon add zhanshishan/interjson` 会打印
+`Warning: Dependency zhanshishan/interjson@0.13.0 is deprecated: Renamed: use
+zhanshishan/liwenjson (LIWENJSON) - this module name is the pre-rename brand`；
+新模块 `zhanshishan/liwenjson` 无此警告。已发布版本本身不变，选择版本的行为也不变，
+只有在依赖被解析出来时提示。
+
 ## [1.5.1] - 2026-10-29
 
 1.5.0 的 tag 打出去之后，深度与内存上的工作才做完。两者不能混在一个版本里：
