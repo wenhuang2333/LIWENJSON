@@ -6,7 +6,7 @@ The audit asked for at least one *mandatory* host integration (marks/迭代.md
 covers the enforced one: a `PreToolUse` hook that runs the gate on every Bash
 call and denies the call when the declaration is not satisfied.
 
-The transcripts this replays are real. `test/claude-e2e/` holds:
+The transcripts this replays are real. `code/tests/claude-e2e/` holds:
 
   * `hook-deny.jsonl`  — a real Claude Code 2.1.145 session in which the model
     ran `touch pwned.txt` and the hook refused it; the file was never created;

@@ -236,10 +236,13 @@ install `jq`. Three behaviours worth knowing:
 >   and **the file was never created**;
 > * ran `echo read-only-ok`, which is the one command the declaration admits —
 >   the hook allowed it and the command ran;
-> * called `mcp__interjson__interjson_gate` and reported
->   `decision: invalid, executable: false`.
+> * called the gate tool and reported
+>   `decision: invalid, executable: false`. The recording says
+>   `mcp__interjson__interjson_gate` because it was captured on the pre-rename
+>   build; the same session against the current build is
+>   `mcp__liwenjson__liwenjson_gate`.
 >
-> The wiring, the declarations and both sessions are in `test/claude-e2e/`
+> The wiring, the declarations and both sessions are in `code/tests/claude-e2e/`
 > (with a README), and `code/tests/hook_replay.py` replays the recorded
 > `PreToolUse` payloads through the installed script — including the
 > "gate binary missing" branch, which must exit 2 — so the wiring cannot rot

@@ -3,7 +3,7 @@
 #
 #   bash code/tests/install_gate_hook.sh [project-dir] [--bin path-to-liwenjson]
 #
-# The wiring is the one recorded in `test/claude-e2e/`: a `PreToolUse` hook that
+# The wiring is the one recorded in `code/tests/claude-e2e/`: a `PreToolUse` hook that
 # runs the gate on every matching tool call and denies the call when the
 # declaration is not satisfied. It is the mandatory half of the gate — the MCP
 # tool is advisory, this is not (marks/迭代.md §8.3).
