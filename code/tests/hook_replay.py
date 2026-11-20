@@ -18,7 +18,7 @@ This gate feeds the recorded payloads to that exact script and checks the
 decision. It needs no model, so it runs in CI; it is what stops the wiring from
 rotting between recordings.
 
-    python3 code/tests/hook_replay.py [--bin path-to-interjson]
+    python3 code/tests/hook_replay.py [--bin path-to-liwenjson]
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 E2E = ROOT / "code" / "tests" / "claude-e2e"
-DEFAULT_BIN = ROOT / "code/_build/native/release/build/cmd/interjson/interjson.exe"
+DEFAULT_BIN = ROOT / "code/_build/native/release/build/cmd/liwenjson/liwenjson.exe"
 
 
 def tools_used(transcript: Path) -> list[str]:
@@ -56,19 +56,19 @@ def tools_used(transcript: Path) -> list[str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cli", default=os.environ.get("INTERJSON_BIN", str(DEFAULT_BIN)))
+    ap.add_argument("--cli", default=os.environ.get("LIWENJSON_BIN", str(DEFAULT_BIN)))
     ap.add_argument("--dir", default=str(E2E))
     args = ap.parse_args()
 
     e2e = Path(args.dir)
-    script = e2e / ".claude" / "hooks" / "interjson-gate.sh"
+    script = e2e / ".claude" / "hooks" / "liwenjson-gate.sh"
     for path in (script, e2e / "payload-deny.json", e2e / "payload-allow.json"):
         if not path.exists():
             print(f"missing {path}", file=sys.stderr)
             return 2
 
     env = dict(os.environ)
-    env["INTERJSON_BIN"] = args.cli
+    env["LIWENJSON_BIN"] = args.cli
     env["CLAUDE_PROJECT_DIR"] = str(e2e)
 
     def run(payload_path: Path) -> tuple[int, str, str]:
@@ -135,7 +135,7 @@ def main() -> int:
     # 4. The recorded denial is the interesting one: the model never called the
     #    MCP gate tool. It went straight for the Bash tool -- the bypass the
     #    audit cares about -- and was still refused. A transcript where the
-    #    model had called `interjson_gate` first would prove much less.
+    #    model had called `liwenjson_gate` first would prove much less.
     tools = tools_used(e2e / "hook-deny.jsonl")
     if "Bash" not in tools:
         problems.append(f"the denied session did not call Bash: {tools}")
@@ -157,6 +157,8 @@ def main() -> int:
         problems.append("the interactive capture is missing")
     else:
         body = interactive.read_text(encoding="utf-8")
+        # The capture is kept byte-exact, so it carries the name the binary used
+        # when the session was recorded, not the name this build publishes.
         if "InterJSON refused" not in body:
             problems.append("the interactive capture does not show the refusal")
         if "PreToolUse" not in body:
@@ -168,7 +170,7 @@ def main() -> int:
     #    treats exit 1 as "the hook errored" and runs the tool anyway. This was
     #    found by the real session and is why the recipe now exits 2.
     broken = dict(env)
-    broken["INTERJSON_BIN"] = "/nonexistent/interjson"
+    broken["LIWENJSON_BIN"] = "/nonexistent/liwenjson"
     proc = subprocess.run(
         ["bash", str(script)],
         input=(e2e / "payload-allow.json").read_text(encoding="utf-8"),
