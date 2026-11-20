@@ -215,7 +215,11 @@ JSON-RPC 检查，`docs/LLM_EVENTS.md` 写明 Responses 协议与终态语义。
 
 ### 发布记录（2026-11-20）
 
-标签 `v1.5.2`（`83307c4`）由 `release.yml` 发布 GitHub Release：八个 `liwenjson-*`
+标签 `v1.5.2` **被移动过一次**：先指向 `8ef74df`，CI 在「LLM fixtures are in
+sync」上红（`tests/gen_llm_fixtures.py` 拿未格式化的文本和 `moon fmt` 的输出比，
+两者永远不可能同时成立），修好门之后移到 `83307c4`。移动时 Release 不存在、产物
+0 个、三个注册表都没有 1.5.2，没有已存在的引用被改写——与 `v1.5.0` 那条例外同型
+（`AGENTS.md` 已把它记为第二例）。发布由 `release.yml` 完成：八个 `liwenjson-*`
 产物 + `SHA256SUMS`，CI 十二项全绿（四平台 CLI 矩阵、wasm 探针、浏览器 bundle、
 差分与基准）。npm `liwenjson@1.5.2`（2026-11-20）与 PyPI `liwenjson-1.5.2`
 （wheel + sdist，wheel 内带四平台引擎，装完即可用）已上传；
