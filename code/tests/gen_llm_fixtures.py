@@ -13,6 +13,7 @@ the `.jsonl` files (replayed by the demo page) and the embedded copies used by
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -330,6 +331,20 @@ fn fx_lines(s : String) -> Array[String] {
 """
 
 
+def canonically_formatted(body: str) -> str:
+    """`body` as the pinned formatter leaves it.
+
+    `moon fmt` re-wraps the long `Array[(...)]` literals emitted here, so a byte
+    comparison against the unformatted text can never hold at the same time as
+    `moon fmt --check`. Running the generated file through the same formatter the
+    project is checked with makes the two gates agree, and keeps them agreeing
+    when the formatter changes.
+    """
+    MBT.write_text(body, encoding="utf-8")
+    subprocess.run(["moon", "fmt", str(MBT)], check=True, capture_output=True)
+    return MBT.read_text(encoding="utf-8")
+
+
 def main() -> int:
     check = "--check" in sys.argv
     built = build()
@@ -346,15 +361,23 @@ def main() -> int:
     body = HEADER + "\n".join(built[name][1] for name in FIXTURES)
     for name in RECORDED:
         body += recorded_block(name)
+    committed = MBT.read_text(encoding="utf-8") if MBT.exists() else None
+    try:
+        body = canonically_formatted(body)
+    finally:
+        if check:  # a check must not leave the tree modified
+            if committed is None:
+                MBT.unlink(missing_ok=True)
+            else:
+                MBT.write_text(committed, encoding="utf-8")
     if check:
-        if not MBT.exists() or MBT.read_text(encoding="utf-8") != body:
+        if committed != body:
             problems.append(str(MBT))
         if problems:
             print("fixture drift:", ", ".join(problems))
             return 1
         print(f"fixtures up to date ({len(built)} files)")
         return 0
-    MBT.write_text(body, encoding="utf-8")
     print(f"wrote {len(built)} fixtures to {FIXDIR} and {MBT.name}")
     return 0
 
