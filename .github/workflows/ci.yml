@@ -134,7 +134,7 @@ jobs:
       # `--check`, a frame that is not text is `E040` while a legal U+FFFD
       # passes, an empty `watch.finish` keeps `E001`), and a tool parameter is
       # enforced before the walk reads anything.
-      - name: Protocol contract: modes, UTF-8 frames and inputSchema enforcement
+      - name: "Protocol contract: modes, UTF-8 frames and inputSchema enforcement"
         working-directory: code
         run: |
           python3 tests/conformance/run_protocol_contract.py \
