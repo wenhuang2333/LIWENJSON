@@ -310,7 +310,7 @@
       <div class="top-inner">
         <a class="brand" href="#top">
           <span class="mark" aria-hidden="true">{}</span>
-          <span>LIWENJSON <small>v1.5.1</small></span>
+          <span>LIWENJSON <small>v1.5.2</small></span>
         </a>
         <nav class="links" aria-label="页面章节">
           <a href="#mcp" data-nav="mcp">MCP</a>
@@ -880,7 +880,7 @@
               <li><a href="./README.md">static/demo/README.md</a> — 本地打开方式</li>
               <li><a href="https://github.com/wenhuang2333/LIWENJSON">GitHub 仓库</a> · <code>cd code &amp;&amp; moon test</code></li>
             </ul>
-            <p class="meta">LIWENJSON v1.5.1 · mooncakes <code>0.13.0</code> 已发布（2026-10-29）· 页面无外部依赖，可离线打开。</p>
+            <p class="meta">LIWENJSON v1.5.2 · mooncakes <code>0.14.0</code> 已发布（2026-11-20）· 页面无外部依赖，可离线打开。</p>
           </div>
         </div>
       </footer>
@@ -888,14 +888,14 @@
 
     <script id="jm-fixtures" type="application/json">
       {
-        "version": "1.5.1",
+        "version": "1.5.2",
         "evidence": [
-          { "n": "249", "label": "条白盒测试" },
-          { "n": "996", "label": "次后端测试（4 个后端各 249/249）" },
+          { "n": "323", "label": "条白盒测试" },
+          { "n": "1292", "label": "次后端测试（4 个后端各 323/323）" },
           { "n": "1200", "label": "条真值评测 · 恢复率 100.00%" },
           { "n": "402", "label": "例差分 · 202 处差异全部归因" },
           { "n": "19", "label": "组协议一致性同跑" },
-          { "n": "114.5 KiB", "label": "wasm-gc 产物 · 673.3 KiB 浏览器包" }
+          { "n": "114.3 KiB", "label": "wasm-gc 产物 · 704.0 KiB 浏览器包" }
         ],
         "policies": [
           { "id": "permissive", "label": "permissive", "hint": "默认：能修就修，允许有损与第二种读法（显示通道）。" },
@@ -1050,14 +1050,14 @@
           {
             "title": "npm · Node / TypeScript",
             "tag": "liwenjson",
-            "cmd": "npm install ./code/npm",
-            "note": "装完 import { analyze, repair } from \"liwenjson\"，在执行工具参数前过闸。包名尚未发布到 npm 仓库，按仓库路径安装；包内还带一个 liwenjson-mcp 入口（需要 liwenjson 在 PATH 上，或用 LIWENJSON_BIN 指向它）。包里的 vendor/liwenjson.js 是同一引擎的 JS 构建，供进程内调用，不能当 MCP server 用。"
+            "cmd": "npm install liwenjson",
+            "note": "装完 import { analyze, repair } from \"liwenjson\"，在执行工具参数前过闸。已发布到 npm：liwenjson@1.5.2（2026-11-20）；包内还带一个 liwenjson-mcp 入口（需要 liwenjson 在 PATH 上，或用 LIWENJSON_BIN 指向它——npm 包带的是 JS 引擎，不含原生二进制）。包里的 vendor/liwenjson.js 是同一引擎的 JS 构建，供进程内调用，不能当 MCP server 用。"
           },
           {
             "title": "pip · Python",
             "tag": "liwenjson",
-            "cmd": "pip install ./code/python",
-            "note": "from liwenjson import Client：复用同一个 liwenjson serve 进程，executable 为 false 时把 retry.prompt 原样回灌模型。pip 包同样提供 liwenjson-mcp 与 liwenjson-http 两个入口；原生二进制需要在 PATH 上，或用 LIWENJSON_BIN 指向它。"
+            "cmd": "pip install liwenjson",
+            "note": "from liwenjson import Client：复用同一个 liwenjson serve 进程，executable 为 false 时把 retry.prompt 原样回灌模型。已发布到 PyPI：liwenjson 1.5.2（2026-11-20），wheel 内带四平台原生引擎并按当前平台自动选；pip 包同样提供 liwenjson-mcp 与 liwenjson-http 两个入口，装完即可用，不需要另外装 CLI。"
           },
           {
             "title": "HTTP · n8n / Dify / Coze",
@@ -1069,7 +1069,7 @@
             "title": "MoonBit 库 · 进程内",
             "tag": "moon add zhanshishan/liwenjson",
             "cmd": "let p = @liwenjson.PartialParser::new()",
-            "note": "不想起子进程时直接用库：PartialParser 逐个码元喂，analyze 给出同一份执行门判断。mooncakes 0.13.0 已发布（2026-10-29）；GitHub v1.5.1 ↔ mooncakes 0.13.0 的对应关系由 code/version.mbt 的 VERSION / REGISTRY_VERSION 定义，serve 的 hello 同时报告两个号。"
+            "note": "不想起子进程时直接用库：PartialParser 逐个码元喂，analyze 给出同一份执行门判断。mooncakes 0.14.0 已发布（2026-11-20）；GitHub v1.5.2 ↔ mooncakes 0.14.0 的对应关系由 code/version.mbt 的 VERSION / REGISTRY_VERSION 定义，serve 的 hello 同时报告两个号——平台只接受 0.x.y，所以两个号不会相同。旧名 zhanshishan/interjson、zhanshishan/jsonmend 已标 deprecated 并指向新名。"
           }
         ],
         "mcp": {
@@ -1085,7 +1085,7 @@
           "messages": {
             "refused": { "request": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"liwenjson_gate\",\"arguments\":{\"text\":\"{\\\"amount\\\":100,\\\"currency\\\":\\\"USD\\\"\",\"schema_json\":{\"type\":\"object\",\"properties\":{\"amount\":{\"type\":\"number\"},\"currency\":{\"type\":\"string\"}},\"required\":[\"amount\"]}}}}", "response": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"decision=lossy_repair executable=false exactness=lossy\\nerror=E010 E010 StrictViolation at 1:31 (offset 30): R009 CloseContainer: exactness lossy exceeds max_loss cosmetic\\nretry (send this back to the model): LIWENJSON refused the arguments: E010 R009 CloseContainer at line 1 column 31 (offset 30).\\nReason: exactness lossy exceeds max_loss cosmetic\\nContext: nt\\\":100,\\\"currency\\\":\\\"USD\\\"\\n                                 ^\\nRe-emit the arguments as valid JSON with exactly one reading.\"}],\"isError\":false,\"structuredContent\":{\"decision\":\"lossy_repair\",\"label\":\"REJECT (a value was changed)\",\"exactness\":\"lossy\",\"ambiguous\":false,\"information_loss\":true,\"valid_json\":false,\"normalized\":true,\"ambiguity\":\"none\",\"execution\":\"blocked\",\"executable\":false,\"syntax_ready_permille\":-1,\"schema_total\":0,\"schema_satisfied\":0,\"schema_missing\":[],\"error\":{\"code\":\"E010\",\"message\":\"E010 StrictViolation at 1:31 (offset 30): R009 CloseContainer: exactness lossy exceeds max_loss cosmetic\"},\"repairs\":[{\"rule\":\"R009\",\"name\":\"CloseContainer\",\"action\":\"insert\",\"offset\":30,\"line\":1,\"column\":31,\"severity\":\"warning\",\"ambiguity\":\"unambiguous\",\"confidence\":\"refused\",\"confidence_value\":0,\"information_loss\":true}],\"retry\":{\"code\":\"E010\",\"prompt\":\"LIWENJSON refused the arguments: E010 R009 CloseContainer at line 1 column 31 (offset 30).\\nReason: exactness lossy exceeds max_loss cosmetic\\nContext: nt\\\":100,\\\"currency\\\":\\\"USD\\\"\\n                                 ^\\nRe-emit the arguments as valid JSON with exactly one reading.\"},\"repairs_truncated\":false,\"value\":null}}}" },
             "allowed": { "request": "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"liwenjson_gate\",\"arguments\":{\"text\":\"{\\\"amount\\\":100,\\\"currency\\\":\\\"USD\\\"}\",\"schema_json\":{\"type\":\"object\",\"properties\":{\"amount\":{\"type\":\"number\"},\"currency\":{\"type\":\"string\"}},\"required\":[\"amount\"]}}}}", "response": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"decision=safe executable=true exactness=exact\"}],\"isError\":false,\"structuredContent\":{\"decision\":\"safe\",\"label\":\"SAFE TO EXECUTE\",\"exactness\":\"exact\",\"ambiguous\":false,\"information_loss\":false,\"valid_json\":true,\"normalized\":false,\"ambiguity\":\"none\",\"execution\":\"allowed\",\"executable\":true,\"syntax_ready_permille\":-1,\"schema_total\":2,\"schema_satisfied\":2,\"schema_missing\":[],\"error\":null,\"repairs\":[],\"retry\":null,\"repairs_truncated\":false,\"value\":{\"amount\":100,\"currency\":\"USD\"}}}}" },
-            "init": { "request": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"demo\",\"version\":\"0\"}}}", "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"liwenjson\",\"title\":\"LIWENJSON — the execution gate\",\"version\":\"1.5.1\"},\"instructions\":\"LIWENJSON is a local execution gate for model output. It runs on this machine over stdio and performs no network requests.\\n\\nBefore executing tool arguments or trusting structured output, call `liwenjson_gate` with the raw argument text and the tool's inputSchema as `schema_json`.\\n- `executable: true` means the arguments are safe to execute; `value` is the parsed object.\\n- `executable: false` means do not execute: send `retry.prompt` back to the model and use the re-emitted arguments.\\n\\n`liwenjson_repair` returns repaired text, `liwenjson_validate` reports legality without repairing, and `liwenjson_readiness` reports when streaming fields become final.\"}}" }
+            "init": { "request": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"demo\",\"version\":\"0\"}}}", "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"liwenjson\",\"title\":\"LIWENJSON — the execution gate\",\"version\":\"1.5.2\"},\"instructions\":\"LIWENJSON is a local execution gate for model output. It runs on this machine over stdio and performs no network requests.\\n\\nBefore executing tool arguments or trusting structured output, call `liwenjson_gate` with the raw argument text and the tool's inputSchema as `schema_json`.\\n- `executable: true` means the arguments are safe to execute; `value` is the parsed object.\\n- `executable: false` means do not execute: send `retry.prompt` back to the model and use the re-emitted arguments.\\n\\n`liwenjson_repair` returns repaired text, `liwenjson_validate` reports legality without repairing, and `liwenjson_readiness` reports when streaming fields become final.\"}}" }
           }
         }
       }

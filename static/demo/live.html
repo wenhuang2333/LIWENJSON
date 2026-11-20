@@ -210,10 +210,11 @@
       <section id="surfaces" hidden>
         <h2 class="paneltitle">接入面 · 五种接入方式，同一个引擎</h2>
         <p class="panelnote">
-          每一条都从仓库检出直接跑：<code>claude mcp add</code> 一行、<code>liwenjson serve</code>
-          一个长驻进程、两个语言包按仓库路径安装。npm 与 PyPI 上的
-          <code>liwenjson</code> 名字已被无关项目占用，本仓库的包名是
-          <code>liwenjson</code>，<b>尚未发布到任何注册表</b>，所以下面写的是仓库路径。
+          五条接入面：MCP 一行 <code>claude mcp add</code>、<code>liwenjson serve</code>
+          一个长驻进程、两个语言包与 MoonBit 库都从注册表装。<b>1.5.2 四个渠道都已发布</b>：
+          GitHub Release、npm 与 PyPI 上的 <code>liwenjson</code>（2026-11-20）、
+          mooncakes 上的 <code>zhanshishan/liwenjson@0.14.0</code>（同日，平台只接受
+          <code>0.x.y</code>，所以对应号与 GitHub 标签不同）。
         </p>
         <div class="surfaces" id="surface-list"></div>
         <p class="meta">
@@ -360,22 +361,22 @@
         {
           id: "npm",
           title: "npm · Node / TypeScript 宿主",
-          cmd: "npm install ./code/npm",
+          cmd: "npm install liwenjson",
           note:
             '装完 import { analyze } from "liwenjson"，在执行工具参数前过闸；与这个页面里跑的是同一份引擎。',
           label: "用法",
           extra: 'import { analyze, repair } from "liwenjson";',
-          foot: "包名 liwenjson，尚未发布到 npm 仓库，按仓库路径安装。",
+          foot: "已发布到 npm：liwenjson@1.5.2（2026-11-20）。包内是 JS 引擎加 liwenjson-mcp 启动器；起 MCP 需要原生引擎在 PATH 上，或用 LIWENJSON_BIN 指过去。",
         },
         {
           id: "pip",
           title: "pip · Python 宿主（+ HTTP）",
-          cmd: "pip install ./code/python",
+          cmd: "pip install liwenjson",
           note:
             "from liwenjson import Client：Client 复用同一个 liwenjson serve 进程，executable 为 false 时把 retry.prompt 原样回灌模型；装完还带 liwenjson-mcp 与 liwenjson-http。",
           label: "HTTP facade（n8n / Dify / Coze / 网关）",
           extra: "liwenjson-http --port 8080",
-          foot: "包名 liwenjson，尚未发布到 PyPI 仓库，按仓库路径安装。",
+          foot: "已发布到 PyPI：liwenjson 1.5.2（2026-11-20）。wheel 内带四平台原生引擎并按当前平台自动选，装完两个入口即可用。",
         },
         {
           id: "moonbit",
@@ -385,7 +386,7 @@
             "不想起子进程时直接用库：PartialParser 逐个码元喂，analyze 给出同一份执行门判断。",
           label: "用法",
           extra: "let p = @liwenjson.PartialParser::new()",
-          foot: "mooncakes 0.13.0 已发布（2026-10-29，平台只接受 0.x.y），与 1.5.1 除版本字符串外逐字节相同。",
+          foot: "mooncakes 0.14.0 已发布（2026-11-20，就是 1.5.2；平台只接受 0.x.y，所以对应号与 GitHub 标签不同），注册表源码与标签 v1.5.2 逐文件一致。旧名 zhanshishan/interjson 与 zhanshishan/jsonmend 已标记 deprecated 并指向新名。",
           wide: true,
         },
       ];
