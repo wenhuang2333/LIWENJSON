@@ -155,7 +155,14 @@ jobs:
         working-directory: code/python
         env:
           LIWENJSON_BIN: ${{ github.workspace }}/code/_build/native/release/build/cmd/liwenjson/liwenjson.exe
-        run: python3 -m unittest discover -s tests
+        run: |
+          set -o pipefail
+          if ! python3 -m unittest discover -s tests 2>&1 | tee /tmp/py-tests.log; then
+            tail -n 40 /tmp/py-tests.log | while IFS= read -r line; do
+              echo "::error::python: $line"
+            done
+            exit 1
+          fi
 
       - name: Ground truth evaluation (must exit 0)
         working-directory: code
@@ -432,9 +439,15 @@ jobs:
         working-directory: code
         run: |
           moon build cmd/liwenjson --target native --release
-          python3 tests/independent_report_check.py \
+          set -o pipefail
+          if ! python3 tests/independent_report_check.py \
             --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe \
-            --node-dir "$RUNNER_TEMP/node-oracle/node_modules"
+            --node-dir "$RUNNER_TEMP/node-oracle/node_modules" 2>&1 | tee /tmp/independent.log; then
+            tail -n 40 /tmp/independent.log | while IFS= read -r line; do
+              echo "::error::independent: $line"
+            done
+            exit 1
+          fi
 
       - name: Differential report (must exit 0)
         working-directory: code
