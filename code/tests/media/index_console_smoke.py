@@ -35,6 +35,7 @@ SECTIONS = ["mcp", "workbench", "gate", "stream", "rules", "readiness", "cli", "
 # than copied here: a stale number then fails in one place instead of drifting
 # in two. The regexes are anchored to the README's own rows.
 README = ROOT / "README.md"
+DIVERGENCES = ROOT / "code" / "docs" / "DIVERGENCES.md"
 
 
 def readme_evidence() -> dict[str, str]:
@@ -46,19 +47,27 @@ def readme_evidence() -> dict[str, str]:
     """
     text = README.read_text(encoding="utf-8")
     rows = {
-        "tests": r"各 (\d+)/(\d+) 通过",
-        "runs": r"通过（共 (\d+) 次）",
-        "wasm": r"wasm-gc 产物体积 \| ([\d.]+) KiB",
-        "truth": r"\| (\d+) 条（19 个变异族",
-        "diff": r"\| (\d+) 条用例 \| (\d+) 处差异",
-        "conformance": r"\| (\d+) 组 `serve`/MCP 用例",
+        "tests": r"每个后端 `(\d+)/\d+` 通过",
+        "wasm": r"wasm-gc 产物体积 \| `([\d.]+) KiB`",
+        "truth": r"`(\d+)` 条，恢复率",
+        "diff": r"`(\d+)` 条，未解释 (\d+) 处分歧",
+        "conformance": r"协议 / MCP 一致性 \| `(\d+) 组`",
     }
     found: dict[str, str] = {}
     for key, pattern in rows.items():
         match = re.search(pattern, text)
         assert match, f"README no longer states the {key} figure ({pattern!r})"
         found[key] = match.group(1)
-    found["divergences"] = re.search(rows["diff"], text).group(2)
+    found["unexplained"] = re.search(rows["diff"], text).group(2)
+    # The strip quotes the four-backend total, so it is computed from the
+    # per-backend figure rather than written down a second time.
+    found["runs"] = str(int(found["tests"]) * 4)
+    # The divergence count lives in the generated report, not in the README.
+    match = re.search(
+        r"^\| divergences \| (\d+) \|$", DIVERGENCES.read_text(encoding="utf-8"), re.M
+    )
+    assert match, "DIVERGENCES.md no longer states the divergence count"
+    found["divergences"] = match.group(1)
     return found
 
 
@@ -107,6 +116,9 @@ def main() -> None:
             assert any(c.startswith(expected["wasm"]) for c in cards), f"wasm {expected['wasm']} missing: {cards}"
             labels = page.text_content("#evidence-strip")
             assert expected["divergences"] in labels, f"divergences {expected['divergences']} missing"
+            assert expected["unexplained"] == "0", (
+                f"the diff report has {expected['unexplained']} unexplained divergences"
+            )
 
             # 3. The MCP section: four tools, seven client configs, real transcripts.
             assert page.locator("#mcp table tbody tr").count() == 4, "expected four MCP tools"
