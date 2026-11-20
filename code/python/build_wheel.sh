@@ -354,6 +354,13 @@ rm -f "$OUT"/*.whl "$OUT"/*.tar.gz
 # for a setuptools project is `pip wheel` plus `setup.py sdist`, and both of
 # those only need setuptools, which is already a build requirement of this
 # package. The fallback is what CI runs.
+# Both fallbacks are setuptools projects; name the missing piece instead of
+# letting pip print "Cannot import build backend 'setuptools.build_meta'".
+if ! python3 -c 'import build' 2>/dev/null && ! python3 -c 'import setuptools' 2>/dev/null; then
+  echo "build_wheel.sh: no build backend: install 'setuptools' (pip install setuptools) or 'build'" >&2
+  exit 1
+fi
+
 echo "building the distributions..."
 if python3 -c 'import build' 2>/dev/null; then
   python3 -m build --no-isolation --wheel --sdist -o "$OUT" "$WORK/tree" >/dev/null

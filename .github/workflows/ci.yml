@@ -40,8 +40,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install the JSON Schema validator (pinned)
-        run: python3 -m pip install "jsonschema==4.26.0"
+      - name: Install the Python gate dependencies (pinned)
+        # `build_wheel.sh` packages through the setuptools backend; the 3.12
+        # toolcache no longer carries it, and `pip wheel --no-build-isolation`
+        # fails with "Cannot import build backend" when it is missing.
+        run: python3 -m pip install "jsonschema==4.26.0" "setuptools==80.9.0"
 
       # The toolchain is pinned. `install/unix.sh` with no argument installs
       # `latest`, and on 2026-10-29 a new MoonBit release changed the JavaScript
