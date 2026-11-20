@@ -54,6 +54,6 @@
     "moonbit"
   ],
   "bin": {
-    "liwenjson-mcp": "./mcp.cjs"
+    "liwenjson-mcp": "mcp.cjs"
   }
 }
