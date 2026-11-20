@@ -5,6 +5,7 @@
 [![CI](https://github.com/wenhuang2333/LIWENJSON/actions/workflows/ci.yml/badge.svg)](https://github.com/wenhuang2333/LIWENJSON/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![演示控制台](https://img.shields.io/badge/demo-console-2ea44f.svg)](https://wenhuang2333.github.io/LIWENJSON/)
+[![npm](https://img.shields.io/npm/v/liwenjson.svg?label=npm)](https://www.npmjs.com/package/liwenjson) [![PyPI](https://img.shields.io/pypi/v/liwenjson.svg?label=PyPI)](https://pypi.org/project/liwenjson/)
 
 **LIWENJSON 是 LLM 输出的执行门：它在模型的工具参数被执行之前判定这些参数能不能安全执行，并在拒绝时把要发回给模型的那句提示一并返回。**
 
@@ -14,10 +15,10 @@
 
 | GitHub tag | mooncakes.io | npm | PyPI | 状态 |
 | --- | --- | --- | --- | --- |
-| `v1.5.2` | `0.14.0` | `liwenjson@1.5.2` | `liwenjson@1.5.2` | 当前版本（`main`，待发包） |
+| `v1.5.2` | `0.14.0` | `liwenjson@1.5.2` | `liwenjson@1.5.2` | **已发布**（2026-11-20）：GitHub Release 八个 `liwenjson-*` 产物、npm、PyPI。`0.14.0` 未发到 mooncakes |
 | `v1.5.1` | `0.13.0` | `interjson-moonbit@1.5.1` | `interjson-moonbit@1.5.1` | 上一版（2026-10-30） |
 
-已发布的是 `0.13.0`（2026-10-29，当时以 `moon add zhanshishan/interjson` 安装）、`interjson-moonbit@1.5.1`（npm 与 PyPI，2026-10-30；改名后未再以该名发布）；`1.5.2` 的源码在 `main` 上，发包顺序见 `code/CHANGELOG.md`。两个语言包的 wheel 与 tarball 里都带着引擎，装完即可调用。
+已发布的是 `0.13.0`（2026-10-29，当时以 `moon add zhanshishan/interjson` 安装）、`interjson-moonbit@1.5.1`（npm 与 PyPI，2026-10-30；改名后未再以该名发布）；**`1.5.2` 已于 2026-11-20 以 `liwenjson` 发布到 GitHub Release、npm 与 PyPI**；`0.14.0` 尚未发到 mooncakes。发包顺序与发布记录见 `code/CHANGELOG.md`。两个语言包的 wheel 与 tarball 里都带着引擎，装完即可调用。
 
 ## 功能亮点
 
@@ -48,7 +49,7 @@
 | 真实模型端到端（Responses API，`code/tests/live_model_audit_v2.py`） | `34/34 检查通过` |
 | 真实 Claude Code 会话：强制 `PreToolUse` 门 | 拒绝 `touch pwned.txt`（文件未创建）、放行 `echo read-only-ok` |
 | 真实 Claude Code **交互式**会话（pty，2.1.319） | 回答 `pong`；`touch pwned.txt` 被 hook 拦下、文件未创建 |
-| 真实 Claude Code 会话：MCP 工具调用 | `liwenjson_gate` 返回 `invalid` / `executable: false` |
+| 真实 Claude Code 会话：MCP 工具调用 | `interjson_gate` 返回 `invalid` / `executable: false`（录像保留改名前的字节；同一会话在当前构建上是 `liwenjson_gate`） |
 | `code/tests/hook_replay.py`（录制的 hook 接线重放，`code/tests/claude-e2e/`） | 通过 |
 | 真值评测（协议先冻结） | `1200` 条，恢复率 `100.00%` |
 | 差分测试（对 `jsonrepair` / `json-repair`） | `402` 条，未解释 0 处分歧 |

@@ -118,9 +118,10 @@ liwenjson --version          # liwenjson 1.5.2
 > builds four binaries across three operating systems: `linux-x86_64`,
 > `linux-arm64`, `macos-arm64` and `windows-x86_64`. Building
 > from source needs the MoonBit toolchain `moon 0.1.20261016`. The mooncakes
-> counterpart **0.13.0 was published on 2026-10-29**, and the npm package
-> **`interjson-moonbit@1.5.1` on 2026-10-30**, and the same version on PyPI on
-> 2026-10-30, so both language packages install with one command.
+> counterpart **0.13.0 was published on 2026-10-29**, and `interjson-moonbit@1.5.1`
+> reached npm and PyPI on 2026-10-30, so both language packages install with one
+> command. **1.5.2 is `liwenjson` on npm and on PyPI (2026-11-20)**; the mooncakes
+> counterpart `0.14.0` is not published there yet.
 
 ### One command: `install.sh`
 
@@ -135,9 +136,10 @@ hard failure: the file is deleted and nothing is installed.
 curl -fsSL https://github.com/wenhuang2333/LIWENJSON/releases/latest/download/liwenjson-install.sh | sh
 ```
 
-Until the first release published under the LIWENJSON name, `latest` still
-serves the installer as `interjson-install.sh`; use that URL against `v1.5.2`
-and earlier.
+`latest` serves `liwenjson-install.sh` and the `liwenjson-*` assets from `v1.5.2`
+on, and the one-liner above is verified against that release: it checks the
+release's own `SHA256SUMS` and installs `liwenjson 1.5.2`. Releases before it keep
+the `interjson-install.sh` name — use that URL for `v1.5.1` and earlier.
 
 Environment: `LIWENJSON_VERSION` (tag; default = latest release),
 `LIWENJSON_DIR` (default `$HOME/.local/bin`), `LIWENJSON_REPO` (default
@@ -176,9 +178,9 @@ The release assets are `liwenjson-linux-x86_64`,
 `liwenjson-windows-x86_64.exe`, `liwenjson-probe.wasm`,
 `liwenjson-demo.js`, `liwenjson-install.sh` and `SHA256SUMS`. There is **no
 Intel macOS asset**: the MoonBit toolchain publishes no `darwin-x86_64` target,
-so no runner can build one. These names take effect with the next release. The
+so no runner can build one. `v1.5.2` publishes exactly these eight names. The
 assets already published keep the name of the release that produced them:
-`v1.4.0`–`v1.5.2` were published as InterJSON, with `interjson-*` assets and
+`v1.4.0`–`v1.5.1` were published as InterJSON, with `interjson-*` assets and
 `interjson_*` tool names, and `v1.3.0` and earlier as JSONMend, with
 `jsonmend-*` assets and `jsonmend_*` tool names. No published asset is renamed
 retroactively, so use the release whose prefixes match the CLI you install.
@@ -290,8 +292,8 @@ Cursor reads a global `mcp.json` (typically `~/.cursor/mcp.json`) or a project
 `.cursor/mcp.json`; Windsurf reads its MCP config (typically
 `~/.codeium/windsurf/mcp_config.json`); Cline uses the same `mcpServers` shape
 in its MCP settings. The server name is a label only — the
-tool names come from the binary you point at: `liwenjson_*` for this build,
-`interjson_*` for the published `v1.4.0`–`v1.5.2` binaries.
+tool names come from the binary you point at: `liwenjson_*` for `v1.5.2` and
+later, `interjson_*` for the `v1.4.0`–`v1.5.1` binaries.
 
 ### VS Code
 

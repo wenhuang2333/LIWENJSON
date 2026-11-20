@@ -88,7 +88,7 @@
 把 `PreToolUse` hook 装进真实的 Claude Code 2.1.145 会话（`claude -p ...`），
 让模型执行 `touch pwned.txt`：hook 拒绝，模型读到 gate 的 `retry.prompt`，
 **文件从未被创建**；同一会话里 `echo read-only-ok`（声明里唯一允许的命令）
-通过并执行。另一次会话里模型直接调用 `mcp__liwenjson__liwenjson_gate`，
+通过并执行。另一次会话里模型直接调用 `mcp__interjson__interjson_gate`，
 得到 `decision: invalid, executable: false` 并按此回答。
 
 真实会话推翻了配方里的一条结论：**`exit 1` 不阻止调用**。第一版 hook 在
@@ -212,6 +212,17 @@ JSON-RPC 检查，`docs/LLM_EVENTS.md` 写明 Responses 协议与终态语义。
 合取语义与 `repair` 的声明契约。回归测试见 `schema_gate_wbtest.mbt`
 （TC-GATE-01…19、TC-GATE-26/27）、`stream_readiness_wbtest.mbt`（TC-GATE-20…23）、
 `tests/cli_smoke.sh`（CLI 与 MCP 端到端）、npm 与 Python 包测试。
+
+### 发布记录（2026-11-20）
+
+标签 `v1.5.2`（`83307c4`）由 `release.yml` 发布 GitHub Release：八个 `liwenjson-*`
+产物 + `SHA256SUMS`，CI 十二项全绿（四平台 CLI 矩阵、wasm 探针、浏览器 bundle、
+差分与基准）。npm `liwenjson@1.5.2`（2026-11-20）与 PyPI `liwenjson-1.5.2`
+（wheel + sdist，wheel 内带四平台引擎，装完即可用）已上传；
+`curl -fsSL .../releases/latest/download/liwenjson-install.sh | sh` 端到端验证装到
+`liwenjson 1.5.2`。**未做的两件事**：mooncakes `zhanshishan/liwenjson@0.14.0`
+尚未发布；旧名 `interjson-moonbit` 在 npm 上尚未标 deprecated（发布用的
+Automation token 只授权了新包，需要覆盖旧包的 token 或 `npm login` 才能改）。
 
 ## [1.5.1] - 2026-10-29
 

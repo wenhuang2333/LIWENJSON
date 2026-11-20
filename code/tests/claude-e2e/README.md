@@ -10,12 +10,20 @@ replayed by `code/tests/hook_replay.py`, which needs no model.
 | `.claude/settings.json` | the `PreToolUse` hook wiring, including `env.LIWENJSON_BIN` |
 | `.claude/liwenjson-schemas.json` | the declarations the hook gates: only `echo read-only-ok` may run as `Bash` |
 | `.claude/hooks/liwenjson-gate.sh` | the hook itself |
-| `hook-deny.jsonl` | a real session where the model ran `touch pwned.txt`; the hook refused; **the file was never created**. The model called **only** `Bash` — it never called `liwenjson_gate`, so this is the bypass case: going straight for the tool does not get past the gate |
+| `hook-deny.jsonl` | a real session where the model ran `touch pwned.txt`; the hook refused; **the file was never created**. The model called **only** `Bash` — it never called `interjson_gate`, so this is the bypass case: going straight for the tool does not get past the gate |
 | `hook-allow.jsonl` | a real session where `echo read-only-ok` passed the gate and ran |
-| `mcp-tool-call.jsonl` | a real session where the model called `mcp__liwenjson__liwenjson_gate` and reported `decision: invalid, executable: false` |
+| `mcp-tool-call.jsonl` | a real session where the model called `mcp__interjson__interjson_gate` and reported `decision: invalid, executable: false` |
 | `interactive-turn1.txt` | a real **interactive** terminal session (Claude Code 2.1.319, `claude --dangerously-skip-permissions`, driven through a pty): the model answered `pong` |
 | `interactive-turn2.txt` | the same interactive session, asked to run `touch pwned.txt`: the hook refused, `pwned.txt` was never created, and the model said so in its own words |
 | `payload-*.json` | the hook payloads the replay gate feeds the script |
+
+The captures are kept **byte-exact**, so the names inside them are the ones the
+binary used when they were recorded (2026-11-08): the MCP server was `interjson`,
+its tools `mcp__interjson__interjson_*`, and a refusal read `InterJSON refused`.
+Against the current build the same sessions show `liwenjson` /
+`mcp__liwenjson__liwenjson_gate` / `LIWENJSON refused`. Sentences below that quote
+a capture quote what the capture contains; `code/tests/hook_replay.py` asserts the
+recorded text, not the current spelling.
 
 ## What the real session taught us (and the recipe had wrong)
 
@@ -43,7 +51,7 @@ capture reads `1 MCPs | 1 hooks` and `✓ Bash ×1`: both integrations were load
 the Bash call was attempted, and the hook blocked it. The model's own summary:
 
 > The command was blocked before it ran — a `PreToolUse` hook (LIWENJSON)
-> rejected the call: LIWENJSON refused the output (invalid: … mismatch command
+> rejected the call: InterJSON refused the output (invalid: … mismatch command
 > (expected one of ["echo read-only-ok"], got string)) … So no `pwned.txt` was
 > created.
 

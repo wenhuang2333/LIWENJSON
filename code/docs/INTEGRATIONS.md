@@ -236,7 +236,7 @@ install `jq`. Three behaviours worth knowing:
 >   and **the file was never created**;
 > * ran `echo read-only-ok`, which is the one command the declaration admits —
 >   the hook allowed it and the command ran;
-> * called `mcp__liwenjson__liwenjson_gate` and reported
+> * called `mcp__interjson__interjson_gate` and reported
 >   `decision: invalid, executable: false`.
 >
 > The wiring, the declarations and both sessions are in `test/claude-e2e/`
