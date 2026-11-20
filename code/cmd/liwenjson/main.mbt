@@ -1,4 +1,4 @@
-// interjson — repair and partial-parse JSON from the command line.
+// liwenjson — repair and partial-parse JSON from the command line.
 // Usage and exit codes: see D12 12.4 and D09 9.8.
 
 ///|
@@ -46,37 +46,37 @@ fn snippet(text : String, offset : Int32) -> String {
 
 ///|
 /// Offset a fatal error points at, when it has one.
-fn error_offset(e : @ij.InterJSONError) -> Int32? {
+fn error_offset(e : @lj.LIWENJSONError) -> Int32? {
   match e {
-    @ij.NoJsonFound(o) => Some(o)
-    @ij.InvalidUtf8(o) => Some(o)
-    @ij.StrictViolation(_, p, _) => Some(p.offset)
-    @ij.AmbiguousRepair(_, p, _) => Some(p.offset)
+    @lj.NoJsonFound(o) => Some(o)
+    @lj.InvalidUtf8(o) => Some(o)
+    @lj.StrictViolation(_, p, _) => Some(p.offset)
+    @lj.AmbiguousRepair(_, p, _) => Some(p.offset)
     _ => None
   }
 }
 
 ///|
 /// Exit code of a fatal error (D09 9.8).
-fn error_exit_code(e : @ij.InterJSONError) -> Int32 {
+fn error_exit_code(e : @lj.LIWENJSONError) -> Int32 {
   match e {
-    @ij.EmptyInput
-    | @ij.NoJsonFound(_)
-    | @ij.InvalidUtf8(_)
-    | @ij.InvalidEvent(_) => 3
-    @ij.DepthLimit(_, _) | @ij.SizeLimit(_, _) | @ij.TokenLimit(_, _) => 4
-    @ij.StrictViolation(_, _, _) | @ij.AmbiguousRepair(_, _, _) => 5
-    @ij.InvalidState(_) => 70
-    @ij.InvalidOption(_) => 2
+    @lj.EmptyInput
+    | @lj.NoJsonFound(_)
+    | @lj.InvalidUtf8(_)
+    | @lj.InvalidEvent(_) => 3
+    @lj.DepthLimit(_, _) | @lj.SizeLimit(_, _) | @lj.TokenLimit(_, _) => 4
+    @lj.StrictViolation(_, _, _) | @lj.AmbiguousRepair(_, _, _) => 5
+    @lj.InvalidState(_) => 70
+    @lj.InvalidOption(_) => 2
     // A skeleton that is not satisfied is a refusal of the execution channel,
     // so it shares exit code 5 with E010 and E011.
-    @ij.SchemaError(_) => 5
+    @lj.SchemaError(_) => 5
   }
 }
 
 ///|
 /// One `R005 3:14 trailing comma removed` line per record, on stderr.
-fn report(repairs : Array[@ij.Repair]) -> Unit {
+fn report(repairs : Array[@lj.Repair]) -> Unit {
   for r in repairs {
     eprintln(
       r.code.code() +
@@ -92,8 +92,8 @@ fn report(repairs : Array[@ij.Repair]) -> Unit {
 
 ///|
 /// Suffix `--explain` adds when a record admits a second reading (FR-27).
-fn ambiguity_note(a : @ij.Ambiguity) -> String {
-  if a is @ij.Unambiguous {
+fn ambiguity_note(a : @lj.Ambiguity) -> String {
+  if a is @lj.Unambiguous {
     ""
   } else {
     " [ambiguous: " + a.name() + "]"
@@ -103,14 +103,14 @@ fn ambiguity_note(a : @ij.Ambiguity) -> String {
 ///|
 /// `--explain`: one repair per block, with severity and a caret under the
 /// input position, then the exactness summary (FR-17, FR-20).
-fn explain(repairs : Array[@ij.Repair], text : String) -> Unit {
+fn explain(repairs : Array[@lj.Repair], text : String) -> Unit {
   for r in repairs {
     eprintln(
       r.code.code() +
       " " +
       (match r.severity {
-        @ij.Info => "info"
-        @ij.Warning => "warning"
+        @lj.Info => "info"
+        @lj.Warning => "warning"
       }) +
       " " +
       r.position.line.to_string() +
@@ -132,13 +132,13 @@ fn explain(repairs : Array[@ij.Repair], text : String) -> Unit {
 /// wrapped in a sentence and a code fence. Every other subcommand is a filter
 /// over bytes the caller already has, and a filter does not get to ignore the
 /// bytes in front of the value without being asked (`--skip-prose`).
-fn options_of(o : CliOpts, agent_protocol? : Bool) -> @ij.Options {
-  let base : @ij.Options = {
-    ..@ij.Options::default(),
+fn options_of(o : CliOpts, agent_protocol? : Bool) -> @lj.Options {
+  let base : @lj.Options = {
+    ..@lj.Options::default(),
     mode: if o.strict {
-      @ij.Strict
+      @lj.Strict
     } else {
-      @ij.Lenient
+      @lj.Lenient
     },
     indent: o.indent,
     multi_root: o.multi_root,
@@ -174,12 +174,12 @@ fn options_of(o : CliOpts, agent_protocol? : Bool) -> @ij.Options {
 /// The first is a documented boundary, the second is a tunable limit, and
 /// without this line the user cannot tell which one they hit.
 fn prose_overflow_hint(
-  parser : @ij.PartialParser,
-  options : @ij.Options,
+  parser : @lj.PartialParser,
+  options : @lj.Options,
 ) -> Unit {
   if options.skip_prose && parser.prose_overflow() {
     eprintln(
-      "interjson: hint: the skipped prelude exceeded max_prose_buffer (" +
+      "liwenjson: hint: the skipped prelude exceeded max_prose_buffer (" +
       options.max_prose_buffer.to_string() +
       "); raise --max-prose-buffer or drop --skip-prose",
     )
@@ -187,7 +187,7 @@ fn prose_overflow_hint(
 }
 
 ///|
-/// The executable name without its directory, for the `interjson-mcp` alias.
+/// The executable name without its directory, for the `liwenjson-mcp` alias.
 /// A copy or symlink under that name starts the MCP server, which is how a
 /// package manager (or a Docker entrypoint) can expose the gate directly.
 fn program_name(argv : Array[String]) -> String {
@@ -211,7 +211,7 @@ fn program_name(argv : Array[String]) -> String {
 /// Run the command.
 fn run() -> Unit {
   let (o, usage_error) = parse_args(@env.args())
-  if program_name(@env.args()) == "interjson-mcp" {
+  if program_name(@env.args()) == "liwenjson-mcp" {
     match o.action {
       Run => o.action = Mcp
       Help => {
@@ -222,9 +222,9 @@ fn run() -> Unit {
     }
   }
   if usage_error != "" {
-    eprintln("interjson: " + usage_error)
+    eprintln("liwenjson: " + usage_error)
     eprintln(
-      "用法：interjson [选项] [文件]；用 `interjson --help` 查看帮助。",
+      "用法：liwenjson [选项] [文件]；用 `liwenjson --help` 查看帮助。",
     )
     quit(2)
   }
@@ -237,7 +237,7 @@ fn run() -> Unit {
       // The library's `VERSION`. `tests/cli_smoke.sh` asserts it matches
       // `version` in moon.mod, and `tests/claims.sh` that the documents quote
       // the same number.
-      println("interjson " + @ij.VERSION)
+      println("liwenjson " + @lj.VERSION)
       quit(0)
     }
     Llm => {
@@ -272,7 +272,7 @@ fn run() -> Unit {
       Some(p) => p
       None => "<stdin>"
     }
-    eprintln("interjson: 无法读取 " + name)
+    eprintln("liwenjson: 无法读取 " + name)
     return quit(3)
   }
   let options = options_of(o)
@@ -282,12 +282,12 @@ fn run() -> Unit {
   let prefix_max = 1048576
   let prefix : Array[Byte] = []
   // `--chunk N` sets the read size for this path too. It used to affect only
-  // `--batch`, so `--chunk 1 interjson big.json` silently read 64 KiB at a
+  // `--batch`, so `--chunk 1 liwenjson big.json` silently read 64 KiB at a
   // time: the flag that exists to exercise the streaming path did not touch
   // the streaming path.
   let chunk_cap = if o.chunk > 0 { o.chunk } else { 65536 }
   try {
-    let parser = @ij.PartialParser::new(options~)
+    let parser = @lj.PartialParser::new(options~)
     let mut piece = read_chunk(stream, chunk_cap)
     while piece.length() > 0 {
       if prefix.length() < prefix_max {
@@ -312,12 +312,12 @@ fn run() -> Unit {
         // skipped when the prefix is incomplete, which is the only case where
         // the buffered text is not the whole document.
         match e {
-          @ij.NoJsonFound(_) =>
+          @lj.NoJsonFound(_) =>
             if options.skip_prose && prefix.length() < prefix_max {
               let text = @utf8.decode_lossy(Bytes::from_array(prefix[:])[:])
-              if @ij.is_valid_json(text) {
-                let again : @ij.Options = { ..options, skip_prose: false, }
-                let retry = @ij.PartialParser::new(options=again)
+              if @lj.is_valid_json(text) {
+                let again : @lj.Options = { ..options, skip_prose: false, }
+                let retry = @lj.PartialParser::new(options=again)
                 retry.feed(text)
                 retry.finish()
               } else {
@@ -340,7 +340,7 @@ fn run() -> Unit {
           let verdict = s.evaluate(fin.value)
           if !verdict.ok {
             eprintln(
-              "interjson: schema not satisfied (" +
+              "liwenjson: schema not satisfied (" +
               verdict.satisfied.to_string() +
               "/" +
               verdict.total.to_string() +
@@ -367,12 +367,12 @@ fn run() -> Unit {
     }
     if o.explain {
       explain(fin.repairs, @utf8.decode_lossy(Bytes::from_array(prefix[:])[:]))
-      eprintln("interjson: exactness " + fin.exactness.name())
+      eprintln("liwenjson: exactness " + fin.exactness.name())
     } else if o.report {
       report(fin.repairs)
       if fin.repairs_truncated {
         eprintln(
-          "interjson: repair records truncated at " +
+          "liwenjson: repair records truncated at " +
           fin.repairs.length().to_string() +
           " (raise max_repairs to record more)",
         )
@@ -388,7 +388,7 @@ fn run() -> Unit {
     quit(0)
   } catch {
     e => {
-      eprintln("interjson: " + e.to_string())
+      eprintln("liwenjson: " + e.to_string())
       if o.retry_hint {
         let text = @utf8.decode_lossy(Bytes::from_array(prefix[:])[:])
         match e.retry_hint(input=text) {
@@ -414,7 +414,7 @@ fn run() -> Unit {
 
 ///|
 /// Order two readiness points by position, then by name.
-fn cmp_ready(a : @ij.FieldReady, b : @ij.FieldReady) -> Int32 {
+fn cmp_ready(a : @lj.FieldReady, b : @lj.FieldReady) -> Int32 {
   if a.permille < b.permille {
     -1
   } else if a.permille > b.permille {
@@ -425,7 +425,7 @@ fn cmp_ready(a : @ij.FieldReady, b : @ij.FieldReady) -> Int32 {
 }
 
 ///|
-/// `interjson readiness`: the field readiness curve of one document (FR-29).
+/// `liwenjson readiness`: the field readiness curve of one document (FR-29).
 fn run_readiness(o : CliOpts) -> Unit {
   let stream = open_input(o.path)
   if stream == 0L {
@@ -433,28 +433,28 @@ fn run_readiness(o : CliOpts) -> Unit {
       Some(p) => p
       None => "<stdin>"
     }
-    eprintln("interjson: 无法读取 " + name)
+    eprintln("liwenjson: 无法读取 " + name)
     return quit(3)
   }
   let text = read_all(stream)
   close_input(stream)
-  let fields = @ij.field_readiness(text, step=o.step) catch {
+  let fields = @lj.field_readiness(text, step=o.step) catch {
     e => {
-      eprintln("interjson: " + e.to_string())
+      eprintln("liwenjson: " + e.to_string())
       return quit(error_exit_code(e))
     }
   }
   if fields.length() == 0 {
-    println("interjson: readiness 0 fields (root is not an object)")
+    println("liwenjson: readiness 0 fields (root is not an object)")
     return quit(0)
   }
-  let curve = @ij.readiness_deciles([text], step=o.step) catch { _ => [] }
-  let saving = @ij.early_stop_saving([text], step=o.step) catch { _ => 0 }
-  let median = @ij.readiness_median([text], step=o.step) catch { _ => 0 }
+  let curve = @lj.readiness_deciles([text], step=o.step) catch { _ => [] }
+  let saving = @lj.early_stop_saving([text], step=o.step) catch { _ => 0 }
+  let median = @lj.readiness_median([text], step=o.step) catch { _ => 0 }
   let sorted = fields.copy()
   sorted.sort_by(cmp_ready)
   let sb = StringBuilder()
-  sb.write_string("interjson: readiness median ")
+  sb.write_string("liwenjson: readiness median ")
   sb.write_string(median.to_string())
   sb.write_string("/1000 fields ")
   sb.write_string(fields.length().to_string())

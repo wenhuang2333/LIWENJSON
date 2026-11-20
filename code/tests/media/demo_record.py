@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record the InterJSON demo with real Chromium screen capture (Playwright video).
+"""Record the LIWENJSON demo with real Chromium screen capture (Playwright video).
 
 Three segments, each a genuine browser recording of a real page:
 
@@ -64,7 +64,7 @@ def cli_page(agent_loop_text, explain_json, explain_rc, commands):
       h3{{font:600 12.5px/1.4 ui-monospace,monospace;color:#8b949e;margin:0 0 .3rem;
         text-transform:uppercase;letter-spacing:.08em}}
     </style></head><body>
-    <div id="bar">interjson &mdash; live CLI output, captured verbatim at record time</div>
+    <div id="bar">liwenjson &mdash; live CLI output, captured verbatim at record time</div>
     <div id="wrap">
       <div class="seg"><h3>1 &middot; the self-healing agent loop</h3>
         <div class="cmd" id="cmd1"></div><pre class="out" id="out1"></pre></div>
@@ -149,7 +149,7 @@ def main():
 
     commands = [
         "moon run examples/agent_loop --target native --release",
-        """printf '%s' '{"a":"b","a":"c"}' | interjson explain --json --policy execution""",
+        """printf '%s' '{"a":"b","a":"c"}' | liwenjson explain --json --policy execution""",
     ]
 
     with sync_playwright() as p:
@@ -164,7 +164,7 @@ def main():
         ctx = new_ctx()
         page = ctx.new_page()
         page.set_content(title_page(
-            "InterJSON &mdash; don't wait for valid JSON",
+            "LIWENJSON &mdash; don't wait for valid JSON",
             "live.html: four scenarios &middot; agent_loop: the round trip &middot; explain --json: valid_json next to execution"))
         page.wait_for_timeout(2800)
         video = page.video
@@ -175,7 +175,7 @@ def main():
         ctx = new_ctx()
         page = ctx.new_page()
         page.goto(live.as_uri())
-        page.wait_for_function("() => globalThis.interjson && globalThis.interjson.live")
+        page.wait_for_function("() => globalThis.liwenjson && globalThis.liwenjson.live")
         page.wait_for_timeout(800)
         tabs = page.locator("#tabs button")
         n = tabs.count()
@@ -220,9 +220,9 @@ def main():
         version = pathlib.Path(root / "code" / "moon.mod").read_text()
         version = [l for l in version.splitlines() if l.startswith("version")][0].split('"')[1]
         page.set_content(title_page(
-            f"InterJSON {version}",
+            f"LIWENJSON {version}",
             'every frame is the real page or the real command output &middot; '
-            'live: https://wenhuang2333.github.io/Moonbit-haker/live.html'))
+            'live: https://wenhuang2333.github.io/LIWENJSON/live.html'))
         # the bar has a 3 s cycle; two cycles is what makes the card readable
         page.wait_for_timeout(6000)
         video = page.video

@@ -128,11 +128,11 @@ for t in wasm wasm-gc js native; do
 done
 
 # --- CLI assertions ----------------------------------------------------------
-if [ -x "$CODE/_build/native/release/build/cmd/interjson/interjson.exe" ]; then
- BIN="$CODE/_build/native/release/build/cmd/interjson/interjson.exe"
+if [ -x "$CODE/_build/native/release/build/cmd/liwenjson/liwenjson.exe" ]; then
+ BIN="$CODE/_build/native/release/build/cmd/liwenjson/liwenjson.exe"
 else
- moon build cmd/interjson --target native --release >/dev/null 2>&1
- BIN="$CODE/_build/native/release/build/cmd/interjson/interjson.exe"
+ moon build cmd/liwenjson --target native --release >/dev/null 2>&1
+ BIN="$CODE/_build/native/release/build/cmd/liwenjson/liwenjson.exe"
 fi
 cli_out="$(bash tests/cli_smoke.sh 2>&1 | tail -3)"
 # `skipped` counts the doc-version checks whose document is deliberately not
@@ -244,7 +244,7 @@ size_kib() { awk -v b="$1" 'BEGIN { printf "%.1f", b / 1024 }'; }
 
 # The artifact the release ships is the *probe*, not any wasm under the build
 # tree: `release.yml` builds `bench/probe` and publishes `probe.wasm` as
-# `interjson-probe.wasm`. Searching the whole tree picked up
+# `liwenjson-probe.wasm`. Searching the whole tree picked up
 # `bench/bench.wasm` -- the benchmark driver, a different and larger file --
 # so the figure this gate derived and the figure the documents quote were
 # about two different artifacts, and the size budget (NFR-SIZE-01, stated
@@ -263,10 +263,10 @@ if [ -n "$WASM_B" ]; then
  require_in "$WASM_KIB KiB" "$ROOT/README.md"
 fi
 
-BUNDLE="$ROOT/static/demo/interjson.js"
+BUNDLE="$ROOT/static/demo/liwenjson.js"
 if [ -f "$BUNDLE" ]; then
  BUNDLE_KIB="$(size_kib "$(wc -c <"$BUNDLE" | tr -d ' ')")"
- derive "bundle_kib" "$BUNDLE_KIB" "wc -c < static/demo/interjson.js"
+ derive "bundle_kib" "$BUNDLE_KIB" "wc -c < static/demo/liwenjson.js"
  # Deliberately not asserted: no document quotes the bundle size. `require_in`
  # with no file argument is a no-op that reads like a check, so it is spelled
  # out here instead.

@@ -6,7 +6,7 @@
 fn opt_repair(
   input : String,
   opts : Options,
-) -> RepairResult raise InterJSONError {
+) -> RepairResult raise LIWENJSONError {
   repair(input, options=opts)
 }
 

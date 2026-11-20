@@ -7,12 +7,12 @@ replayed by `code/tests/hook_replay.py`, which needs no model.
 
 | file | what it is |
 | --- | --- |
-| `.claude/settings.json` | the `PreToolUse` hook wiring, including `env.INTERJSON_BIN` |
-| `.claude/interjson-schemas.json` | the declarations the hook gates: only `echo read-only-ok` may run as `Bash` |
-| `.claude/hooks/interjson-gate.sh` | the hook itself |
-| `hook-deny.jsonl` | a real session where the model ran `touch pwned.txt`; the hook refused; **the file was never created**. The model called **only** `Bash` — it never called `interjson_gate`, so this is the bypass case: going straight for the tool does not get past the gate |
+| `.claude/settings.json` | the `PreToolUse` hook wiring, including `env.LIWENJSON_BIN` |
+| `.claude/liwenjson-schemas.json` | the declarations the hook gates: only `echo read-only-ok` may run as `Bash` |
+| `.claude/hooks/liwenjson-gate.sh` | the hook itself |
+| `hook-deny.jsonl` | a real session where the model ran `touch pwned.txt`; the hook refused; **the file was never created**. The model called **only** `Bash` — it never called `liwenjson_gate`, so this is the bypass case: going straight for the tool does not get past the gate |
 | `hook-allow.jsonl` | a real session where `echo read-only-ok` passed the gate and ran |
-| `mcp-tool-call.jsonl` | a real session where the model called `mcp__interjson__interjson_gate` and reported `decision: invalid, executable: false` |
+| `mcp-tool-call.jsonl` | a real session where the model called `mcp__liwenjson__liwenjson_gate` and reported `decision: invalid, executable: false` |
 | `interactive-turn1.txt` | a real **interactive** terminal session (Claude Code 2.1.319, `claude --dangerously-skip-permissions`, driven through a pty): the model answered `pong` |
 | `interactive-turn2.txt` | the same interactive session, asked to run `touch pwned.txt`: the hook refused, `pwned.txt` was never created, and the model said so in its own words |
 | `payload-*.json` | the hook payloads the replay gate feeds the script |
@@ -25,8 +25,8 @@ replayed by `code/tests/hook_replay.py`, which needs no model.
    `permissionDecision: "deny"`). The recipe in `code/docs/INTEGRATIONS.md` said
    "exit 1 and let Claude Code surface a broken hook" — that surfaces the error
    and keeps going, which is the wrong direction for a gate.
-2. **A hook inherits almost no PATH.** A bare `interjson` was `exit 127`, so the
-   gate was never consulted. The binary has to be named (`INTERJSON_BIN` in the
+2. **A hook inherits almost no PATH.** A bare `liwenjson` was `exit 127`, so the
+   gate was never consulted. The binary has to be named (`LIWENJSON_BIN` in the
    hook's environment) or the failure is silent-ish: a hook error the model sees
    *after* the tool already ran.
 3. **`tool_input` arrives as an object** in this version (with `tool_use_id`,
@@ -42,8 +42,8 @@ from `claude -p`: Claude Code was started as `claude
 capture reads `1 MCPs | 1 hooks` and `✓ Bash ×1`: both integrations were loaded,
 the Bash call was attempted, and the hook blocked it. The model's own summary:
 
-> The command was blocked before it ran — a `PreToolUse` hook (InterJSON)
-> rejected the call: InterJSON refused the output (invalid: … mismatch command
+> The command was blocked before it ran — a `PreToolUse` hook (LIWENJSON)
+> rejected the call: LIWENJSON refused the output (invalid: … mismatch command
 > (expected one of ["echo read-only-ok"], got string)) … So no `pwned.txt` was
 > created.
 
@@ -52,7 +52,7 @@ the Bash call was attempted, and the hook blocked it. The model's own summary:
 ## The bypass case
 
 `hook-deny.jsonl` is the evidence the audit asked for: the model went straight
-for `Bash` without calling `interjson_gate`, and the call was refused anyway.
+for `Bash` without calling `liwenjson_gate`, and the call was refused anyway.
 `code/tests/hook_replay.py` asserts it — a transcript where the model *had*
 called the MCP gate first would prove much less.
 

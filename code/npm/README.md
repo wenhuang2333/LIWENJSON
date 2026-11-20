@@ -1,21 +1,21 @@
-# interjson-moonbit (npm)
+# liwenjson (npm)
 
-InterJSON is the **execution gate for LLM output**: it decides whether a model's
+LIWENJSON is the **execution gate for LLM output**: it decides whether a model's
 JSON may be executed, and when it may not, returns the sentence to send back to
 the model. This package is the MoonBit engine compiled to JavaScript — streaming
 repair, partial parsing, and the gate for in-process callers — plus a launcher
 that starts the local MCP server from the native binary.
 
 ```bash
-npm install interjson-moonbit
+npm install liwenjson
 ```
 
-> The package name is **`interjson-moonbit`** on npm (the suffix identifies the
-> MoonBit engine); the import name is `interjson`. Version `1.5.1` was published
-> to the npm registry on 2026-10-30.
+> The package name is **`liwenjson`** — the bare name, no suffix. `1.5.2` is the
+> first release published under it; `1.5.1` reached the npm registry on
+> 2026-10-30 as `interjson-moonbit`.
 
 ```js
-import { analyze, repair } from "interjson-moonbit";
+import { analyze, repair } from "liwenjson";
 
 // The gate: decide before executing tool arguments.
 const plan = analyze(modelOutput, {
@@ -32,30 +32,30 @@ const text = repair(modelOutput, { profile: "execution" });
 
 ## MCP server
 
-The package declares a bin named **`interjson-mcp`**, which runs `mcp.cjs`. It
+The package declares a bin named **`liwenjson-mcp`**, which runs `mcp.cjs`. It
 resolves the native engine and then spawns `<binary> mcp` with inherited stdio,
 so the JSON-RPC channel stays clean (no Node process in the middle, nothing on
 stdout but protocol messages). Resolution order:
 
-1. `INTERJSON_BIN` — an absolute path to the binary;
-2. `interjson` on `PATH`;
+1. `LIWENJSON_BIN` — an absolute path to the binary;
+2. `liwenjson` on `PATH`;
 3. the development build inside this repository.
 
 ```bash
-npm install -g interjson-moonbit
-interjson --version              # the native engine must resolve first
-interjson-mcp --version          # passed through to `<binary> mcp --version`
-interjson-mcp --print-config=claude
+npm install -g liwenjson
+liwenjson --version              # the native engine must resolve first
+liwenjson-mcp --version          # passed through to `<binary> mcp --version`
+liwenjson-mcp --print-config=claude
 ```
 
 `npm install` installs the JS engine and the launcher, not the native binary.
-If the binary is missing, `interjson-mcp` exits `127` with the install options
+If the binary is missing, `liwenjson-mcp` exits `127` with the install options
 on stderr — the first command above must succeed before the others can.
 
 **The npm package is the JS engine, not the MCP server.** The server itself is
 the native binary; the launcher only finds it and hands it this process's
 stdin/stdout. MCP therefore requires the native engine: build it with
-`moon build cmd/interjson --target native --release`, or point `INTERJSON_BIN`
+`moon build cmd/liwenjson --target native --release`, or point `LIWENJSON_BIN`
 at a binary. With no binary the launcher exits `127` and prints those options
 on stderr rather than starting a half-working server.
 
@@ -66,14 +66,14 @@ Zed, with the privacy model and troubleshooting, is in
 ```json
 {
   "mcpServers": {
-    "interjson": { "command": "interjson-mcp" }
+    "liwenjson": { "command": "liwenjson-mcp" }
   }
 }
 ```
 
-The server exposes four read-only tools: `interjson_gate` (the gate; `executable`,
-`decision`, `exactness`, `value`, `retry.prompt`), `interjson_repair`,
-`interjson_validate`, and `interjson_readiness`. The gate defaults to the
+The server exposes four read-only tools: `liwenjson_gate` (the gate; `executable`,
+`decision`, `exactness`, `value`, `retry.prompt`), `liwenjson_repair`,
+`liwenjson_validate`, and `liwenjson_readiness`. The gate defaults to the
 `agent` profile, which equals `Options::for_agent()` — prose before the
 arguments is skipped rather than refused. A refused result always carries a
 non-empty `retry.prompt` and `value: null`; `content[0].text` is a summary and
@@ -108,16 +108,16 @@ dropped.
 
 ## Streaming
 
-`live` is the same frame the [demo page](https://wenhuang2333.github.io/Moonbit-haker/live.html)
+`live` is the same frame the [demo page](https://wenhuang2333.github.io/LIWENJSON/live.html)
 draws: `consumed`, `total`, `completeness`, `snapshot`, `open_path`, `members`,
 and (with a schema) `syntax_ready`, `schema_ready`, `settled_ready`,
 `execution_ready`. It is stateless, so a caller can re-render on every frame;
-for a token-by-token feed use the CLI protocol (`interjson serve`) or
+for a token-by-token feed use the CLI protocol (`liwenjson serve`) or
 the MoonBit `PartialParser`.
 
 ## Scope
 
-This package wraps the same bundle as `static/demo/interjson.js`; it does not
+This package wraps the same bundle as `static/demo/liwenjson.js`; it does not
 reimplement the engine. The version is the engine version (`1.5.1`), published
 to npm on 2026-10-30. The MoonBit package on mooncakes is `0.13.0` because the
 registry currently accepts only `0.x.y`; the bytes are the same. `0.13.0` was

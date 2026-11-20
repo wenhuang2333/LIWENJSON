@@ -2,14 +2,14 @@
 # TC-C-01 command line smoke test (D11). Every case asserts the exit code and,
 # where it matters, the exact output. Run from anywhere:
 #
-#   bash code/tests/cli_smoke.sh [<interjson executable>]
+#   bash code/tests/cli_smoke.sh [<liwenjson executable>]
 #
 # The default executable path is the release native build.
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FIX="$ROOT/llm/fixtures"
-BIN="${1:-$ROOT/_build/native/release/build/cmd/interjson/interjson.exe}"
+BIN="${1:-$ROOT/_build/native/release/build/cmd/liwenjson/liwenjson.exe}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -78,7 +78,7 @@ STDIN='hello world' check "no JSON value" 3 '' "E002" --
 STDIN='{"a":1}' check "unknown option" 2 '' "未知选项" -- --bogus
 # The command forms the documents use must actually work. `serve --stdio`
 # was printed all over the release notes while the CLI rejected it, and
-# `interjson repair` was read as a filename; both are now real, and these
+# `liwenjson repair` was read as a filename; both are now real, and these
 # cases keep them real.
 STDIN='{"id":1,"method":"hello"}' check_has "serve speaks the protocol" 0 '"protocol":1' out -- serve
 STDIN='{"id":1,"method":"hello"}' check_has "serve --stdio alias" 0 '"protocol":1' out -- serve --stdio
@@ -98,7 +98,7 @@ STDIN='{"a":"b' check "unclosed string" 0 '{"a":"b"}' "R010" -- --report
 STDIN='[1,null,tru]' check "literal completion" 0 '[1,null,true]' "R012" -- --report
 
 # --help content
-if printf '{"a":1}' | "$BIN" --help | grep -qF 'interjson [选项] [文件]'; then
+if printf '{"a":1}' | "$BIN" --help | grep -qF 'liwenjson [选项] [文件]'; then
   pass=$((pass + 1)); printf 'ok   %-34s\n' "--help content"
 else
   fail=$((fail + 1)); printf 'FAIL %-34s\n' "--help content"
@@ -107,12 +107,12 @@ fi
 # --version must match `version` in moon.mod (the string is hard-coded in main.mbt)
 MOD_VERSION=$(sed -n 's/^version *= *"\(.*\)"/\1/p' "$(dirname "$0")/../moon.mod")
 GOT_VERSION=$(printf '{"a":1}' | "$BIN" --version)
-if [ "$GOT_VERSION" = "interjson $MOD_VERSION" ]; then
+if [ "$GOT_VERSION" = "liwenjson $MOD_VERSION" ]; then
   pass=$((pass + 1)); printf 'ok   %-34s %s\n' "--version matches moon.mod" "$GOT_VERSION"
 else
   fail=$((fail + 1))
-  printf 'FAIL %-34s `interjson --version` says "%s" but code/moon.mod says "%s"\n' \
-    "--version matches moon.mod" "$GOT_VERSION" "interjson $MOD_VERSION"
+  printf 'FAIL %-34s `liwenjson --version` says "%s" but code/moon.mod says "%s"\n' \
+    "--version matches moon.mod" "$GOT_VERSION" "liwenjson $MOD_VERSION"
 fi
 
 # Every document that states a version must state the same one. The published
@@ -154,22 +154,22 @@ check_doc_version "package README.zh version" "code/README.zh.md" \
 check_doc_version "condensed doc version" "产品文档-精简版.md" \
   's/^> \*\*版本\*\*：\([0-9.]*\).*$/\1/p'
 
-# Every `interjson <word>` the documents tell a reader to type must be a
+# Every `liwenjson <word>` the documents tell a reader to type must be a
 # subcommand the CLI actually has. Two counterexamples shipped: the release
-# notes advertised `interjson serve --stdio`, which the CLI rejected with
-# "unknown option", and `interjson repair`, which it read as a filename and
+# notes advertised `liwenjson serve --stdio`, which the CLI rejected with
+# "unknown option", and `liwenjson repair`, which it read as a filename and
 # failed with "cannot read repair". No gate compared the documents with the
 # CLI's own vocabulary, so both looked correct in a diff and were wrong on a
 # judge's machine. The vocabulary is taken from `--help` itself, so a
 # subcommand that disappears also fails here.
-CLI_SUBCOMMANDS="$("$BIN" --help 2>&1 | sed -n 's/^interjson \([a-z][a-z-]*\).*/\1/p' | sort -u)"
+CLI_SUBCOMMANDS="$("$BIN" --help 2>&1 | sed -n 's/^liwenjson \([a-z][a-z-]*\).*/\1/p' | sort -u)"
 DOC_SUBCOMMANDS="$(
   for f in README.md code/README.md code/README.zh.md \
            code/docs/PROTOCOL.md code/docs/INTEGRATIONS.md \
            产品文档-精简版.md; do
     [ -f "$REPO/$f" ] || continue
-    grep -oE '(^|`)interjson [a-z][a-z0-9-]*([^a-zA-Z0-9._-]|$)' "$REPO/$f" 2>/dev/null
-  done | sed -E 's/^.*interjson //; s/[^a-z0-9-].*$//' | sort -u
+    grep -oE '(^|`)liwenjson [a-z][a-z0-9-]*([^a-zA-Z0-9._-]|$)' "$REPO/$f" 2>/dev/null
+  done | sed -E 's/^.*liwenjson //; s/[^a-z0-9-].*$//' | sort -u
 )"
 unknown=""
 for w in $DOC_SUBCOMMANDS; do
@@ -290,7 +290,7 @@ else
   fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "R022 re-cased literal" "$(cat "$TMP/err")"
 fi
 
-# interjson llm: provider adapters over a recorded event stream
+# liwenjson llm: provider adapters over a recorded event stream
 out="$("$BIN" llm --provider anthropic "$FIX/anthropic_parallel.jsonl")"
 if [ "$(printf '%s\n' "$out" | grep -c '"index"')" = 3 ] \
    && printf '%s' "$out" | head -1 | grep -q '"name":"search"' \
@@ -360,9 +360,9 @@ fi
 
 # readiness reports a median, a field count and a monotone curve.
 out="$(printf '%s' '{"path":"/tmp","old":"x","content":"long enough to matter"}' | "$BIN" readiness)"
-if printf '%s' "$out" | head -1 | grep -q '^interjson: readiness median' \
+if printf '%s' "$out" | head -1 | grep -q '^liwenjson: readiness median' \
    && printf '%s' "$out" | grep -q '^field content ' \
-   && printf '%s' "$out" | grep -q '^interjson: readiness' ; then
+   && printf '%s' "$out" | grep -q '^liwenjson: readiness' ; then
   mono="$(printf '%s' "$out" | head -1 | sed 's/.*curve //')"
   if [ "$(printf '%s' "$mono" | tr ' ' '\n' | sort -n | tr '\n' ' ')" = "$mono " ]; then
     pass=$((pass + 1)); printf 'ok   %-34s\n' "readiness"
@@ -408,7 +408,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# interjson explain (FR-32, FR-33): one block, and an exit code that says whether
+# liwenjson explain (FR-32, FR-33): one block, and an exit code that says whether
 # the value may be executed.
 # ---------------------------------------------------------------------------
 
@@ -432,7 +432,7 @@ check_has "explain reports both readiness numbers" 5 "syntax-ready" out -- expla
 STDIN='{"query":"MoonBit"}'
 check_has "bad skeleton is a usage error" 2 "E070" err -- explain --schema '{!a:'
 check_has "unknown policy is a usage error" 2 "permissive" err -- explain --policy lenient
-check_has "unreadable input" 3 "无法读取" err -- explain /nonexistent/interjson.json
+check_has "unreadable input" 3 "无法读取" err -- explain /nonexistent/liwenjson.json
 
 STDIN='{"query":"MoonBit","limit":10}'
 out="$(printf '%s' "$STDIN" | "$BIN" explain --json --schema '{!query:string,!limit:integer}')"
@@ -556,25 +556,25 @@ fi
 # `mcp` is the product's primary surface; these cases keep the printed client
 # configuration and the tool list from drifting away from the server.
 cfg="$("$BIN" mcp --print-config=claude)"
-if [ "$cfg" = 'claude mcp add interjson -- interjson mcp' ]; then
+if [ "$cfg" = 'claude mcp add liwenjson -- liwenjson mcp' ]; then
   pass=$((pass + 1)); printf 'ok   %-34s\n' "mcp --print-config=claude"
 else
   fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "mcp --print-config=claude" "$cfg"
 fi
 cfg="$("$BIN" mcp --print-config=cursor)"
-if printf '%s' "$cfg" | grep -qF '"command":"interjson"' \
+if printf '%s' "$cfg" | grep -qF '"command":"liwenjson"' \
    && printf '%s' "$cfg" | grep -qF '"args":["mcp"]'; then
   pass=$((pass + 1)); printf 'ok   %-34s\n' "mcp --print-config=cursor"
 else
   fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "mcp --print-config=cursor" "$cfg"
 fi
-if "$BIN" mcp --help 2>&1 | grep -qF 'interjson_gate'; then
+if "$BIN" mcp --help 2>&1 | grep -qF 'liwenjson_gate'; then
   pass=$((pass + 1)); printf 'ok   %-34s\n' "mcp --help names the gate"
 else
   fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "mcp --help names the gate" "$("$BIN" mcp --help 2>&1)"
 fi
 mcp_init="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' | "$BIN" mcp)"
-if printf '%s' "$mcp_init" | grep -qF '"name":"interjson"' \
+if printf '%s' "$mcp_init" | grep -qF '"name":"liwenjson"' \
    && printf '%s' "$mcp_init" | grep -qF '"instructions"'; then
   pass=$((pass + 1)); printf 'ok   %-34s\n' "mcp initialize"
 else
@@ -658,7 +658,7 @@ fi
 
 # The gate's two channels are different objects: the text channel is a
 # summary for the model, `structuredContent` is the payload.
-gate_out="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"interjson_gate","arguments":{"text":"{\"a\":1,}"}}}' | "$BIN" mcp | tail -1)"
+gate_out="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"liwenjson_gate","arguments":{"text":"{\"a\":1,}"}}}' | "$BIN" mcp | tail -1)"
 if printf '%s' "$gate_out" | grep -qF '"structuredContent"' \
    && printf '%s' "$gate_out" | grep -qF 'decision='; then
   pass=$((pass + 1)); printf 'ok   %-34s\n' "gate carries a summary and a payload"
@@ -668,21 +668,21 @@ fi
 
 # The agent profile is the agent profile: a sentence in front of the
 # arguments is not part of the arguments.
-if printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"interjson_gate","arguments":{"text":"Here are the args:\n{\"a\":1}"}}}' | "$BIN" mcp | tail -1 | grep -qF '"executable":true'; then
+if printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"liwenjson_gate","arguments":{"text":"Here are the args:\n{\"a\":1}"}}}' | "$BIN" mcp | tail -1 | grep -qF '"executable":true'; then
   pass=$((pass + 1)); printf 'ok   %-34s\n' "agent profile skips prose"
 else
   fail=$((fail + 1)); printf 'FAIL %-34s\n' "agent profile skips prose"
 fi
 
 # ...and `execution` is not the agent profile.
-if printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"interjson_gate","arguments":{"text":"Here are the args:\n{\"a\":1}","profile":"execution"}}}' | "$BIN" mcp | tail -1 | grep -qF '"executable":false'; then
+if printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"liwenjson_gate","arguments":{"text":"Here are the args:\n{\"a\":1}","profile":"execution"}}}' | "$BIN" mcp | tail -1 | grep -qF '"executable":false'; then
   pass=$((pass + 1)); printf 'ok   %-34s\n' "execution profile refuses prose"
 else
   fail=$((fail + 1)); printf 'FAIL %-34s\n' "execution profile refuses prose"
 fi
 
 # Every refusal carries the sentence to send back to the model, and no value.
-refusal="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"interjson_gate","arguments":{"text":"{\"a\":1}","schema_json":{"type":"object","properties":{"a":{"type":"string"}},"required":["a"]}}}}' | "$BIN" mcp | tail -1)"
+refusal="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"liwenjson_gate","arguments":{"text":"{\"a\":1}","schema_json":{"type":"object","properties":{"a":{"type":"string"}},"required":["a"]}}}}' | "$BIN" mcp | tail -1)"
 if printf '%s' "$refusal" | grep -qF '"executable":false' \
    && printf '%s' "$refusal" | grep -qF '"prompt"' \
    && printf '%s' "$refusal" | grep -qF '"value":null'; then
@@ -711,7 +711,7 @@ else
 fi
 
 # The space form of `--print-config` used to be read as a file name.
-if [ "$("$BIN" mcp --print-config claude)" = 'claude mcp add interjson -- interjson mcp' ]; then
+if [ "$("$BIN" mcp --print-config claude)" = 'claude mcp add liwenjson -- liwenjson mcp' ]; then
   pass=$((pass + 1)); printf 'ok   %-34s\n' "mcp --print-config claude (space)"
 else
   fail=$((fail + 1)); printf 'FAIL %-34s\n' "mcp --print-config claude (space)"
@@ -754,7 +754,7 @@ fi
 #
 # The audit reproduced wrong-allows through `serve` and the MCP gate. These
 # assertions pin the same declarations at the two entry points that are not the
-# library: the CLI and `interjson mcp`. The library itself is covered by
+# library: the CLI and `liwenjson mcp`. The library itself is covered by
 # `schema_gate_wbtest.mbt`.
 # ---------------------------------------------------------------------------
 
@@ -771,7 +771,7 @@ STDIN='[1]' check "container constraint allows the satisfying element" 0 '' "" -
 # verdict. This is the audit's headline reproducer.
 mcp_gate() {
   printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
-    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"interjson_gate\",\"arguments\":{\"text\":\"{\\\"mode\\\":\\\"write\\\"}\",\"schema_json\":$1}}}" \
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"liwenjson_gate\",\"arguments\":{\"text\":\"{\\\"mode\\\":\\\"write\\\"}\",\"schema_json\":$1}}}" \
     | "$BIN" mcp | tail -1
 }
 for order in \
@@ -791,7 +791,7 @@ for order in \
   '{"type":"object","properties":{"mode":{"type":"string","enum":["read","write"],"const":"read"}},"required":["mode"]}'
 do
   if printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
-    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"interjson_gate\",\"arguments\":{\"text\":\"{\\\"mode\\\":\\\"read\\\"}\",\"schema_json\":$order}}}" \
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"liwenjson_gate\",\"arguments\":{\"text\":\"{\\\"mode\\\":\\\"read\\\"}\",\"schema_json\":$order}}}" \
     | "$BIN" mcp | tail -1 | grep -qF '"executable":true'; then
     pass=$((pass + 1)); printf 'ok   %-34s\n' "mcp const/enum allows read"
   else
@@ -799,15 +799,15 @@ do
   fi
 done
 
-# `interjson_repair` reads the declaration instead of silently accepting it: an
+# `liwenjson_repair` reads the declaration instead of silently accepting it: an
 # unsupported keyword is `E070` and a violating document is refused.
-repair_out="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"interjson_repair","arguments":{"text":"{\"a\":1}","schema_json":{"$ref":"#/definitions/a"}}}}' | "$BIN" mcp | tail -1)"
+repair_out="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"liwenjson_repair","arguments":{"text":"{\"a\":1}","schema_json":{"$ref":"#/definitions/a"}}}}' | "$BIN" mcp | tail -1)"
 if printf '%s' "$repair_out" | grep -qF 'E070'; then
   pass=$((pass + 1)); printf 'ok   %-34s\n' "mcp repair refuses an unsupported keyword"
 else
   fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "mcp repair refuses an unsupported keyword" "$repair_out"
 fi
-repair_out="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"interjson_repair","arguments":{"text":"{\"mode\":\"write\"}","schema_json":{"type":"object","properties":{"mode":{"type":"string","const":"read"}},"required":["mode"]}}}}' | "$BIN" mcp | tail -1)"
+repair_out="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"liwenjson_repair","arguments":{"text":"{\"mode\":\"write\"}","schema_json":{"type":"object","properties":{"mode":{"type":"string","const":"read"}},"required":["mode"]}}}}' | "$BIN" mcp | tail -1)"
 if printf '%s' "$repair_out" | grep -qF 'E070'; then
   pass=$((pass + 1)); printf 'ok   %-34s\n' "mcp repair refuses a violating document"
 else

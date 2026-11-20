@@ -1,6 +1,6 @@
 {
   "env": {
-    "INTERJSON_BIN": "/Users/zhanshishan/Desktop/Moonbit \u9ed1\u5ba2\u677e/code/_build/native/release/build/cmd/interjson/interjson.exe"
+    "LIWENJSON_BIN": "/Users/zhanshishan/Desktop/Moonbit \u9ed1\u5ba2\u677e/code/_build/native/release/build/cmd/liwenjson/liwenjson.exe"
   },
   "hooks": {
     "PreToolUse": [
@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/interjson-gate.sh",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/liwenjson-gate.sh",
             "timeout": 30
           }
         ]

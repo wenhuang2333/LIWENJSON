@@ -1,5 +1,5 @@
-// interjson/llm — adapt the tool-call fragment streams of large language model
-// providers into `interjson` partial parses (FR-23).
+// liwenjson/llm — adapt the tool-call fragment streams of large language model
+// providers into `liwenjson` partial parses (FR-23).
 //
 // The package is pure: it never opens a socket and never owns an HTTP client.
 // Its input is the text of one already-extracted event payload; how that text
@@ -151,9 +151,9 @@ pub(all) struct ToolCallView {
   /// Function name, when the provider sent one.
   name : String
   /// Partial parse of the arguments received so far.
-  snapshot : @interjson.Snapshot
+  snapshot : @liwenjson.Snapshot
   /// Exactness of `snapshot`.
-  exactness : @interjson.Exactness
+  exactness : @liwenjson.Exactness
   /// Whether the provider signalled the end of this call's arguments.
   done : Bool
   /// How the call ended (FR-30).
@@ -175,7 +175,7 @@ pub(all) struct ToolCallView {
 /// happy, and the arguments are not what the model wrote. `exactness` is what
 /// says so, and a host that reads only `end` would execute an invented value.
 pub fn ToolCallView::is_executable(self : ToolCallView) -> Bool {
-  self.end.is_executable() && !(self.exactness is @interjson.Lossy)
+  self.end.is_executable() && !(self.exactness is @liwenjson.Lossy)
 }
 
 ///|
@@ -190,7 +190,7 @@ struct ToolCall {
   mut item_id : String
   mut id : String
   mut name : String
-  mut parser : @interjson.PartialParser?
+  mut parser : @liwenjson.PartialParser?
   mut done : Bool
   mut end : CallEnd
   mut stop_reason : String
@@ -203,7 +203,7 @@ struct ToolCall {
 /// Accumulates the tool calls of one model response.
 pub struct ToolStream {
   provider : Provider
-  options : @interjson.Options
+  options : @liwenjson.Options
   calls : Array[ToolCall]
   /// Explanation of the last `error` event, "" when none arrived.
   mut error_message : String
@@ -228,11 +228,11 @@ pub struct ToolStream {
 /// that enables delta tracking and leaves the exactness gate open.
 pub fn ToolStream::new(
   provider : Provider,
-  options? : @interjson.Options,
-) -> ToolStream raise @interjson.InterJSONError {
+  options? : @liwenjson.Options,
+) -> ToolStream raise @liwenjson.LIWENJSONError {
   let opts = match options {
     Some(o) => o
-    None => @interjson.Options::for_llm()
+    None => @liwenjson.Options::for_llm()
   }
   opts.validate()
   {
@@ -278,11 +278,11 @@ fn ToolStream::call_at(
 fn ToolStream::parser_of(
   self : ToolStream,
   c : ToolCall,
-) -> @interjson.PartialParser raise @interjson.InterJSONError {
+) -> @liwenjson.PartialParser raise @liwenjson.LIWENJSONError {
   match c.parser {
     Some(p) => p
     None => {
-      let p = @interjson.PartialParser::new(options=self.options)
+      let p = @liwenjson.PartialParser::new(options=self.options)
       c.parser = Some(p)
       p
     }
@@ -298,9 +298,9 @@ fn ToolStream::view(self : ToolStream, c : ToolCall) -> ToolCallView {
     None =>
       {
         value: None,
-        completeness: @interjson.Empty,
+        completeness: @liwenjson.Empty,
         open_path: [],
-        exactness: @interjson.Exact,
+        exactness: @liwenjson.Exact,
         ambiguous: false,
       }
   }
@@ -323,7 +323,7 @@ fn ToolStream::push_arguments(
   self : ToolStream,
   c : ToolCall,
   fragment : String,
-) -> Unit raise @interjson.InterJSONError {
+) -> Unit raise @liwenjson.LIWENJSONError {
   // A finished parser cannot take another fragment (`E030`). A provider can
   // send one anyway: `response.function_call_arguments.done` closes the call
   // and `response.output_item.done` then repeats a *longer* argument string,
@@ -345,7 +345,7 @@ fn ToolStream::close_call(
   _self : ToolStream,
   c : ToolCall,
   end : CallEnd,
-) -> Unit raise @interjson.InterJSONError {
+) -> Unit raise @liwenjson.LIWENJSONError {
   match c.parser {
     Some(p) => if !c.done { ignore(p.finish()) }
     // A call whose name arrived but whose arguments never did has no parser:
@@ -467,9 +467,9 @@ fn ToolStream::note_error(self : ToolStream, message : String) -> Unit {
 pub fn ToolStream::push_event(
   self : ToolStream,
   event_json : String,
-) -> Array[ToolCallView] raise @interjson.InterJSONError {
+) -> Array[ToolCallView] raise @liwenjson.LIWENJSONError {
   let v = @json.parse(event_json) catch {
-    _ => raise @interjson.InvalidEvent("event payload is not valid JSON")
+    _ => raise @liwenjson.InvalidEvent("event payload is not valid JSON")
   }
   let touched = match self.provider {
     Anthropic => self.push_anthropic(v)
@@ -511,13 +511,13 @@ pub fn ToolStream::ignored_events(self : ToolStream) -> Int32 {
 /// Finish every call that the provider never closed, and return all views.
 ///
 /// This is the case of a response cut short by `max_tokens`: the arguments are
-/// truncated, so `interjson` closes the open containers and the view's
+/// truncated, so `liwenjson` closes the open containers and the view's
 /// exactness is `Lossy`.
 pub fn ToolStream::finish(
   self : ToolStream,
-) -> Array[ToolCallView] raise @interjson.InterJSONError {
+) -> Array[ToolCallView] raise @liwenjson.LIWENJSONError {
   if self.calls.length() == 0 && self.unsupported.length() > 0 {
-    raise @interjson.InvalidEvent(
+    raise @liwenjson.InvalidEvent(
       "the stream carried events this build does not read (" +
       self.unsupported.join(", ") +
       ") and produced no tool call; the arguments cannot be claimed to be absent",

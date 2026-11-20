@@ -1,6 +1,6 @@
 # Security
 
-InterJSON is built to process **untrusted input**: model output, logs, partial
+LIWENJSON is built to process **untrusted input**: model output, logs, partial
 network payloads, user files. The threat model is therefore about what hostile
 or damaged input can make the parser do, not about authentication.
 
@@ -8,15 +8,15 @@ or damaged input can make the parser do, not about authentication.
 
 - **No panic observed, and the claim is bounded by the budget that was run.**
   Every byte sequence either produces a result or raises one of the documented
-  `InterJSONError`s — that is the design, and these are the tests behind it.
+  `LIWENJSONError`s — that is the design, and these are the tests behind it.
   They are empirical, so the honest claim is "no panic observed in N cases", not
   "no panic on any input"; the budget is stated with each suite below and again
   in the paragraph after the table. Two suites cover it:
 
   | Suite | What it generates | Default budget | CI | Nightly |
   | --- | --- | --- | --- | --- |
-  | `prop_wbtest.mbt` (TC-P-00…09) | *strings* that look like damaged JSON: valid documents, mutated documents, truncated documents, token soup | 400 cases per property, 8 properties | 400 | 1 000 000 (`INTERJSON_LONGRUN`) |
-  | `fuzz_wbtest.mbt` (TC-F-01…05) | *arbitrary bytes* — pure noise, noise around JSON syntax, and valid UTF-8 cut at arbitrary offsets — fed at chunk sizes 1, 2, 3, 5, 7, 13, 16 and 64 so a boundary lands inside every multi-byte sequence | 300 cases per property, 5 properties | 2 000 (`INTERJSON_FUZZ=2000`) | 100 000 (`INTERJSON_FUZZ=100000`) |
+  | `prop_wbtest.mbt` (TC-P-00…09) | *strings* that look like damaged JSON: valid documents, mutated documents, truncated documents, token soup | 400 cases per property, 8 properties | 400 | 1 000 000 (`LIWENJSON_LONGRUN`) |
+  | `fuzz_wbtest.mbt` (TC-F-01…05) | *arbitrary bytes* — pure noise, noise around JSON syntax, and valid UTF-8 cut at arbitrary offsets — fed at chunk sizes 1, 2, 3, 5, 7, 13, 16 and 64 so a boundary lands inside every multi-byte sequence | 300 cases per property, 5 properties | 2 000 (`LIWENJSON_FUZZ=2000`) | 100 000 (`LIWENJSON_FUZZ=100000`) |
 
   TC-F-01 is the panic gate: 3 byte shapes × 5 chunk sizes × the case count, per
   run. The property suite's token-soup property (TC-P-06) additionally asserts
@@ -60,24 +60,24 @@ or damaged input can make the parser do, not about authentication.
 
 ## The MCP server
 
-`interjson mcp` is a **local** stdio server: it opens no sockets, makes no
+`liwenjson mcp` is a **local** stdio server: it opens no sockets, makes no
 network calls and needs no API key, so inputs and tool declarations never leave
-the machine. It exposes four **read-only** tools — `interjson_gate` (primary,
-defaults to the `agent` profile), `interjson_repair`, `interjson_validate` and
-`interjson_readiness` — and none of them writes files or executes the repaired
+the machine. It exposes four **read-only** tools — `liwenjson_gate` (primary,
+defaults to the `agent` profile), `liwenjson_repair`, `liwenjson_validate` and
+`liwenjson_readiness` — and none of them writes files or executes the repaired
 value; the host decides what to do with an allowed result. stdout carries
 JSON-RPC only and diagnostics go to stderr, so a client cannot mistake a log
 line for a protocol message. The untrusted-input guarantees above apply
 unchanged, including panic-freedom and the bounded-work limits.
 
 **MCP is advisory, and that is a security property a reader should know.**
-`interjson_gate` is a tool the model *may* call. A model can decline to call it,
+`liwenjson_gate` is a tool the model *may* call. A model can decline to call it,
 and the MCP protocol gives the host no way to make the call mandatory — so
-"the client is configured for InterJSON" means "the gate is available", not
+"the client is configured for LIWENJSON" means "the gate is available", not
 "every tool call passed the gate". There is no configuration of this server
 that changes that. What makes the gate mandatory is a host-side insertion point
 the model cannot route around: a Claude Code `PreToolUse` hook, a `gate(args)`
-call in the host SDK, or `interjson serve` / the npm and pip packages / the HTTP
+call in the host SDK, or `liwenjson serve` / the npm and pip packages / the HTTP
 facade. Recipes are in `code/docs/INTEGRATIONS.md`.
 
 The server also does not protect you from *valid* JSON with the wrong values:

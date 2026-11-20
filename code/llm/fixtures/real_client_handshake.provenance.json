@@ -8,7 +8,7 @@
   },
   "recorded_by": "code/tests/record_mcp_handshake.sh",
   "recorded_at": "2026-11-08",
-  "captured": "a tee wrapper around `interjson mcp`, added with `claude mcp add`",
+  "captured": "a tee wrapper around `liwenjson mcp`, added with `claude mcp add`",
   "requests": [
     "server/discover",
     "initialize",

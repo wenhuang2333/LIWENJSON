@@ -4,11 +4,11 @@
 // script that registers its entry points through three host hooks. This module
 // installs the hooks, loads the script once, and exports the captured
 // functions. The global namespace is restored afterwards, so importing
-// `interjson` does not leave `interjsonRegister*` or a `interjson` object behind.
+// `liwenjson` does not leave `liwenjsonRegister*` or a `liwenjson` object behind.
 
 const path = require("node:path");
 
-const HOOKS = ["interjsonRegister1", "interjsonRegister2", "interjsonRegister3"];
+const HOOKS = ["liwenjsonRegister1", "liwenjsonRegister2", "liwenjsonRegister3"];
 
 function loadEngine() {
   const registered = Object.create(null);
@@ -20,7 +20,7 @@ function loadEngine() {
     };
   }
   try {
-    require(path.join(__dirname, "vendor", "interjson.js"));
+    require(path.join(__dirname, "vendor", "liwenjson.js"));
   } finally {
     for (const hook of HOOKS) {
       if (previous[hook] === undefined) {
@@ -37,14 +37,14 @@ const engine = loadEngine();
 
 function requireString(name, value) {
   if (typeof value !== "string") {
-    throw new TypeError(`interjson.${name}: input must be a string`);
+    throw new TypeError(`liwenjson.${name}: input must be a string`);
   }
 }
 
 function profileOf(options) {
   const profile = options && options.profile ? String(options.profile) : "";
   if (profile && !["permissive", "interactive", "execution", "agent", "strict"].includes(profile)) {
-    throw new TypeError(`interjson: unknown profile "${profile}"`);
+    throw new TypeError(`liwenjson: unknown profile "${profile}"`);
   }
   return profile;
 }
@@ -59,10 +59,10 @@ function profileOf(options) {
  * keeps them as fields, and it still subclasses `Error`, so `catch (e) { e.message }`
  * keeps working.
  */
-class InterJSONError extends Error {
+class LIWENJSONError extends Error {
   constructor(message) {
     super(message);
-    this.name = "InterJSONError";
+    this.name = "LIWENJSONError";
     const match = /^(E\d{3})\b\s*(.*)$/.exec(message);
     this.code = match ? match[1] : "";
     this.detail = match ? match[2] : message;
@@ -71,7 +71,7 @@ class InterJSONError extends Error {
 
 function unwrap(text) {
   if (text.startsWith("ERROR: ")) {
-    throw new InterJSONError(text.slice("ERROR: ".length));
+    throw new LIWENJSONError(text.slice("ERROR: ".length));
   }
   return text;
 }
@@ -89,7 +89,7 @@ function repair(input, options = {}) {
   // A declaration is honoured, not ignored. This function used to read only
   // `profile` and silently drop `schema`/`schemaJson`, so
   // `repair('{"a":1}', {schemaJson: {...a: string}})` returned `{"a":1}` while
-  // the Python client and the MCP `interjson_repair` tool refused it (audit
+  // the Python client and the MCP `liwenjson_repair` tool refused it (audit
   // 4.2). The engine has no separate "repair against a declaration" entry
   // point, and the decision fields `analyze` computes are the same check the
   // other two entry points make, so the declaration path goes through
@@ -102,7 +102,7 @@ function repair(input, options = {}) {
     });
     if (!plan.executable) {
       const reason = plan.error && plan.error.message ? plan.error.message : plan.decision;
-      throw new InterJSONError(
+      throw new LIWENJSONError(
         `${plan.error && plan.error.code ? plan.error.code : "E070"} ${reason}`,
       );
     }
@@ -130,7 +130,7 @@ function analyze(input, options = {}) {
     plan = JSON.parse(engine.analyze(input, profile, options.schema || ""));
   }
   if (plan.decision === undefined) {
-    throw new Error(plan.error || "interjson.analyze: could not build a plan");
+    throw new Error(plan.error || "liwenjson.analyze: could not build a plan");
   }
   return plan;
 }
@@ -220,7 +220,7 @@ function gate(input, options = {}) {
 }
 
 module.exports = {
-  InterJSONError,
+  LIWENJSONError,
   repair,
   repairResult,
   analyze,

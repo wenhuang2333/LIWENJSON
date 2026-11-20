@@ -8,7 +8,7 @@ release can refresh the media instead of shipping a picture of an older build.
 bash code/tests/media/refresh.sh
 ```
 
-The script rebuilds `interjson.js`, refreshes `screenshot.png`,
+The script rebuilds `liwenjson.js`, refreshes `screenshot.png`,
 `mcp-screenshot.png` and `surfaces-poster.png` from the real pages, repaints
 `mcp-demo.gif` from the MCP transcript, records `demo.mp4` in headless Chromium,
 and derives `live-demo.gif` from the live segment.
@@ -29,6 +29,6 @@ browser. The release checklist runs `refresh.sh` once before tagging, so
 `static/demo/` never contains media from a previous version.
 
 `mcp-claude-session.txt` is the exception: it is a byte-for-byte transcript of
-a real session, recorded before the InterJSON rename, and is kept as textual
+a real session, recorded before the LIWENJSON rename, and is kept as textual
 evidence rather than regenerated. Its derived GIF/poster were removed under the
 same "no stale media" rule; the transcript itself is the evidence.

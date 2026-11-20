@@ -1,4 +1,4 @@
-// `interjson --batch` — a machine readable driver for evaluation harnesses.
+// `liwenjson --batch` — a machine readable driver for evaluation harnesses.
 //
 // One JSON object per input line on standard input:
 //
@@ -42,10 +42,10 @@ fn read_all(stream : Int64) -> String {
 /// honoured literally, so a chunk may split a UTF-8 sequence or a surrogate
 /// pair; that is the point of the streaming check.
 fn feed_in_chunks(
-  p : @ij.PartialParser,
+  p : @lj.PartialParser,
   input : String,
   chunk : Int32,
-) -> Unit raise @ij.InterJSONError {
+) -> Unit raise @lj.LIWENJSONError {
   let bs = @utf8.encode(input)
   let n = bs.length()
   if chunk <= 0 {
@@ -65,7 +65,7 @@ fn feed_in_chunks(
 fn batch_line(
   id : String,
   input : String,
-  opts : @ij.Options,
+  opts : @lj.Options,
   chunk : Int32,
 ) -> String {
   let sb = StringBuilder()
@@ -73,7 +73,7 @@ fn batch_line(
   sb.write_string(Json::string(id).stringify())
   sb.write_string(",\"rc\":")
   let rc = try {
-    let p = @ij.PartialParser::new(options=opts)
+    let p = @lj.PartialParser::new(options=opts)
     feed_in_chunks(p, input, chunk)
     let r = p.finish()
     sb.write_string("0,\"exactness\":")
@@ -109,10 +109,10 @@ fn batch_line(
 
 ///|
 /// Run the batch driver over standard input.
-fn run_batch(opts : @ij.Options, chunk : Int32) -> Unit {
+fn run_batch(opts : @lj.Options, chunk : Int32) -> Unit {
   let stream = open_input(None)
   if stream == 0L {
-    eprintln("interjson: 无法读取 <stdin>")
+    eprintln("liwenjson: 无法读取 <stdin>")
     return
   }
   // The input is read a line at a time, not with one `read_all`. A batch is a

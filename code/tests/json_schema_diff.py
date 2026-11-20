@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Differential test: the gate against an independent JSON Schema validator.
 
-    python3 tests/json_schema_diff.py --cli ./_build/native/release/build/cmd/interjson/interjson.exe
+    python3 tests/json_schema_diff.py --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe
 
 Why this exists
 ---------------
 The Schema-gate audit (`marks/审计.md` §10) ends with a rule that cannot be
 checked by testing the implementation against itself:
 
-    every legal JSON value InterJSON calls executable must also be accepted by
+    every legal JSON value LIWENJSON calls executable must also be accepted by
     an independent validator; if the declared subset cannot express a
-    declaration, InterJSON must refuse it with E070 at modelling time instead
+    declaration, LIWENJSON must refuse it with E070 at modelling time instead
     of running a looser check.
 
 So this script runs a curated corpus of declarations through both the gate and
@@ -202,7 +202,7 @@ def gate_verdict(cli: str, declaration: str, value: object) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cli", required=True, help="the built interjson binary")
+    parser.add_argument("--cli", required=True, help="the built liwenjson binary")
     args = parser.parse_args()
 
     jsonschema = load_reference()

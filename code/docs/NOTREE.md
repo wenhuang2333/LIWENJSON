@@ -7,7 +7,7 @@
 
 ## The problem, measured
 
-InterJSON's `repair` builds the parsed value as it goes. That value is a
+LIWENJSON's `repair` builds the parsed value as it goes. That value is a
 `Json` tree: every scalar is a boxed `Json` enum, every object is a
 `Map[String, Json]`, every array is an `Array[Json]`. The cost is not
 proportional to the input, it is proportional to the *number of values*, and a

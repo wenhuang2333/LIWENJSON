@@ -1,11 +1,11 @@
-"""interjson — the MoonBit JSON engine as a Python client.
+"""liwenjson — the MoonBit JSON engine as a Python client.
 
 The engine ships as a single native binary; this package speaks the versioned
-stdio protocol (`interjson serve`) rather than reimplementing JSON
+stdio protocol (`liwenjson serve`) rather than reimplementing JSON
 repair. That keeps one implementation of the semantics and gives Python the
 same decision fields the CLI and the MoonBit library produce.
 
-    from interjson import Client
+    from liwenjson import Client
 
     with Client() as jm:
         plan = jm.analyze(model_output, profile="agent", schema_json=tool["inputSchema"])
@@ -15,17 +15,17 @@ same decision fields the CLI and the MoonBit library produce.
             # `plan["text"]` raised `KeyError` on the default path.
             args = plan["value"]
 
-`find_binary()` resolves the engine: `INTERJSON_BIN`, then `PATH`, then a
-bundled `interjson/bin/`, then the development build in this repository.
+`find_binary()` resolves the engine: `LIWENJSON_BIN`, then `PATH`, then a
+bundled `liwenjson/bin/`, then the development build in this repository.
 """
 
 from pathlib import Path
 
-from .client import Client, InterJSONError, find_binary, repair, analyze, validate
+from .client import Client, LIWENJSONError, find_binary, repair, analyze, validate
 
 __all__ = [
     "Client",
-    "InterJSONError",
+    "LIWENJSONError",
     "find_binary",
     "repair",
     "analyze",
@@ -56,10 +56,10 @@ def _declared_version() -> str:
     from importlib.metadata import version as _metadata_version
 
     try:
-        return _metadata_version("interjson-moonbit")
+        return _metadata_version("liwenjson")
     except PackageNotFoundError:
         raise RuntimeError(
-            "cannot determine the interjson version: no pyproject.toml next to "
+            "cannot determine the liwenjson version: no pyproject.toml next to "
             "the package and no installed metadata"
         )
 

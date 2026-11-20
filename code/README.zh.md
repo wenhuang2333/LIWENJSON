@@ -1,14 +1,14 @@
-# InterJSON
+# LIWENJSON
 
-纯 MoonBit 的流式 JSON 修复/部分解析引擎，外加一个本地 MCP 执行门（`interjson mcp`）。
+纯 MoonBit 的流式 JSON 修复/部分解析引擎，外加一个本地 MCP 执行门（`liwenjson mcp`）。
 
 | | |
 | --- | --- |
-| 模块 | `zhanshishan/interjson` |
+| 模块 | `zhanshishan/liwenjson` |
 | 版本 | 1.5.2 |
 | 许可证 | Apache-2.0 |
 | 后端 | wasm-gc / native / JS / wasm，同一套测试，各 323/323 通过 |
-| 发行渠道 | GitHub `v1.5.2`（同 8 个产物：三系统四二进制 + wasm 探针 + 浏览器包 + 安装脚本 + `SHA256SUMS`）；[mooncakes](https://mooncakes.io/docs/zhanshishan/interjson) `0.14.0`（1.5.2 对应版本，源码在 `main`）；npm / PyPI `interjson-moonbit@1.5.2`；上一版 1.5.1 的 `0.13.0` 于 2026-10-29 发布，npm / PyPI 于 2026-10-30 发布 |
+| 发行渠道 | GitHub `v1.5.2`（同 8 个产物：三系统四二进制 + wasm 探针 + 浏览器包 + 安装脚本 + `SHA256SUMS`）；[mooncakes](https://mooncakes.io/docs/zhanshishan/liwenjson) `0.14.0`（1.5.2 对应版本，源码在 `main`）；npm / PyPI `liwenjson@1.5.2`；上一版 1.5.1 的 `0.13.0` 于 2026-10-29 发布，npm / PyPI 于 2026-10-30 发布 |
 
 **本页是中文 API 速查**：`Options`、`PartialParser`、`Schema`、修复规则、错误码、快照语义。
 项目的 60 秒上手、接入面、证据表与版本映射在[仓库首页](../README.md)；英文完整参考见
@@ -17,22 +17,22 @@
 ## 安装
 
 ```sh
-moon add zhanshishan/interjson
+moon add zhanshishan/liwenjson
 ```
 
 ```text
 import {
-  "zhanshishan/interjson" @interjson,
+  "zhanshishan/liwenjson" @liwenjson,
 }
 ```
 
 ## 三行上手
 
-`repair` 会抛出 `InterJSONError`，因此需要包在 `try`/`catch` 中：
+`repair` 会抛出 `LIWENJSONError`，因此需要包在 `try`/`catch` 中：
 
 ```moonbit
 try {
-  let result = @interjson.repair("{'a': 1,}")   // RepairResult
+  let result = @liwenjson.repair("{'a': 1,}")   // RepairResult
   println(result.text)                         // {"a":1}
   println(result.repairs.length())             // 修复记录条数
 } catch {
@@ -40,13 +40,13 @@ try {
 }
 ```
 
-需要 `Json` 树而不是文本时改用 `@interjson.parse`，它同样返回 `repairs` 与
+需要 `Json` 树而不是文本时改用 `@liwenjson.parse`，它同样返回 `repairs` 与
 `completeness`，并额外给出 `value`。需要「能不能执行」的判定时用 `analyze`：
 
 ```moonbit
-let plan = @interjson.analyze(text,
-  options=@interjson.Options::for_agent(),
-  schema=@interjson.Schema::parse("{!query:string,!limit:integer}"))
+let plan = @liwenjson.analyze(text,
+  options=@liwenjson.Options::for_agent(),
+  schema=@liwenjson.Schema::parse("{!query:string,!limit:integer}"))
 plan.is_executable()   // 唯一需要判断的问题
 plan.prompt()          // 不能执行时，直接回灌给模型
 plan.to_json()         // decision/exactness/value/retry/repairs
@@ -60,7 +60,7 @@ plan.to_json()         // decision/exactness/value/retry/repairs
 
 ```moonbit
 try {
-  let p = @interjson.PartialParser::new()
+  let p = @liwenjson.PartialParser::new()
   p.feed("{\"name\":\"Mo")
   let s1 = p.snapshot()                          // value={"name":"Mo"}, Partial
   p.feed("n\"}")
@@ -76,7 +76,7 @@ try {
 
 ## 选项
 
-`Options` 的全部字段如下，`@interjson.Options::default()` 即文档化的默认值。
+`Options` 的全部字段如下，`@liwenjson.Options::default()` 即文档化的默认值。
 
 | 字段 | 类型 | 默认值 | 含义 |
 | --- | --- | --- | --- |
@@ -140,7 +140,7 @@ try {
 
 ## 修复记录与错误码
 
-修复记录是信息性的，随结果返回；致命错误中止处理，以 `InterJSONError` 抛出。
+修复记录是信息性的，随结果返回；致命错误中止处理，以 `LIWENJSONError` 抛出。
 一条 `Repair` 包含 `code`、`position`、`severity`、`message`；`Position.offset` 从 0 开始按
 UTF-16 码元计数，`line` 与 `column` 从 1 开始；消息是固定模板，绝不嵌入用户输入。
 精确度标签只由严重级别决定：无记录为 `Exact`，只有 `Info` 为 `Cosmetic`，出现 `Warning` 为
@@ -158,7 +158,7 @@ UTF-16 码元计数，`line` 与 `column` 从 1 开始；消息是固定模板�
 | `E030` | `InvalidState` | 在 `finish` 之后继续 `feed`，或重复 `finish`。 |
 | `E040` | `InvalidUtf8` | `feed_bytes` 遇到非法或截断的 UTF-8（载荷为字节偏移）。 |
 | `E050` | `InvalidOption` | 选项取值越界，或选项组合不成立。 |
-| `E060` | `InvalidEvent` | `interjson/llm` 收到无法解释的事件负载。 |
+| `E060` | `InvalidEvent` | `liwenjson/llm` 收到无法解释的事件负载。 |
 | `E070` | `SchemaError` | 骨架声明本身写错，或用了子集之外的键。 |
 
 上表是两类信号的完整编号；更长的参考（每个码的载荷、严格模式升级与失效模式）在仓库内维护，不随包发布。规范契约见 [`docs/SPEC.md`](docs/SPEC.md)。
@@ -178,15 +178,15 @@ UTF-16 码元计数，`line` 与 `column` 从 1 开始；消息是固定模板�
 
 ## 命令行
 
-`interjson` 有六个子命令：`repair`（缺省动作）、`explain`（完整分析与拒绝提示，可执行 0 /
+`liwenjson` 有六个子命令：`repair`（缺省动作）、`explain`（完整分析与拒绝提示，可执行 0 /
 拒绝 5）、`readiness`（字段就绪曲线）、`llm`（provider 事件流）、`serve`（版本化 JSONL 协议）、
 `mcp`（MCP stdio server）。全部选项、退出码与英文说明见
-[`README.md` 的 Command line 一节](./README.md#command-line)；`interjson --help` 打印中文帮助。
+[`README.md` 的 Command line 一节](./README.md#command-line)；`liwenjson --help` 打印中文帮助。
 
 ```sh
-echo "{'a': 1,}" | interjson > fixed.json      # 修复
-interjson --check broken.json ; echo $?        # 1 = 需要修复
-interjson explain --policy agent --json tool_call.json
+echo "{'a': 1,}" | liwenjson > fixed.json      # 修复
+liwenjson --check broken.json ; echo $?        # 1 = 需要修复
+liwenjson explain --policy agent --json tool_call.json
 ```
 
 ## 已知限制
@@ -203,9 +203,9 @@ interjson explain --policy agent --json tool_call.json
   不是正则（没有 `$ref`/`oneOf`/`format`）。
 - **`semantic_readiness` 与 `repair` 同量级**（1.1–1.7 倍），热路径用 `SemanticWatcher` /
   `FieldTracker`。
-- **MCP 是建议性的**：`interjson_gate` 是模型可以调用的工具；强制闸门在宿主侧
+- **MCP 是建议性的**：`liwenjson_gate` 是模型可以调用的工具；强制闸门在宿主侧
   （`PreToolUse` hook、`gate(args)`、`serve` / npm / pip / HTTP）。
-- **命令行仅支持 native**；解析器实例非线程安全；`interjson/llm` 与 delta 子包是实验性的。
+- **命令行仅支持 native**；解析器实例非线程安全；`liwenjson/llm` 与 delta 子包是实验性的。
 
 完整清单（含 1.4.x → 1.5.0 的契约变化）见 [`README.md#known-limitations`](./README.md#known-limitations)。
 

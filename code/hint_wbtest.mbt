@@ -93,8 +93,8 @@ test "the hint window is bounded and independent of the input length" {
 }
 
 ///|
-test "InterJSONError::retry_hint is the same hint" {
-  let e : InterJSONError = AmbiguousRepair(
+test "LIWENJSONError::retry_hint is the same hint" {
+  let e : LIWENJSONError = AmbiguousRepair(
     InsertComma,
     { offset: 6, line: 1, column: 7, },
     AdjacentStrings,
@@ -112,7 +112,7 @@ test "InterJSONError::retry_hint is the same hint" {
 
 ///|
 /// `retry_hint` without an input, as a string.
-fn hint_line(e : InterJSONError) -> String {
+fn hint_line(e : LIWENJSONError) -> String {
   match e.retry_hint() {
     Some(x) => x.to_string()
     None => ""

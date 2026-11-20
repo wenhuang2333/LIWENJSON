@@ -1,12 +1,12 @@
-// InterJSON — the execution gate for LLM output, as a local MCP server and a library.
+// LIWENJSON — the execution gate for LLM output, as a local MCP server and a library.
 // Module manifest for the MoonBit toolchain.
-name = "zhanshishan/interjson"
+name = "zhanshishan/liwenjson"
 
 version = "1.5.2"
 
 readme = "README.md"
 
-repository = "https://github.com/wenhuang2333/Moonbit-haker"
+repository = "https://github.com/wenhuang2333/LIWENJSON"
 
 license = "Apache-2.0"
 

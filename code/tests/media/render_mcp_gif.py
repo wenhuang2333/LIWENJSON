@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render static/demo/mcp-demo.gif from the real `interjson mcp` transcript.
+"""Render static/demo/mcp-demo.gif from the real `liwenjson mcp` transcript.
 
 The responses in the transcript are the ones the server actually produced
 (captured with a reference MCP client); this script only paints them. Run from
@@ -31,27 +31,27 @@ BOLD = ImageFont.truetype("/System/Library/Fonts/Menlo.ttc", 15)
 
 # (text, color) — the real MCP values are quoted from the captured session.
 LINES = [
-    ("$ claude mcp add interjson -- interjson mcp", CYAN),
-    ('  Added MCP server "interjson" (stdio)', DIM),
+    ("$ claude mcp add liwenjson -- liwenjson mcp", CYAN),
+    ('  Added MCP server "liwenjson" (stdio)', DIM),
     ("", FG),
     ("$ # model -> tool call create_invoice; max_tokens cuts the args", DIM),
     ('  {"amount":100,"currency":"USD"', FG),
     ("", FG),
-    ("  -> tools/call  interjson_gate", BLUE),
+    ("  -> tools/call  liwenjson_gate", BLUE),
     ("  <- decision: lossy_repair      executable: false", RED),
     ("     error: E010  CloseContainer at 1:31", RED),
-    ('     retry: "InterJSON refused the arguments: E010 ..."', YELLOW),
+    ('     retry: "LIWENJSON refused the arguments: E010 ..."', YELLOW),
     ('            "Re-emit the arguments as valid JSON ..."', YELLOW),
     ("", FG),
     ("$ # the model re-emits", DIM),
     ('  {"amount":100,"currency":"USD"}', FG),
     ("", FG),
-    ("  -> tools/call  interjson_gate", BLUE),
+    ("  -> tools/call  liwenjson_gate", BLUE),
     ("  <- decision: safe              executable: true", GREEN),
     ("", FG),
     ('  OK  execute create_invoice({"amount":100,"currency":"USD"})', GREEN),
     ("", FG),
-    ("  real `interjson mcp` session · schema = tool.inputSchema", DIM),
+    ("  real `liwenjson mcp` session · schema = tool.inputSchema", DIM),
 ]
 
 LINE_H = 26
@@ -65,7 +65,7 @@ def frame(upto: int, cursor: bool = True) -> Image.Image:
     d.rectangle([0, 0, W, 44], fill=BAR)
     for i, color in enumerate([(255, 95, 86), (255, 189, 46), (39, 201, 63)]):
         d.ellipse([18 + i * 22, 16, 30 + i * 22, 28], fill=color)
-    d.text((104, 13), "interjson mcp  —  execution gate over MCP", font=BOLD, fill=DIM)
+    d.text((104, 13), "liwenjson mcp  —  execution gate over MCP", font=BOLD, fill=DIM)
     y = TOP
     for i, (text, color) in enumerate(LINES):
         if i < upto:

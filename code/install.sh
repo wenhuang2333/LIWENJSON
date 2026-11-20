@@ -1,7 +1,7 @@
 #!/bin/sh
-# Install the InterJSON CLI (and its local MCP server) from a GitHub release.
+# Install the LIWENJSON CLI (and its local MCP server) from a GitHub release.
 #
-#   curl -fsSL https://github.com/wenhuang2333/Moonbit-haker/releases/download/v1.5.0/interjson-install.sh | sh
+#   curl -fsSL https://github.com/wenhuang2333/LIWENJSON/releases/latest/download/liwenjson-install.sh | sh
 #
 # The script does four things and nothing else:
 #
@@ -16,9 +16,9 @@
 # installed.
 #
 # Environment:
-#   INTERJSON_VERSION   release tag to install (default: the latest release)
-#   INTERJSON_DIR       install directory (default: $HOME/.local/bin)
-#   INTERJSON_REPO      owner/name (default: wenhuang2333/Moonbit-haker)
+#   LIWENJSON_VERSION   release tag to install (default: the latest release)
+#   LIWENJSON_DIR       install directory (default: $HOME/.local/bin)
+#   LIWENJSON_REPO      owner/name (default: wenhuang2333/LIWENJSON)
 #
 # Exit codes:
 #   0  installed
@@ -27,9 +27,9 @@
 
 set -eu
 
-REPO="${INTERJSON_REPO:-wenhuang2333/Moonbit-haker}"
-VERSION="${INTERJSON_VERSION:-}"
-INSTALL_DIR="${INTERJSON_DIR:-$HOME/.local/bin}"
+REPO="${LIWENJSON_REPO:-wenhuang2333/LIWENJSON}"
+VERSION="${LIWENJSON_VERSION:-}"
+INSTALL_DIR="${LIWENJSON_DIR:-$HOME/.local/bin}"
 
 # `die` takes the exit code it should end with, because the header documents
 # three of them: 1 for a failed download or checksum, 2 for an unsupported
@@ -67,19 +67,19 @@ case "$arch" in
 esac
 
 if [ "$os_name" = "windows" ]; then
-  asset="interjson-windows-${arch_name}.exe"
+  asset="liwenjson-windows-${arch_name}.exe"
 elif [ "$os_name" = "linux" ] && [ "$arch_name" = "arm64" ]; then
-  asset="interjson-linux-arm64"
+  asset="liwenjson-linux-arm64"
 elif [ "$os_name" = "linux" ]; then
-  asset="interjson-linux-x86_64"
+  asset="liwenjson-linux-x86_64"
 elif [ "$os_name" = "macos" ] && [ "$arch_name" = "arm64" ]; then
-  asset="interjson-macos-arm64"
+  asset="liwenjson-macos-arm64"
 elif [ "$os_name" = "macos" ]; then
   # There is no Intel macOS build, and the reason is not a choice: the MoonBit
   # toolchain publishes `darwin-aarch64`, `linux-x86_64` and `linux-aarch64`
   # only, so an Intel Mac cannot build the binary at all. Say that, rather than
   # failing later with a 404 on an asset that does not exist.
-  die 2 "no InterJSON build for Intel macOS: the MoonBit toolchain has no darwin-x86_64 target (build from source on an Apple Silicon Mac, or use a Linux/Windows machine)"
+  die 2 "no LIWENJSON build for Intel macOS: the MoonBit toolchain has no darwin-x86_64 target (build from source on an Apple Silicon Mac, or use a Linux/Windows machine)"
 else
   die 2 "unsupported platform: $os/$arch"
 fi
@@ -90,12 +90,12 @@ if [ -z "$VERSION" ]; then
   VERSION="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" |
     sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
     head -n 1)"
-  [ -n "$VERSION" ] || die 1 "could not determine the latest release; set INTERJSON_VERSION"
+  [ -n "$VERSION" ] || die 1 "could not determine the latest release; set LIWENJSON_VERSION"
 fi
 
 base="https://github.com/${REPO}/releases/download/${VERSION}"
 
-printf 'InterJSON %s\n' "$VERSION"
+printf 'LIWENJSON %s\n' "$VERSION"
 printf '  platform : %s/%s (%s)\n' "$os_name" "$arch_name" "$asset"
 printf '  target   : %s\n' "$INSTALL_DIR"
 
@@ -136,9 +136,9 @@ printf '  verified : sha256 %s\n' "$actual"
 mkdir -p "$INSTALL_DIR"
 
 if [ "$os_name" = "windows" ]; then
-  target="$INSTALL_DIR/interjson.exe"
+  target="$INSTALL_DIR/liwenjson.exe"
 else
-  target="$INSTALL_DIR/interjson"
+  target="$INSTALL_DIR/liwenjson"
 fi
 
 cp "$tmp/$asset" "$target"
@@ -165,11 +165,11 @@ esac
 cat <<'EOF'
 Next: start the local execution gate for any MCP client.
 
-  interjson mcp --print-config=claude     # prints the Claude Code config
-  interjson mcp --print-config=cursor
-  interjson mcp --print-config=json       # the raw MCP server config
+  liwenjson mcp --print-config=claude     # prints the Claude Code config
+  liwenjson mcp --print-config=cursor
+  liwenjson mcp --print-config=json       # the raw MCP server config
 
 or run the gate directly:
 
-  echo '{"a":1,}' | interjson --check
+  echo '{"a":1,}' | liwenjson --check
 EOF

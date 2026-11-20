@@ -1,5 +1,5 @@
 # Nightly long run: the same property tests as CI, with the case count raised
-# from 400 to 1,000,000 by `INTERJSON_LONGRUN` (O-6), plus the differential
+# from 400 to 1,000,000 by `LIWENJSON_LONGRUN` (O-6), plus the differential
 # harness. A failure here is reproducible locally with the same variable,
 # because every property uses a fixed seed.
 
@@ -30,11 +30,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      INTERJSON_LONGRUN: ${{ github.event.inputs.cases || '1000000' }}
+      LIWENJSON_LONGRUN: ${{ github.event.inputs.cases || '1000000' }}
       # The byte-level fuzz gets its own, much smaller budget: each fuzz case
       # is fifteen parses, so the property budget would be fifteen million of
       # them. A hundred thousand cases is ~1.5M parses, which is minutes.
-      INTERJSON_FUZZ: ${{ github.event.inputs.fuzz || '100000' }}
+      LIWENJSON_FUZZ: ${{ github.event.inputs.fuzz || '100000' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,8 +51,8 @@ jobs:
       - name: Long run (native)
         working-directory: code
         run: |
-          echo "cases per property: $INTERJSON_LONGRUN"
-          echo "fuzz cases: $INTERJSON_FUZZ"
+          echo "cases per property: $LIWENJSON_LONGRUN"
+          echo "fuzz cases: $LIWENJSON_FUZZ"
           time moon test --target native
 
       - name: Long run (wasm-gc)
@@ -90,13 +90,13 @@ jobs:
 
       - name: Build the CLI
         working-directory: code
-        run: moon build cmd/interjson --target native --release
+        run: moon build cmd/liwenjson --target native --release
 
       - name: Differential report
         working-directory: code
         run: |
           python3 tests/diff/run_diff.py \
-            --cli ./_build/native/release/build/cmd/interjson/interjson.exe \
+            --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe \
             --node-module-dir "$RUNNER_TEMP/node-oracle/node_modules" \
             --out "$RUNNER_TEMP/diff-report.md"
 
@@ -104,7 +104,7 @@ jobs:
         working-directory: code
         run: |
           python3 tests/eval/run_eval.py \
-            --cli ./_build/native/release/build/cmd/interjson/interjson.exe
+            --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe
 
       - uses: actions/upload-artifact@v4
         with:

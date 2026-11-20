@@ -226,7 +226,7 @@ pub struct PartialParser {
 /// Create a parser. Invalid options raise `E050`.
 pub fn PartialParser::new(
   options? : Options,
-) -> PartialParser raise InterJSONError {
+) -> PartialParser raise LIWENJSONError {
   let opts = match options {
     Some(o) => o
     None => Options::default()
@@ -240,7 +240,7 @@ pub fn PartialParser::new(
 pub fn PartialParser::feed(
   self : PartialParser,
   chunk : String,
-) -> Unit raise InterJSONError {
+) -> Unit raise LIWENJSONError {
   errdefer {
     self.engine.phase = PFailed
   }
@@ -252,7 +252,7 @@ pub fn PartialParser::feed(
 pub fn PartialParser::feed_bytes(
   self : PartialParser,
   bytes : Bytes,
-) -> Unit raise InterJSONError {
+) -> Unit raise LIWENJSONError {
   errdefer {
     self.engine.phase = PFailed
   }
@@ -365,7 +365,7 @@ pub fn PartialParser::feed_with(
   self : PartialParser,
   chunk : String,
   on_delta : (Delta) -> Unit,
-) -> Unit raise InterJSONError {
+) -> Unit raise LIWENJSONError {
   self.feed(chunk)
   for d in self.drain_deltas() {
     on_delta(d)
@@ -378,7 +378,7 @@ pub fn PartialParser::feed_bytes_with(
   self : PartialParser,
   bytes : Bytes,
   on_delta : (Delta) -> Unit,
-) -> Unit raise InterJSONError {
+) -> Unit raise LIWENJSONError {
   self.feed_bytes(bytes)
   for d in self.drain_deltas() {
     on_delta(d)
@@ -390,7 +390,7 @@ pub fn PartialParser::feed_bytes_with(
 /// documentation in one place.
 pub fn PartialParser::drain_deltas(
   self : PartialParser,
-) -> Array[Delta] raise InterJSONError {
+) -> Array[Delta] raise LIWENJSONError {
   self.require_deltas()
   self.engine.drain_deltas()
 }
@@ -406,7 +406,7 @@ pub fn PartialParser::drain_deltas(
 /// it once per delta.
 pub fn PartialParser::drain_views(
   self : PartialParser,
-) -> Array[DeltaView] raise InterJSONError {
+) -> Array[DeltaView] raise LIWENJSONError {
   self.require_deltas()
   self.engine.drain_views()
 }
@@ -421,7 +421,7 @@ pub fn PartialParser::drain_views(
 pub fn PartialParser::for_each_delta(
   self : PartialParser,
   on : (DeltaView) -> Unit,
-) -> Unit raise InterJSONError {
+) -> Unit raise LIWENJSONError {
   self.require_deltas()
   self.engine.for_each_delta(on)
 }
@@ -449,7 +449,7 @@ pub fn PartialParser::delta_pointer(
 /// Raise `E050` unless the parser records deltas.
 fn PartialParser::require_deltas(
   self : PartialParser,
-) -> Unit raise InterJSONError {
+) -> Unit raise LIWENJSONError {
   if !self.engine.opts.collect_deltas {
     raise InvalidOption(
       "delta collection requires collect_deltas: use Options::for_llm()",
@@ -462,7 +462,7 @@ fn PartialParser::require_deltas(
 /// value. Calling it twice, or after a fatal error, raises `E030`.
 pub fn PartialParser::finish(
   self : PartialParser,
-) -> FinalResult raise InterJSONError {
+) -> FinalResult raise LIWENJSONError {
   errdefer {
     self.engine.phase = PFailed
   }
@@ -492,7 +492,7 @@ pub fn PartialParser::prose_overflow(self : PartialParser) -> Bool {
 pub fn repair(
   input : String,
   options? : Options,
-) -> RepairResult raise InterJSONError {
+) -> RepairResult raise LIWENJSONError {
   let opts = match options {
     Some(o) => o
     None => Options::default()
@@ -519,7 +519,7 @@ pub fn repair(
 fn repair_once(
   input : String,
   opts : Options,
-) -> RepairResult raise InterJSONError {
+) -> RepairResult raise LIWENJSONError {
   let engine = Engine::make(opts)
   engine.feed_str(input)
   let fin = engine.finish_engine()
@@ -538,7 +538,7 @@ fn repair_once(
 pub fn parse(
   input : String,
   options? : Options,
-) -> ParseResult raise InterJSONError {
+) -> ParseResult raise LIWENJSONError {
   let opts = match options {
     Some(o) => o
     None => Options::default()

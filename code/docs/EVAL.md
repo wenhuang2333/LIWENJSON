@@ -1,4 +1,4 @@
-# InterJSON 真值评测报告（I-4）
+# LIWENJSON 真值评测报告（I-4）
 
 本文件由 `code/tests/eval/run_eval.py` 生成，请勿手工编辑。
 
@@ -8,7 +8,7 @@
 | 生成器 | `code/tests/eval/corpus.py` eval-2，种子 20261015 |
 | 语料 | `code/tests/eval/corpus.jsonl`，1200 条，sha256 `c528375a0d996a78` |
 | 生成跳过 | 1203 次尝试因算子不适用而丢弃（登记 §5） |
-| 被测二进制 | `./_build/native/release/build/cmd/interjson/interjson.exe`（sha256:24663a54a1c6773d, 789232 bytes） |
+| 被测二进制 | `./_build/native/release/build/cmd/liwenjson/liwenjson.exe`（sha256:24663a54a1c6773d, 789232 bytes） |
 | 工具链 | `moon 0.1.20261016 (1af328f 2026-10-16)` |
 | 运行时刻 | 2026-10-29T06:37:25Z |
 | 退出码 | 0（0 = 全部验收判据通过） |

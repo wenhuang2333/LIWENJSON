@@ -13,7 +13,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  InterJSONError,
+  LIWENJSONError,
   repair,
   repairResult,
   analyze,
@@ -110,7 +110,7 @@ test("a refusal always carries a prompt and never a value", () => {
 test("errors carry their code as a field", () => {
   assert.throws(
     () => repair('{"a":1,}', { profile: "strict" }),
-    (e) => e instanceof InterJSONError && e.code === "E010" && e instanceof Error,
+    (e) => e instanceof LIWENJSONError && e.code === "E010" && e instanceof Error,
   );
 });
 
@@ -169,15 +169,15 @@ test("the MCP launcher exposes the local server without touching stdout", () => 
     "release",
     "build",
     "cmd",
-    "interjson",
-    process.platform === "win32" ? "interjson.exe" : "interjson.exe",
+    "liwenjson",
+    process.platform === "win32" ? "liwenjson.exe" : "liwenjson.exe",
   );
   const r = spawnSync(process.execPath, [resolve(here, "..", "mcp.cjs"), "--print-config=claude"], {
     encoding: "utf8",
-    env: { ...process.env, INTERJSON_BIN: binary },
+    env: { ...process.env, LIWENJSON_BIN: binary },
   });
   assert.equal(r.status, 0);
-  assert.equal(r.stdout.trim(), "claude mcp add interjson -- interjson mcp");
+  assert.equal(r.stdout.trim(), "claude mcp add liwenjson -- liwenjson mcp");
   assert.equal(r.stderr, "");
 });
 
@@ -249,7 +249,7 @@ test("repair honours a declaration instead of ignoring it", () => {
           required: ["a"],
         },
       }),
-    (e) => e instanceof InterJSONError && e.code === "E070",
+    (e) => e instanceof LIWENJSONError && e.code === "E070",
   );
   assert.equal(
     repair('{"a":"x"}', {

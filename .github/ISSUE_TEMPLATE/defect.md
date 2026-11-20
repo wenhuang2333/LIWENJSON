@@ -18,7 +18,7 @@ labels: bug
 
 **Actual output**
 
-**Repair records** (`interjson --report` output, if you used the CLI):
+**Repair records** (`liwenjson --report` output, if you used the CLI):
 
 ```
 ```

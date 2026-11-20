@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>InterJSON 控制台 — 流式 JSON 修复与执行门</title>
+    <title>LIWENJSON 控制台 — 流式 JSON 修复与执行门</title>
     <meta
       name="description"
-      content="InterJSON 交互控制台：本地 MCP 执行门、22 条修复规则、五种安全档位、执行门判定、流式部分解析、深度预算、字段就绪曲线与 CLI。页面里每一次判定与修复都由 MoonBit 编译出的 interjson.js 现场完成。"
+      content="LIWENJSON 交互控制台：本地 MCP 执行门、22 条修复规则、五种安全档位、执行门判定、流式部分解析、深度预算、字段就绪曲线与 CLI。页面里每一次判定与修复都由 MoonBit 编译出的 liwenjson.js 现场完成。"
     />
     <style>
       :root {
@@ -310,7 +310,7 @@
       <div class="top-inner">
         <a class="brand" href="#top">
           <span class="mark" aria-hidden="true">{}</span>
-          <span>InterJSON <small>v1.5.1</small></span>
+          <span>LIWENJSON <small>v1.5.1</small></span>
         </a>
         <nav class="links" aria-label="页面章节">
           <a href="#mcp" data-nav="mcp">MCP</a>
@@ -332,7 +332,7 @@
     <main id="top">
       <div class="wrap">
         <div id="no-engine-banner" class="banner" hidden>
-          <b>interjson.js 没有加载</b>：页面里的每一次修复、判定与就绪测量都需要它。请用
+          <b>liwenjson.js 没有加载</b>：页面里的每一次修复、判定与就绪测量都需要它。请用
           <code>python3 -m http.server 8000 -d static/demo</code> 打开，或先跑
           <code>bash static/demo/build.sh</code> 重新生成 bundle。下面的规则表、CLI 与接入面仍然可读。
         </div>
@@ -343,10 +343,10 @@
           <span class="kicker">LLM 输出的执行门 · 本地 MCP</span>
           <h1 id="hero-title">不要等合法 JSON，<br />先问<em>我已经知道了什么</em>。</h1>
           <p class="lead">
-            InterJSON 是 LLM 输出的执行门：模型给出的工具参数与结构化结果，先过它，再决定能不能执行。
-            它以一个本地 MCP server（<code>interjson mcp</code>）运行 —— 不联网、不需要 API key、
+            LIWENJSON 是 LLM 输出的执行门：模型给出的工具参数与结构化结果，先过它，再决定能不能执行。
+            它以一个本地 MCP server（<code>liwenjson mcp</code>）运行 —— 不联网、不需要 API key、
             被检查的文本不离开本机。底层是纯 MoonBit 的流式 JSON 修复与部分解析引擎：这一页的每一次修复、
-            每一帧快照、每一个判定，都由同一份引擎编译出的 <code>interjson.js</code> 在浏览器里现场完成，
+            每一帧快照、每一个判定，都由同一份引擎编译出的 <code>liwenjson.js</code> 在浏览器里现场完成，
             页面里没有第二份实现。
           </p>
           <div class="hero-actions">
@@ -381,14 +381,14 @@
         <div class="band-head">
           <span class="band-num">01</span>
           <h2 class="band-title" id="mcp-title">本地 MCP 执行门</h2>
-          <span class="band-tag">interjson mcp · 四个只读工具 · JSON-RPC 2.0 / stdio</span>
+          <span class="band-tag">liwenjson mcp · 四个只读工具 · JSON-RPC 2.0 / stdio</span>
         </div>
         <p class="band-sub">
-          InterJSON 的主入口是一个本地 MCP server：模型在执行工具参数前调用
-          <code>interjson_gate</code>，拿到 <code>executable</code> 与 <code>retry.prompt</code>。
+          LIWENJSON 的主入口是一个本地 MCP server：模型在执行工具参数前调用
+          <code>liwenjson_gate</code>，拿到 <code>executable</code> 与 <code>retry.prompt</code>。
           它不联网、不需要 API key、被检查的文本不离开本机；四个工具都是只读的
           （<code>readOnlyHint</code>），协议 <code>2025-06-18</code>，同时接受
-          <code>2024-11-05</code>。下面是一段真实 <code>interjson mcp</code> 的 JSON-RPC 往返。
+          <code>2024-11-05</code>。下面是一段真实 <code>liwenjson mcp</code> 的 JSON-RPC 往返。
         </p>
 
         <div class="grid g-2">
@@ -399,14 +399,14 @@
                 <thead><tr><th>工具</th><th>用途</th></tr></thead>
                 <tbody>
                   <tr>
-                    <td class="nowrap"><code>interjson_gate</code><br /><span class="hint">首选</span></td>
+                    <td class="nowrap"><code>liwenjson_gate</code><br /><span class="hint">首选</span></td>
                     <td>执行门。不传 <code>profile</code> 时默认 <code>agent</code>；返回
                       <code>executable</code> / <code>decision</code> / <code>exactness</code> /
                       <code>ambiguity</code> / <code>value</code> / <code>retry.prompt</code>。</td>
                   </tr>
-                  <tr><td class="nowrap"><code>interjson_repair</code></td><td>修复并返回文本与修复记录。要的是文档，不是一个裁决。</td></tr>
-                  <tr><td class="nowrap"><code>interjson_validate</code></td><td>只校验、不修复：可修的文档仍然算 invalid，并指出宽松档会做哪条修复。</td></tr>
-                  <tr><td class="nowrap"><code>interjson_readiness</code></td><td>每个声明字段在流里何时定稿：<code>syntax</code> / <code>schema</code> / <code>settled</code> 三个比例。</td></tr>
+                  <tr><td class="nowrap"><code>liwenjson_repair</code></td><td>修复并返回文本与修复记录。要的是文档，不是一个裁决。</td></tr>
+                  <tr><td class="nowrap"><code>liwenjson_validate</code></td><td>只校验、不修复：可修的文档仍然算 invalid，并指出宽松档会做哪条修复。</td></tr>
+                  <tr><td class="nowrap"><code>liwenjson_readiness</code></td><td>每个声明字段在流里何时定稿：<code>syntax</code> / <code>schema</code> / <code>settled</code> 三个比例。</td></tr>
                 </tbody>
               </table>
             </div>
@@ -437,7 +437,7 @@
 
         <div class="grid g-2" style="margin-top: 16px">
           <div class="card">
-            <h3>客户端配置 · <code>interjson mcp --print-config</code></h3>
+            <h3>客户端配置 · <code>liwenjson mcp --print-config</code></h3>
             <div class="row" style="margin-bottom: 8px">
               <label for="mcp-client">客户端</label>
               <select id="mcp-client" style="max-width: 13rem"></select>
@@ -448,11 +448,11 @@
           </div>
           <div class="card">
             <h3>一行接入</h3>
-            <pre id="mcp-oneline" class="short">claude mcp add interjson -- interjson mcp</pre>
+            <pre id="mcp-oneline" class="short">claude mcp add liwenjson -- liwenjson mcp</pre>
             <div class="row" style="margin-top: 8px">
               <button type="button" data-copy="mcp-oneline">复制</button>
             </div>
-            <p class="meta">别名 <code>interjson-mcp</code> 等价于 <code>interjson mcp</code>；
+            <p class="meta">别名 <code>liwenjson-mcp</code> 等价于 <code>liwenjson mcp</code>；
               支持 claude / cursor / vscode / codex / windsurf / zed / json 七种配置。</p>
           </div>
         </div>
@@ -806,7 +806,7 @@
         <div class="band-head">
           <span class="band-num">07</span>
           <h2 class="band-title" id="cli-title">命令行</h2>
-          <span class="band-tag">interjson · 退出码 0/1/2/3/4/5/70</span>
+          <span class="band-tag">liwenjson · 退出码 0/1/2/3/4/5/70</span>
         </div>
         <p class="band-sub">
           同一个引擎的原生 CLI。勾选参数、选择子命令，右边就是可以直接粘贴的一行。
@@ -824,7 +824,7 @@
               <input id="cli-file" type="text" value="broken.json" style="max-width: 12rem" aria-label="输入文件路径" />
             </div>
             <div class="chips" id="cli-flags" style="margin-top: 10px"></div>
-            <pre id="cli-out" class="short" style="margin-top: 10px">interjson broken.json</pre>
+            <pre id="cli-out" class="short" style="margin-top: 10px">liwenjson broken.json</pre>
             <div class="row" style="margin-top: 8px">
               <button id="cli-copy" type="button" data-copy="cli-out">复制命令</button>
               <span class="hint" style="margin: 0">文件为 <code>-</code> 或缺省时读取标准输入。</span>
@@ -838,7 +838,7 @@
                 <tbody id="cli-exit-body"></tbody>
               </table>
             </div>
-            <h3 style="margin-top: 14px">致命错误（InterJSONError，12 个变体）</h3>
+            <h3 style="margin-top: 14px">致命错误（LIWENJSONError，12 个变体）</h3>
             <div class="table-wrap" style="max-height: 16rem">
               <table>
                 <thead><tr><th>码</th><th>变体</th><th>退出码</th><th>触发</th></tr></thead>
@@ -868,8 +868,8 @@
             <b>这一页为什么可信</b>
             <ul>
               <li>输出必合法 JSON · 修复幂等 · 任意分块与一次性结果一致 · 快照是稳定前缀 · 任何字节序列不 panic。</li>
-              <li>页面里的每个数字都来自 <code>static/demo/interjson.js</code>（<code>code/examples/web/main.mbt</code> 的 MoonBit → JS 产物），没有为演示写的特例，也没有第二份解析器。</li>
-              <li>规则、错误码与退出码取自 <code>code/docs/RULES.md</code>、<code>code/docs/ERRORS.md</code>；MCP 工具表与 <code>--print-config</code> 输出取自 <code>code/cmd/interjson/mcp.mbt</code> 与真实二进制的运行结果；MCP 的 JSON-RPC 往返是从真实 <code>interjson mcp</code> 进程抓下来逐字节存进去的；质量数字与 README 的证据表由 <code>code/tests/claims.sh</code> 共同锁定。</li>
+              <li>页面里的每个数字都来自 <code>static/demo/liwenjson.js</code>（<code>code/examples/web/main.mbt</code> 的 MoonBit → JS 产物），没有为演示写的特例，也没有第二份解析器。</li>
+              <li>规则、错误码与退出码取自 <code>code/docs/RULES.md</code>、<code>code/docs/ERRORS.md</code>；MCP 工具表与 <code>--print-config</code> 输出取自 <code>code/cmd/liwenjson/mcp.mbt</code> 与真实二进制的运行结果；MCP 的 JSON-RPC 往返是从真实 <code>liwenjson mcp</code> 进程抓下来逐字节存进去的；质量数字与 README 的证据表由 <code>code/tests/claims.sh</code> 共同锁定。</li>
             </ul>
           </div>
           <div>
@@ -878,9 +878,9 @@
               <li><a href="./live.html">live.html</a> — 四条真实场景逐帧重放</li>
               <li><a href="./mcp.html">mcp.html</a> — 本地 MCP 执行门：真实 Claude Code 会话（录制于更名前，页面按新工具名重写）的 E010 → 重试 → 放行</li>
               <li><a href="./README.md">static/demo/README.md</a> — 本地打开方式</li>
-              <li><a href="https://github.com/wenhuang2333/Moonbit-haker">GitHub 仓库</a> · <code>cd code &amp;&amp; moon test</code></li>
+              <li><a href="https://github.com/wenhuang2333/LIWENJSON">GitHub 仓库</a> · <code>cd code &amp;&amp; moon test</code></li>
             </ul>
-            <p class="meta">InterJSON v1.5.1 · mooncakes <code>0.13.0</code> 已发布（2026-10-29）· 页面无外部依赖，可离线打开。</p>
+            <p class="meta">LIWENJSON v1.5.1 · mooncakes <code>0.13.0</code> 已发布（2026-10-29）· 页面无外部依赖，可离线打开。</p>
           </div>
         </div>
       </footer>
@@ -1037,55 +1037,55 @@
         "surfaces": [
           {
             "title": "MCP · 模型主动调用",
-            "tag": "interjson mcp",
-            "cmd": "claude mcp add interjson -- interjson mcp",
-            "note": "四个只读工具：interjson_gate（主入口，默认 agent 档，等于库里的 Options::for_agent()，因此会跳过 chat 通道前的那句话） / interjson_repair / interjson_validate / interjson_readiness；文本通道是摘要，structuredContent 是完整载荷。不可执行时一定带 retry.prompt 且 value 为 null。Claude Code、Cursor、Codex CLI、Gemini CLI、Cline、Windsurf 都能发现。命令也可由 interjson mcp --print-config 生成。"
+            "tag": "liwenjson mcp",
+            "cmd": "claude mcp add liwenjson -- liwenjson mcp",
+            "note": "四个只读工具：liwenjson_gate（主入口，默认 agent 档，等于库里的 Options::for_agent()，因此会跳过 chat 通道前的那句话） / liwenjson_repair / liwenjson_validate / liwenjson_readiness；文本通道是摘要，structuredContent 是完整载荷。不可执行时一定带 retry.prompt 且 value 为 null。Claude Code、Cursor、Codex CLI、Gemini CLI、Cline、Windsurf 都能发现。命令也可由 liwenjson mcp --print-config 生成。"
           },
           {
             "title": "stdio 协议 · 宿主应用",
-            "tag": "interjson serve",
-            "cmd": "interjson serve",
+            "tag": "liwenjson serve",
+            "cmd": "liwenjson serve",
             "note": "每行一个请求 JSON、每行一个响应 JSON 的长驻协议 v1；高频调用与流式场景的首选。方法：hello、repair、analyze、validate、readiness、watch.*、llm.*、shutdown。"
           },
           {
             "title": "npm · Node / TypeScript",
-            "tag": "interjson-moonbit",
+            "tag": "liwenjson",
             "cmd": "npm install ./code/npm",
-            "note": "装完 import { analyze, repair } from \"interjson-moonbit\"，在执行工具参数前过闸。包名尚未发布到 npm 仓库，按仓库路径安装；包内还带一个 interjson-mcp 入口（需要 interjson 在 PATH 上，或用 INTERJSON_BIN 指向它）。包里的 vendor/interjson.js 是同一引擎的 JS 构建，供进程内调用，不能当 MCP server 用。"
+            "note": "装完 import { analyze, repair } from \"liwenjson\"，在执行工具参数前过闸。包名尚未发布到 npm 仓库，按仓库路径安装；包内还带一个 liwenjson-mcp 入口（需要 liwenjson 在 PATH 上，或用 LIWENJSON_BIN 指向它）。包里的 vendor/liwenjson.js 是同一引擎的 JS 构建，供进程内调用，不能当 MCP server 用。"
           },
           {
             "title": "pip · Python",
-            "tag": "interjson-moonbit",
+            "tag": "liwenjson",
             "cmd": "pip install ./code/python",
-            "note": "from interjson import Client：复用同一个 interjson serve 进程，executable 为 false 时把 retry.prompt 原样回灌模型。pip 包同样提供 interjson-mcp 与 interjson-http 两个入口；原生二进制需要在 PATH 上，或用 INTERJSON_BIN 指向它。"
+            "note": "from liwenjson import Client：复用同一个 liwenjson serve 进程，executable 为 false 时把 retry.prompt 原样回灌模型。pip 包同样提供 liwenjson-mcp 与 liwenjson-http 两个入口；原生二进制需要在 PATH 上，或用 LIWENJSON_BIN 指向它。"
           },
           {
             "title": "HTTP · n8n / Dify / Coze",
-            "tag": "interjson-http",
-            "cmd": "interjson-http --port 8080",
+            "tag": "liwenjson-http",
+            "cmd": "liwenjson-http --port 8080",
             "note": "随 Python 包一起安装的 HTTP facade，给不会起子进程的工作流引擎用。"
           },
           {
             "title": "MoonBit 库 · 进程内",
-            "tag": "moon add zhanshishan/interjson",
-            "cmd": "let p = @interjson.PartialParser::new()",
+            "tag": "moon add zhanshishan/liwenjson",
+            "cmd": "let p = @liwenjson.PartialParser::new()",
             "note": "不想起子进程时直接用库：PartialParser 逐个码元喂，analyze 给出同一份执行门判断。mooncakes 0.13.0 已发布（2026-10-29）；GitHub v1.5.1 ↔ mooncakes 0.13.0 的对应关系由 code/version.mbt 的 VERSION / REGISTRY_VERSION 定义，serve 的 hello 同时报告两个号。"
           }
         ],
         "mcp": {
           "clients": [
-            { "id": "claude", "label": "Claude Code", "config": "claude mcp add interjson -- interjson mcp" },
-            { "id": "cursor", "label": "Cursor / Cline / Windsurf", "config": "{\"mcpServers\":{\"interjson\":{\"command\":\"interjson\",\"args\":[\"mcp\"]}}}" },
-            { "id": "vscode", "label": "VS Code", "config": "{\"servers\":{\"interjson\":{\"type\":\"stdio\",\"command\":\"interjson\",\"args\":[\"mcp\"]}}}" },
-            { "id": "codex", "label": "Codex CLI", "config": "[mcp_servers.interjson]\ncommand = \"interjson\"\nargs = [\"mcp\"]" },
-            { "id": "windsurf", "label": "Windsurf", "config": "{\"mcpServers\":{\"interjson\":{\"command\":\"interjson\",\"args\":[\"mcp\"]}}}" },
-            { "id": "zed", "label": "Zed", "config": "{\"context_servers\":{\"interjson\":{\"command\":{\"path\":\"interjson\",\"args\":[\"mcp\"]}}}}" },
-            { "id": "json", "label": "通用 mcpServers JSON（默认）", "config": "{\"mcpServers\":{\"interjson\":{\"command\":\"interjson\",\"args\":[\"mcp\"]}}}" }
+            { "id": "claude", "label": "Claude Code", "config": "claude mcp add liwenjson -- liwenjson mcp" },
+            { "id": "cursor", "label": "Cursor / Cline / Windsurf", "config": "{\"mcpServers\":{\"liwenjson\":{\"command\":\"liwenjson\",\"args\":[\"mcp\"]}}}" },
+            { "id": "vscode", "label": "VS Code", "config": "{\"servers\":{\"liwenjson\":{\"type\":\"stdio\",\"command\":\"liwenjson\",\"args\":[\"mcp\"]}}}" },
+            { "id": "codex", "label": "Codex CLI", "config": "[mcp_servers.liwenjson]\ncommand = \"liwenjson\"\nargs = [\"mcp\"]" },
+            { "id": "windsurf", "label": "Windsurf", "config": "{\"mcpServers\":{\"liwenjson\":{\"command\":\"liwenjson\",\"args\":[\"mcp\"]}}}" },
+            { "id": "zed", "label": "Zed", "config": "{\"context_servers\":{\"liwenjson\":{\"command\":{\"path\":\"liwenjson\",\"args\":[\"mcp\"]}}}}" },
+            { "id": "json", "label": "通用 mcpServers JSON（默认）", "config": "{\"mcpServers\":{\"liwenjson\":{\"command\":\"liwenjson\",\"args\":[\"mcp\"]}}}" }
           ],
           "messages": {
-            "refused": { "request": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"interjson_gate\",\"arguments\":{\"text\":\"{\\\"amount\\\":100,\\\"currency\\\":\\\"USD\\\"\",\"schema_json\":{\"type\":\"object\",\"properties\":{\"amount\":{\"type\":\"number\"},\"currency\":{\"type\":\"string\"}},\"required\":[\"amount\"]}}}}", "response": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"decision=lossy_repair executable=false exactness=lossy\\nerror=E010 E010 StrictViolation at 1:31 (offset 30): R009 CloseContainer: exactness lossy exceeds max_loss cosmetic\\nretry (send this back to the model): InterJSON refused the arguments: E010 R009 CloseContainer at line 1 column 31 (offset 30).\\nReason: exactness lossy exceeds max_loss cosmetic\\nContext: nt\\\":100,\\\"currency\\\":\\\"USD\\\"\\n                                 ^\\nRe-emit the arguments as valid JSON with exactly one reading.\"}],\"isError\":false,\"structuredContent\":{\"decision\":\"lossy_repair\",\"label\":\"REJECT (a value was changed)\",\"exactness\":\"lossy\",\"ambiguous\":false,\"information_loss\":true,\"valid_json\":false,\"normalized\":true,\"ambiguity\":\"none\",\"execution\":\"blocked\",\"executable\":false,\"syntax_ready_permille\":-1,\"schema_total\":0,\"schema_satisfied\":0,\"schema_missing\":[],\"error\":{\"code\":\"E010\",\"message\":\"E010 StrictViolation at 1:31 (offset 30): R009 CloseContainer: exactness lossy exceeds max_loss cosmetic\"},\"repairs\":[{\"rule\":\"R009\",\"name\":\"CloseContainer\",\"action\":\"insert\",\"offset\":30,\"line\":1,\"column\":31,\"severity\":\"warning\",\"ambiguity\":\"unambiguous\",\"confidence\":\"refused\",\"confidence_value\":0,\"information_loss\":true}],\"retry\":{\"code\":\"E010\",\"prompt\":\"InterJSON refused the arguments: E010 R009 CloseContainer at line 1 column 31 (offset 30).\\nReason: exactness lossy exceeds max_loss cosmetic\\nContext: nt\\\":100,\\\"currency\\\":\\\"USD\\\"\\n                                 ^\\nRe-emit the arguments as valid JSON with exactly one reading.\"},\"repairs_truncated\":false,\"value\":null}}}" },
-            "allowed": { "request": "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"interjson_gate\",\"arguments\":{\"text\":\"{\\\"amount\\\":100,\\\"currency\\\":\\\"USD\\\"}\",\"schema_json\":{\"type\":\"object\",\"properties\":{\"amount\":{\"type\":\"number\"},\"currency\":{\"type\":\"string\"}},\"required\":[\"amount\"]}}}}", "response": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"decision=safe executable=true exactness=exact\"}],\"isError\":false,\"structuredContent\":{\"decision\":\"safe\",\"label\":\"SAFE TO EXECUTE\",\"exactness\":\"exact\",\"ambiguous\":false,\"information_loss\":false,\"valid_json\":true,\"normalized\":false,\"ambiguity\":\"none\",\"execution\":\"allowed\",\"executable\":true,\"syntax_ready_permille\":-1,\"schema_total\":2,\"schema_satisfied\":2,\"schema_missing\":[],\"error\":null,\"repairs\":[],\"retry\":null,\"repairs_truncated\":false,\"value\":{\"amount\":100,\"currency\":\"USD\"}}}}" },
-            "init": { "request": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"demo\",\"version\":\"0\"}}}", "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"interjson\",\"title\":\"InterJSON — the execution gate\",\"version\":\"1.5.1\"},\"instructions\":\"InterJSON is a local execution gate for model output. It runs on this machine over stdio and performs no network requests.\\n\\nBefore executing tool arguments or trusting structured output, call `interjson_gate` with the raw argument text and the tool's inputSchema as `schema_json`.\\n- `executable: true` means the arguments are safe to execute; `value` is the parsed object.\\n- `executable: false` means do not execute: send `retry.prompt` back to the model and use the re-emitted arguments.\\n\\n`interjson_repair` returns repaired text, `interjson_validate` reports legality without repairing, and `interjson_readiness` reports when streaming fields become final.\"}}" }
+            "refused": { "request": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"liwenjson_gate\",\"arguments\":{\"text\":\"{\\\"amount\\\":100,\\\"currency\\\":\\\"USD\\\"\",\"schema_json\":{\"type\":\"object\",\"properties\":{\"amount\":{\"type\":\"number\"},\"currency\":{\"type\":\"string\"}},\"required\":[\"amount\"]}}}}", "response": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"decision=lossy_repair executable=false exactness=lossy\\nerror=E010 E010 StrictViolation at 1:31 (offset 30): R009 CloseContainer: exactness lossy exceeds max_loss cosmetic\\nretry (send this back to the model): LIWENJSON refused the arguments: E010 R009 CloseContainer at line 1 column 31 (offset 30).\\nReason: exactness lossy exceeds max_loss cosmetic\\nContext: nt\\\":100,\\\"currency\\\":\\\"USD\\\"\\n                                 ^\\nRe-emit the arguments as valid JSON with exactly one reading.\"}],\"isError\":false,\"structuredContent\":{\"decision\":\"lossy_repair\",\"label\":\"REJECT (a value was changed)\",\"exactness\":\"lossy\",\"ambiguous\":false,\"information_loss\":true,\"valid_json\":false,\"normalized\":true,\"ambiguity\":\"none\",\"execution\":\"blocked\",\"executable\":false,\"syntax_ready_permille\":-1,\"schema_total\":0,\"schema_satisfied\":0,\"schema_missing\":[],\"error\":{\"code\":\"E010\",\"message\":\"E010 StrictViolation at 1:31 (offset 30): R009 CloseContainer: exactness lossy exceeds max_loss cosmetic\"},\"repairs\":[{\"rule\":\"R009\",\"name\":\"CloseContainer\",\"action\":\"insert\",\"offset\":30,\"line\":1,\"column\":31,\"severity\":\"warning\",\"ambiguity\":\"unambiguous\",\"confidence\":\"refused\",\"confidence_value\":0,\"information_loss\":true}],\"retry\":{\"code\":\"E010\",\"prompt\":\"LIWENJSON refused the arguments: E010 R009 CloseContainer at line 1 column 31 (offset 30).\\nReason: exactness lossy exceeds max_loss cosmetic\\nContext: nt\\\":100,\\\"currency\\\":\\\"USD\\\"\\n                                 ^\\nRe-emit the arguments as valid JSON with exactly one reading.\"},\"repairs_truncated\":false,\"value\":null}}}" },
+            "allowed": { "request": "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"liwenjson_gate\",\"arguments\":{\"text\":\"{\\\"amount\\\":100,\\\"currency\\\":\\\"USD\\\"}\",\"schema_json\":{\"type\":\"object\",\"properties\":{\"amount\":{\"type\":\"number\"},\"currency\":{\"type\":\"string\"}},\"required\":[\"amount\"]}}}}", "response": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"decision=safe executable=true exactness=exact\"}],\"isError\":false,\"structuredContent\":{\"decision\":\"safe\",\"label\":\"SAFE TO EXECUTE\",\"exactness\":\"exact\",\"ambiguous\":false,\"information_loss\":false,\"valid_json\":true,\"normalized\":false,\"ambiguity\":\"none\",\"execution\":\"allowed\",\"executable\":true,\"syntax_ready_permille\":-1,\"schema_total\":2,\"schema_satisfied\":2,\"schema_missing\":[],\"error\":null,\"repairs\":[],\"retry\":null,\"repairs_truncated\":false,\"value\":{\"amount\":100,\"currency\":\"USD\"}}}}" },
+            "init": { "request": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"demo\",\"version\":\"0\"}}}", "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"liwenjson\",\"title\":\"LIWENJSON — the execution gate\",\"version\":\"1.5.1\"},\"instructions\":\"LIWENJSON is a local execution gate for model output. It runs on this machine over stdio and performs no network requests.\\n\\nBefore executing tool arguments or trusting structured output, call `liwenjson_gate` with the raw argument text and the tool's inputSchema as `schema_json`.\\n- `executable: true` means the arguments are safe to execute; `value` is the parsed object.\\n- `executable: false` means do not execute: send `retry.prompt` back to the model and use the re-emitted arguments.\\n\\n`liwenjson_repair` returns repaired text, `liwenjson_validate` reports legality without repairing, and `liwenjson_readiness` reports when streaming fields become final.\"}}" }
           }
         }
       }
@@ -1093,21 +1093,21 @@
 
     <script>
       // Host hooks: the MoonBit bundle calls these from its main function.
-      globalThis.interjsonRegister1 = function (name, fn) {
-        globalThis.interjson = globalThis.interjson || {};
-        globalThis.interjson[name] = fn;
+      globalThis.liwenjsonRegister1 = function (name, fn) {
+        globalThis.liwenjson = globalThis.liwenjson || {};
+        globalThis.liwenjson[name] = fn;
       };
-      globalThis.interjsonRegister2 = globalThis.interjsonRegister1;
-      globalThis.interjsonRegister3 = globalThis.interjsonRegister1;
+      globalThis.liwenjsonRegister2 = globalThis.liwenjsonRegister1;
+      globalThis.liwenjsonRegister3 = globalThis.liwenjsonRegister1;
     </script>
-    <script src="./interjson.js" onerror="window.__jmBundleFailed = true"></script>
+    <script src="./liwenjson.js" onerror="window.__jmBundleFailed = true"></script>
     <script>
       (() => {
         "use strict";
 
         const $ = (id) => document.getElementById(id);
         const F = JSON.parse($("jm-fixtures").textContent);
-        const engine = globalThis.interjson || null;
+        const engine = globalThis.liwenjson || null;
         const api = (name) =>
           engine && typeof engine[name] === "function" ? engine[name] : null;
         const hasEngine = Boolean(api("analyze") && api("live"));
@@ -1188,7 +1188,7 @@
         const themeButton = $("theme-toggle");
         const storedTheme = (() => {
           try {
-            return localStorage.getItem("interjson-theme");
+            return localStorage.getItem("liwenjson-theme");
           } catch {
             return null;
           }
@@ -1207,7 +1207,7 @@
             document.documentElement.dataset.theme === "dark" ? "light" : "dark";
           applyTheme(next);
           try {
-            localStorage.setItem("interjson-theme", next);
+            localStorage.setItem("liwenjson-theme", next);
           } catch {
             /* private mode: the page still works */
           }
@@ -1448,7 +1448,7 @@
           const analyze = api($("wb-skip-prose").checked ? "analyze_prose" : "analyze");
           if (!analyze) {
             workbenchFailure(
-              "interjson.js 没有加载。请通过 HTTP 打开本页，或先运行 bash static/demo/build.sh。",
+              "liwenjson.js 没有加载。请通过 HTTP 打开本页，或先运行 bash static/demo/build.sh。",
             );
             return;
           }
@@ -1647,7 +1647,7 @@
               : api("analyze");
           if (!fn) {
             $("gate-verdict").className = "verdict bad";
-            $("gate-verdict").textContent = "interjson.js 没有加载";
+            $("gate-verdict").textContent = "liwenjson.js 没有加载";
             $("gate-plan").textContent = "需要先加载引擎 bundle。";
             return;
           }
@@ -1715,7 +1715,7 @@
           const analyzeDepth = api("analyze_depth");
           if (!analyzeDepth) {
             $("dp-verdict").className = "verdict bad";
-            $("dp-verdict").textContent = "interjson.js 没有加载";
+            $("dp-verdict").textContent = "liwenjson.js 没有加载";
             return;
           }
           const depth = Number($("dp-depth").value);
@@ -1828,7 +1828,7 @@
           stState.upto = upto;
           const live = api("live");
           if (!live) {
-            $("st-text").textContent = "interjson.js 没有加载";
+            $("st-text").textContent = "liwenjson.js 没有加载";
             $("st-meta").textContent = "需要引擎 bundle 才能逐帧重放。";
             return;
           }
@@ -2169,7 +2169,7 @@
           const fn = api("readiness");
           if (!fn) {
             $("rd-verdict").className = "verdict bad";
-            $("rd-verdict").textContent = "interjson.js 没有加载";
+            $("rd-verdict").textContent = "liwenjson.js 没有加载";
             return;
           }
           const parsed = parseJson(fn(rdState.scenario.text, $("rd-schema").value));
@@ -2311,7 +2311,7 @@
           return /[^\w@%+=:,./-]/.test(value) ? "'" + value.replace(/'/g, "'\\''") + "'" : value;
         }
         function cliBuild() {
-          const parts = ["interjson"];
+          const parts = ["liwenjson"];
           if (cliState.cmd !== "repair") parts.push(cliState.cmd);
           for (const flag of F.cli.flags) {
             if (!cliState.flags.has(flag.flag)) continue;

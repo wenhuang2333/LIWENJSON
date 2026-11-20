@@ -18,7 +18,7 @@ This replays it and checks three things: every request is answered, the
 handshake negotiates a revision the server implements, and the tool list the
 client receives is the one the server publishes.
 
-    python3 code/tests/mcp_client_replay.py [--cli path-to-interjson]
+    python3 code/tests/mcp_client_replay.py [--cli path-to-liwenjson]
 """
 
 from __future__ import annotations
@@ -31,12 +31,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 FIXTURE = ROOT / "code" / "llm" / "fixtures" / "real_client_handshake.jsonl"
-DEFAULT_CLI = ROOT / "code/_build/native/release/build/cmd/interjson/interjson.exe"
+DEFAULT_CLI = ROOT / "code/_build/native/release/build/cmd/liwenjson/liwenjson.exe"
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cli", default=os.environ.get("INTERJSON_BIN", str(DEFAULT_CLI)))
+    ap.add_argument("--cli", default=os.environ.get("LIWENJSON_BIN", str(DEFAULT_CLI)))
     ap.add_argument("--fixture", default=str(FIXTURE))
     args = ap.parse_args()
 
@@ -89,10 +89,10 @@ def main() -> int:
     tools = ((tools_answer.get("result") or {}).get("tools")) or []
     names = [t.get("name") for t in tools]
     for want in (
-        "interjson_gate",
-        "interjson_repair",
-        "interjson_validate",
-        "interjson_readiness",
+        "liwenjson_gate",
+        "liwenjson_repair",
+        "liwenjson_validate",
+        "liwenjson_readiness",
     ):
         if want not in names:
             problems.append(f"the tool list is missing {want}")

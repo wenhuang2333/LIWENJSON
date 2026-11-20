@@ -116,7 +116,7 @@ export function analyze(input: string, options?: AnalyzeOptions): Plan;
  * The gate, with the profile the MCP tools use (`agent`).
  *
  * Use this rather than `analyze` when the question is "may I execute this?":
- * it is the same call the `interjson_gate` MCP tool makes, so the npm package
+ * it is the same call the `liwenjson_gate` MCP tool makes, so the npm package
  * and the MCP server cannot disagree about the same input.
  */
 export function gate(input: string, options?: AnalyzeOptions): Plan;
@@ -151,7 +151,7 @@ export function deltas(input: string, upto: number): unknown;
  * A structured refusal: `code` is the `E` code (`E010`, `E011`, `E070`, …)
  * and `detail` is the message without the code.
  */
-export class InterJSONError extends Error {
+export class LIWENJSONError extends Error {
   code: string;
   detail: string;
 }
@@ -159,7 +159,7 @@ export class InterJSONError extends Error {
 export const version: string;
 
 declare const api: {
-  InterJSONError: typeof InterJSONError;
+  LIWENJSONError: typeof LIWENJSONError;
   repair: typeof repair;
   repairResult: typeof repairResult;
   analyze: typeof analyze;

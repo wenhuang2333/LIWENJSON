@@ -50,7 +50,7 @@ pub fn field_readiness(
   input : String,
   step? : Int32,
   options? : Options,
-) -> Array[FieldReady] raise InterJSONError {
+) -> Array[FieldReady] raise LIWENJSONError {
   let n = input.length()
   let fin = parse(input, options?)
   let finmap = match fin.value {
@@ -105,7 +105,7 @@ pub fn field_readiness(
 pub fn readiness_median(
   docs : Array[String],
   step? : Int32,
-) -> Int32 raise InterJSONError {
+) -> Int32 raise LIWENJSONError {
   let all : Array[Int32] = []
   for text in docs {
     for f in field_readiness(text, step?) {
@@ -127,7 +127,7 @@ pub fn readiness_median(
 pub fn readiness_deciles(
   docs : Array[String],
   step? : Int32,
-) -> Array[Int32] raise InterJSONError {
+) -> Array[Int32] raise LIWENJSONError {
   let points : Array[Int32] = []
   for text in docs {
     for f in field_readiness(text, step?) {
@@ -162,7 +162,7 @@ pub fn readiness_deciles(
 pub fn early_stop_saving(
   docs : Array[String],
   step? : Int32,
-) -> Int32 raise InterJSONError {
+) -> Int32 raise LIWENJSONError {
   if docs.length() == 0 {
     return 0
   }

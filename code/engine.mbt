@@ -4,7 +4,7 @@
 // The engine is a pushdown automaton over UTF-16 code units: an explicit
 // container stack plus a token state, no recursion and no regular expressions.
 // Every mutation of the input is recorded as an `R` repair; fatal conditions
-// raise `InterJSONError` (`E` codes).
+// raise `LIWENJSONError` (`E` codes).
 
 ///|
 /// Container kind of an open frame.
@@ -684,7 +684,7 @@ fn Engine::report(
   slot~ : Slot = KeySlot,
   severity~ : Severity? = None,
   ambiguity~ : Ambiguity = Unambiguous,
-) -> Unit raise InterJSONError {
+) -> Unit raise LIWENJSONError {
   // A few codes are only notation-level in some situations: quoting a key,
   // re-casing a literal, merging two identical duplicate keys. Those sites
   // pass an explicit severity; everything else derives it from the code.
@@ -737,7 +737,7 @@ fn Engine::report(
 
 ///|
 /// Feed a whole string chunk.
-fn Engine::feed_str(self : Engine, s : String) -> Unit raise InterJSONError {
+fn Engine::feed_str(self : Engine, s : String) -> Unit raise LIWENJSONError {
   match self.phase {
     PFinished | PFailed => raise InvalidState("cannot feed a finished parser")
     _ => ()
@@ -793,7 +793,7 @@ fn Engine::push_run(
   s : String,
   from : Int32,
   to : Int32,
-) -> Unit raise InterJSONError {
+) -> Unit raise LIWENJSONError {
   let len = to - from
   // A whole-string run (the byte fast path always passes one) can be stored
   // as-is; slicing would copy it again.
@@ -814,7 +814,7 @@ fn Engine::push_run(
 
 ///|
 /// Feed one UTF-16 code unit.
-fn Engine::step(self : Engine, u : UInt16) -> Unit raise InterJSONError {
+fn Engine::step(self : Engine, u : UInt16) -> Unit raise LIWENJSONError {
   if self.pos_offset >= self.opts.max_input_len {
     raise SizeLimit(self.opts.max_input_len, self.pos_offset)
   }
@@ -849,7 +849,7 @@ fn Engine::step(self : Engine, u : UInt16) -> Unit raise InterJSONError {
 /// The payload of `E040` is an absolute byte offset from the start of the whole
 /// input, counted across every `feed_bytes` call, so the diagnostic does not
 /// depend on how the caller split the stream into chunks (BR-22).
-fn Engine::feed_bytes(self : Engine, bs : Bytes) -> Unit raise InterJSONError {
+fn Engine::feed_bytes(self : Engine, bs : Bytes) -> Unit raise LIWENJSONError {
   let n = bs.length()
   let mut i = 0
   while i < n {
@@ -993,7 +993,7 @@ fn Engine::feed_byte(
   self : Engine,
   b : Int32,
   idx : Int32,
-) -> Unit raise InterJSONError {
+) -> Unit raise LIWENJSONError {
   let abs = self.fed_bytes + idx
   if self.utf8_need == 0 {
     if b < 0x80 {

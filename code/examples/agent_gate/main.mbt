@@ -24,7 +24,7 @@ enum Decision {
 
 ///|
 /// Why the gate refused, in one line, for the transcript.
-fn reason(hint : @interjson.RetryHint) -> String {
+fn reason(hint : @liwenjson.RetryHint) -> String {
   if hint.error_code == "E011" {
     "E011 " + hint.ambiguity.name() + " - the gate cannot pick a reading"
   } else {
@@ -36,9 +36,9 @@ fn reason(hint : @interjson.RetryHint) -> String {
 /// Parse a model answer as tool arguments under the execution profile.
 fn decide(answer : String) -> Decision {
   try {
-    let result = @interjson.repair(
+    let result = @liwenjson.repair(
       answer,
-      options=@interjson.Options::for_execution(),
+      options=@liwenjson.Options::for_execution(),
     )
     Execute(result.text)
   } catch {
@@ -95,7 +95,7 @@ fn main {
   //    a caller that only displays the text keeps the old behaviour.
   println("== lenient (no gate)")
   try {
-    let lenient = @interjson.repair("{\"city\":[\"Paris\" \"London\"]}")
+    let lenient = @liwenjson.repair("{\"city\":[\"Paris\" \"London\"]}")
     println("execute  : " + lenient.text)
     println("ambiguous: " + lenient.ambiguous.to_string())
     println("exactness: " + lenient.exactness.name())

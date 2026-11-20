@@ -170,9 +170,9 @@ test "a payload that is not an event of the provider is still an error" {
 /// root (`0`, `"x"`) as if it were prose.
 fn tx_run(provider : Provider, payloads : String, prose : Bool) -> String {
   let opts = if prose {
-    { ..@interjson.Options::for_llm(), skip_prose: true, }
+    { ..@liwenjson.Options::for_llm(), skip_prose: true, }
   } else {
-    @interjson.Options::for_llm()
+    @liwenjson.Options::for_llm()
   }
   let s = TextStream::new(provider, options=opts) catch {
     e => return "setup failed: " + e.to_string()

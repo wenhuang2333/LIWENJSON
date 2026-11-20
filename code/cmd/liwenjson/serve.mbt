@@ -1,4 +1,4 @@
-// `interjson serve` — the long-lived, versioned protocol (PROTOCOL.md).
+// `liwenjson serve` — the long-lived, versioned protocol (PROTOCOL.md).
 //
 // `--stdio` is accepted as an explicit alias: stdio is the only transport,
 // so the flag selects nothing. It exists so that the command line printed in
@@ -7,7 +7,7 @@
 // One request per line on stdin, one response per line on stdout, UTF-8. The
 // response echoes the client's `id`. stdout carries protocol bytes and nothing
 // else; diagnostics go to stderr. The engine is the same one the one-shot CLI
-// uses, so `serve` cannot disagree with `interjson repair`.
+// uses, so `serve` cannot disagree with `liwenjson repair`.
 //
 // The protocol is deliberately stateless for `repair`/`analyze`/`validate` and
 // single-stream for `watch`/`llm`: one active stream per connection. That is
@@ -25,12 +25,12 @@ const PROTOCOL_VERSION : Int32 = 1
 /// a literal: the CLI, the MCP handshake and the library all have to name the
 /// same release, and there is exactly one place that says which release this
 /// is.
-const ENGINE_VERSION : String = @ij.VERSION
+const ENGINE_VERSION : String = @lj.VERSION
 
 ///|
 /// The mooncakes registry version that corresponds to `ENGINE_VERSION`. Also
 /// the library's, for the same reason.
-const REGISTRY_VERSION : String = @ij.REGISTRY_VERSION
+const REGISTRY_VERSION : String = @lj.REGISTRY_VERSION
 
 ///|
 /// Largest request line accepted. A request larger than this is answered with
@@ -127,11 +127,11 @@ fn jnum(n : Int32) -> Json {
 
 ///|
 /// `Completeness` as the stable word the protocol uses.
-fn completeness_name(c : @ij.Completeness) -> String {
+fn completeness_name(c : @lj.Completeness) -> String {
   match c {
-    @ij.Empty => "empty"
-    @ij.Partial => "partial"
-    @ij.Complete => "complete"
+    @lj.Empty => "empty"
+    @lj.Partial => "partial"
+    @lj.Complete => "complete"
   }
 }
 
@@ -139,13 +139,13 @@ fn completeness_name(c : @ij.Completeness) -> String {
 /// One repair record. The shape is defined once, in `plan.mbt`, because the
 /// plan (`analyze`) and the protocol (`repair`/`validate`) both return it and
 /// two hand-written shapes had already drifted apart (audit 3.7).
-fn repair_json(r : @ij.Repair) -> Json {
-  @ij.repair_record_json(r)
+fn repair_json(r : @lj.Repair) -> Json {
+  @lj.repair_record_json(r)
 }
 
 ///|
 /// One delta.
-fn delta_json(d : @ij.Delta) -> Json {
+fn delta_json(d : @lj.Delta) -> Json {
   jobj([
     ("path", Json::string(d.pointer())),
     ("op", Json::string(d.op.name())),
@@ -163,15 +163,15 @@ fn delta_json(d : @ij.Delta) -> Json {
 
 ///|
 /// A snapshot path as `a/0/b`.
-fn snapshot_path(s : @ij.Snapshot) -> String {
+fn snapshot_path(s : @lj.Snapshot) -> String {
   let sb = StringBuilder()
   for i = 0; i < s.open_path.length(); i = i + 1 {
     if i > 0 {
       sb.write_char('/')
     }
     match s.open_path[i] {
-      @ij.Key(k) => sb.write_string(k)
-      @ij.Index(x) => sb.write_string(x.to_string())
+      @lj.Key(k) => sb.write_string(k)
+      @lj.Index(x) => sb.write_string(x.to_string())
     }
   }
   sb.to_string()
@@ -179,7 +179,7 @@ fn snapshot_path(s : @ij.Snapshot) -> String {
 
 ///|
 /// A finished parse.
-fn final_json(f : @ij.FinalResult) -> Json {
+fn final_json(f : @lj.FinalResult) -> Json {
   jobj([
     ("text", Json::string(f.text)),
     ("value", f.value),
@@ -193,7 +193,7 @@ fn final_json(f : @ij.FinalResult) -> Json {
 
 ///|
 /// A one-shot repair result (no `value`; `analyze` carries the value).
-fn repair_out_json(r : @ij.RepairResult) -> Json {
+fn repair_out_json(r : @lj.RepairResult) -> Json {
   jobj([
     ("text", Json::string(r.text)),
     ("exactness", Json::string(r.exactness.name())),
@@ -206,7 +206,7 @@ fn repair_out_json(r : @ij.RepairResult) -> Json {
 
 ///|
 /// One readiness event with the offset it fired at.
-fn event_json(e : @ij.ReadinessEvent, at : Int32, fed : Int32) -> Json {
+fn event_json(e : @lj.ReadinessEvent, at : Int32, fed : Int32) -> Json {
   let base = @json.parse(e.to_json()) catch { _ => Json::null() }
   match base {
     Json::Object(m) => {
@@ -226,7 +226,7 @@ fn event_json(e : @ij.ReadinessEvent, at : Int32, fed : Int32) -> Json {
 
 ///|
 /// A schema verdict.
-fn verdict_json(v : @ij.SchemaVerdict) -> Json {
+fn verdict_json(v : @lj.SchemaVerdict) -> Json {
   let mismatched : Array[Json] = []
   for m in v.mismatched {
     mismatched.push(
@@ -272,7 +272,7 @@ fn tool_call_json(v : @llm.ToolCallView) -> Json {
 
 ///|
 /// A fatal error as a structured object, never as stderr text.
-fn error_json(e : @ij.InterJSONError) -> Json {
+fn error_json(e : @lj.LIWENJSONError) -> Json {
   let m : Map[String, Json] = Map([])
   m["code"] = Json::string(e.code())
   m["message"] = Json::string(e.to_string())
@@ -296,7 +296,7 @@ fn response_ok(id : Json, result : Json) -> String {
 
 ///|
 /// `{"id":…,"ok":false,"error":…}`.
-fn response_err(id : Json, e : @ij.InterJSONError) -> String {
+fn response_err(id : Json, e : @lj.LIWENJSONError) -> String {
   jobj([("id", id), ("ok", Json::boolean(false)), ("error", error_json(e))]).stringify()
 }
 
@@ -313,7 +313,7 @@ fn hello_json() -> Json {
     Json::string("llm"),
   ]
   jobj([
-    ("name", Json::string("interjson")),
+    ("name", Json::string("liwenjson")),
     ("engine", Json::string(ENGINE_VERSION)),
     ("registry", Json::string(REGISTRY_VERSION)),
     ("protocol", Json::number(PROTOCOL_VERSION.to_double())),
@@ -324,11 +324,11 @@ fn hello_json() -> Json {
 
 ///|
 /// Read `text` from the request.
-fn text_param(params : Map[String, Json]) -> String raise @ij.InterJSONError {
+fn text_param(params : Map[String, Json]) -> String raise @lj.LIWENJSONError {
   match params.get("text") {
     Some(Json::String(s)) => s
-    Some(_) => raise @ij.InvalidOption("`text` must be a string")
-    None => raise @ij.InvalidOption("missing `text`")
+    Some(_) => raise @lj.InvalidOption("`text` must be a string")
+    None => raise @lj.InvalidOption("missing `text`")
   }
 }
 
@@ -338,11 +338,11 @@ fn int_param(
   params : Map[String, Json],
   key : String,
   fallback : Int32,
-) -> Int32 raise @ij.InterJSONError {
+) -> Int32 raise @lj.LIWENJSONError {
   match params.get(key) {
     Some(Json::Number(d, ..)) => d.to_int()
     Some(Json::Null) => fallback
-    Some(_) => raise @ij.InvalidOption("`" + key + "` must be a number")
+    Some(_) => raise @lj.InvalidOption("`" + key + "` must be a number")
     None => fallback
   }
 }
@@ -352,13 +352,13 @@ fn int_param(
 /// `schema` (the library's DSL).
 fn schema_param(
   params : Map[String, Json],
-) -> @ij.Schema? raise @ij.InterJSONError {
+) -> @lj.Schema? raise @lj.LIWENJSONError {
   match params.get("schema_json") {
-    Some(v) => Some(@ij.Schema::of_json_schema(v))
+    Some(v) => Some(@lj.Schema::of_json_schema(v))
     None =>
       match params.get("schema") {
-        Some(Json::String(s)) => Some(@ij.Schema::parse(s))
-        Some(_) => raise @ij.InvalidOption("`schema` must be a string")
+        Some(Json::String(s)) => Some(@lj.Schema::parse(s))
+        Some(_) => raise @lj.InvalidOption("`schema` must be a string")
         None => None
       }
   }
@@ -369,9 +369,9 @@ fn schema_param(
 /// options. A profile replaces the safety fields and keeps the protocol fields
 /// (`collect_deltas`, `want_text`, …), which is what `with_policy` exists for.
 fn options_from_params(
-  base : @ij.Options,
+  base : @lj.Options,
   params : Map[String, Json],
-) -> @ij.Options raise @ij.InterJSONError {
+) -> @lj.Options raise @lj.LIWENJSONError {
   let mut opts = base
   match params.get("profile") {
     Some(Json::String(name)) =>
@@ -381,19 +381,19 @@ fn options_from_params(
         // `Options::with_profile`.
         Some(p) => opts = opts.with_profile(p)
         None =>
-          raise @ij.InvalidOption(
+          raise @lj.InvalidOption(
             "unknown profile `" +
             name +
             "`; use permissive, interactive, execution, agent or strict",
           )
       }
-    Some(_) => raise @ij.InvalidOption("`profile` must be a string")
+    Some(_) => raise @lj.InvalidOption("`profile` must be a string")
     None => ()
   }
   match params.get("skip_prose") {
     Some(Json::True) => opts = { ..opts, skip_prose: true, }
     Some(Json::False) => opts = { ..opts, skip_prose: false, }
-    Some(_) => raise @ij.InvalidOption("`skip_prose` must be a boolean")
+    Some(_) => raise @lj.InvalidOption("`skip_prose` must be a boolean")
     None => ()
   }
   match params.get("max_loss") {
@@ -401,12 +401,12 @@ fn options_from_params(
       match parse_max_loss(name) {
         Some(x) => opts = { ..opts, max_loss: x, }
         None =>
-          raise @ij.InvalidOption(
+          raise @lj.InvalidOption(
             "unknown max_loss `" + name + "`; use exact, cosmetic or lossy",
           )
       }
     None => ()
-    Some(_) => raise @ij.InvalidOption("`max_loss` must be a string")
+    Some(_) => raise @lj.InvalidOption("`max_loss` must be a string")
   }
   opts
 }
@@ -414,8 +414,8 @@ fn options_from_params(
 ///|
 /// One open stream per connection.
 struct ServeState {
-  mut watch_parser : @ij.PartialParser?
-  mut watch_watcher : @ij.SemanticWatcher?
+  mut watch_parser : @lj.PartialParser?
+  mut watch_watcher : @lj.SemanticWatcher?
   mut llm_stream : @llm.ToolStream?
   /// Whether `initialize` has been answered. MCP is a session protocol: a
   /// request that arrives before the handshake is a bug in the client, and
@@ -454,23 +454,23 @@ fn ServeState::new() -> ServeState {
 /// it is refused with the same sentence the gate uses.
 fn handle_repair(
   params : Map[String, Json],
-  base : @ij.Options,
-) -> Json raise @ij.InterJSONError {
+  base : @lj.Options,
+) -> Json raise @lj.LIWENJSONError {
   let text = text_param(params)
   let opts = options_from_params(base, params)
   let schema = schema_param(params)
   // The one-shot entry point, not a hand-rolled feed/finish: it also carries
   // the scalar-root retry that `skip_prose` needs, so `serve` cannot disagree
-  // with `interjson repair`.
-  let repaired = @ij.repair(text, options=opts)
+  // with `liwenjson repair`.
+  let repaired = @lj.repair(text, options=opts)
   match schema {
     Some(s) => {
       // The repaired text is legal JSON by construction, so this parse cannot
       // raise for a reason the caller could act on.
-      let value = @ij.parse(repaired.text).value
-      let violation = @ij.schema_violation(s, value)
+      let value = @lj.parse(repaired.text).value
+      let violation = @lj.schema_violation(s, value)
       if violation != "" {
-        raise @ij.SchemaError(violation)
+        raise @lj.SchemaError(violation)
       }
     }
     None => ()
@@ -482,14 +482,14 @@ fn handle_repair(
 /// `analyze`: the never-raising decision call, as the full plan object.
 fn handle_analyze(
   params : Map[String, Json],
-  base : @ij.Options,
-) -> Json raise @ij.InterJSONError {
+  base : @lj.Options,
+) -> Json raise @lj.LIWENJSONError {
   let text = text_param(params)
   let opts = options_from_params(base, params)
   let schema = schema_param(params)
   let plan = match schema {
-    Some(s) => @ij.analyze(text, options=opts, schema=s)
-    None => @ij.analyze(text, options=opts)
+    Some(s) => @lj.analyze(text, options=opts, schema=s)
+    None => @lj.analyze(text, options=opts)
   }
   // `value` and `text` are the same document twice. A gate response used to
   // carry both, so a 1 MB tool-call argument produced ~3 MB of
@@ -501,7 +501,7 @@ fn handle_analyze(
     _ => false
   }
   @json.parse(plan.to_json_with_text(with_text)) catch {
-    _ => raise @ij.InvalidState("the plan could not be serialised")
+    _ => raise @lj.InvalidState("the plan could not be serialised")
   }
 }
 
@@ -511,16 +511,16 @@ fn handle_analyze(
 /// what is there, it does not repair.
 fn handle_validate(
   params : Map[String, Json],
-  base : @ij.Options,
-) -> Json raise @ij.InterJSONError {
+  base : @lj.Options,
+) -> Json raise @lj.LIWENJSONError {
   let text = text_param(params)
   let schema = schema_param(params)
-  if @ij.is_valid_json(text) {
+  if @lj.is_valid_json(text) {
     let result : Map[String, Json] = Map([])
     result["valid"] = Json::boolean(true)
     match schema {
       Some(s) => {
-        let parsed = @ij.parse(text)
+        let parsed = @lj.parse(text)
         let verdict = s.evaluate(parsed.value)
         result["schema"] = verdict_json(verdict)
       }
@@ -533,7 +533,7 @@ fn handle_validate(
   let out : Map[String, Json] = Map([])
   out["valid"] = Json::boolean(false)
   let strict = try {
-    ignore(@ij.repair(text, options=@ij.Options::strict()))
+    ignore(@lj.repair(text, options=@lj.Options::strict()))
     None
   } catch {
     e => Some(e)
@@ -543,7 +543,7 @@ fn handle_validate(
     None => ()
   }
   let repaired = Some(
-    @ij.repair(text, options=options_from_params(base, params)),
+    @lj.repair(text, options=options_from_params(base, params)),
   ) catch {
     _ => None
   }
@@ -563,14 +563,14 @@ fn handle_validate(
 /// `readiness`: the two fractions and the verdict, without a stream.
 fn handle_readiness(
   params : Map[String, Json],
-  base : @ij.Options,
-) -> Json raise @ij.InterJSONError {
+  base : @lj.Options,
+) -> Json raise @lj.LIWENJSONError {
   let text = text_param(params)
   let step = int_param(params, "step", 0)
   match schema_param(params) {
     Some(s) => {
       let opts = options_from_params(base, params)
-      let r = @ij.semantic_readiness(text, s, step~, options=opts)
+      let r = @lj.semantic_readiness(text, s, step~, options=opts)
       // The three aggregate fractions say *when the document as a whole* was
       // ready. The tool's description promises "when each required field
       // becomes final", which is a different question, and until now the
@@ -578,7 +578,7 @@ fn handle_readiness(
       // generation as soon as the arguments were settled had to re-derive it.
       // `watch_readiness` already computes exactly that, so the events are
       // returned, each with the input fraction it fired at.
-      let events = @ij.watch_readiness(text, s, options=opts)
+      let events = @lj.watch_readiness(text, s, options=opts)
       let fields : Array[Json] = []
       for e in events {
         fields.push(
@@ -599,7 +599,7 @@ fn handle_readiness(
       ])
     }
     None => {
-      let p = @ij.syntax_readiness_permille(text, step~)
+      let p = @lj.syntax_readiness_permille(text, step~)
       jobj([
         ("syntax_permille", jnum(p)),
         ("schema_permille", jnum(-1)),
@@ -616,23 +616,23 @@ fn handle_readiness(
 fn handle_watch_start(
   state : ServeState,
   params : Map[String, Json],
-  base : @ij.Options,
-) -> Json raise @ij.InterJSONError {
+  base : @lj.Options,
+) -> Json raise @lj.LIWENJSONError {
   if state.watch_parser is Some(_) {
-    raise @ij.InvalidState(
+    raise @lj.InvalidState(
       "a watch stream is already open; call `watch.finish` first",
     )
   }
   let schema = match schema_param(params) {
     Some(s) => s
-    None => @ij.Schema::Any
+    None => @lj.Schema::Any
   }
-  let opts : @ij.Options = {
+  let opts : @lj.Options = {
     ..options_from_params(base, params),
     collect_deltas: true,
   }
-  state.watch_parser = Some(@ij.PartialParser::new(options=opts))
-  state.watch_watcher = Some(@ij.SemanticWatcher::new(schema, options=opts))
+  state.watch_parser = Some(@lj.PartialParser::new(options=opts))
+  state.watch_watcher = Some(@lj.SemanticWatcher::new(schema, options=opts))
   jobj([
     ("ok", Json::boolean(true)),
     ("schema", Json::string(schema.stringify())),
@@ -644,11 +644,11 @@ fn handle_watch_start(
 fn handle_watch_feed(
   state : ServeState,
   params : Map[String, Json],
-) -> Json raise @ij.InterJSONError {
+) -> Json raise @lj.LIWENJSONError {
   let chunk = match params.get("chunk") {
     Some(Json::String(s)) => s
-    Some(_) => raise @ij.InvalidOption("`chunk` must be a string")
-    None => raise @ij.InvalidOption("missing `chunk`")
+    Some(_) => raise @lj.InvalidOption("`chunk` must be a string")
+    None => raise @lj.InvalidOption("missing `chunk`")
   }
   match (state.watch_parser, state.watch_watcher) {
     (Some(parser), Some(watcher)) => {
@@ -665,13 +665,13 @@ fn handle_watch_feed(
         ("bytes", jnum(watcher.bytes())),
       ])
     }
-    _ => raise @ij.InvalidState("no active watch stream")
+    _ => raise @lj.InvalidState("no active watch stream")
   }
 }
 
 ///|
 /// `watch.finish`: close the stream and return the final parse.
-fn handle_watch_finish(state : ServeState) -> Json raise @ij.InterJSONError {
+fn handle_watch_finish(state : ServeState) -> Json raise @lj.LIWENJSONError {
   match (state.watch_parser, state.watch_watcher) {
     (Some(parser), Some(watcher)) => {
       let mut err = ""
@@ -702,10 +702,10 @@ fn handle_watch_finish(state : ServeState) -> Json raise @ij.InterJSONError {
               },
             ),
           ])
-        None => raise @ij.InvalidState(err)
+        None => raise @lj.InvalidState(err)
       }
     }
-    _ => raise @ij.InvalidState("no active watch stream")
+    _ => raise @lj.InvalidState("no active watch stream")
   }
 }
 
@@ -713,7 +713,7 @@ fn handle_watch_finish(state : ServeState) -> Json raise @ij.InterJSONError {
 /// The provider named by a request.
 fn provider_param(
   params : Map[String, Json],
-) -> @llm.Provider raise @ij.InterJSONError {
+) -> @llm.Provider raise @lj.LIWENJSONError {
   match params.get("provider") {
     Some(Json::String(s)) =>
       if s == "anthropic" {
@@ -721,12 +721,12 @@ fn provider_param(
       } else if s == "openai" || s == "openai_compat" {
         @llm.OpenAICompat
       } else {
-        raise @ij.InvalidOption(
+        raise @lj.InvalidOption(
           "unknown provider `" + s + "`; use anthropic or openai",
         )
       }
     None => @llm.Anthropic
-    Some(_) => raise @ij.InvalidOption("`provider` must be a string")
+    Some(_) => raise @lj.InvalidOption("`provider` must be a string")
   }
 }
 
@@ -735,10 +735,10 @@ fn provider_param(
 fn handle_llm_open(
   state : ServeState,
   params : Map[String, Json],
-  base : @ij.Options,
-) -> Json raise @ij.InterJSONError {
+  base : @lj.Options,
+) -> Json raise @lj.LIWENJSONError {
   if state.llm_stream is Some(_) {
-    raise @ij.InvalidState(
+    raise @lj.InvalidState(
       "a provider stream is already open; call `llm.close` first",
     )
   }
@@ -765,11 +765,11 @@ fn handle_llm_open(
 fn handle_llm_feed(
   state : ServeState,
   params : Map[String, Json],
-) -> Json raise @ij.InterJSONError {
+) -> Json raise @lj.LIWENJSONError {
   let event = match params.get("event") {
     Some(Json::String(s)) => s
-    Some(_) => raise @ij.InvalidOption("`event` must be a string")
-    None => raise @ij.InvalidOption("missing `event`")
+    Some(_) => raise @lj.InvalidOption("`event` must be a string")
+    None => raise @lj.InvalidOption("missing `event`")
   }
   match state.llm_stream {
     Some(stream) => {
@@ -779,13 +779,13 @@ fn handle_llm_feed(
       state.llm_stream = Some(stream)
       jobj([("calls", Json::array(views.map(tool_call_json)))])
     }
-    None => raise @ij.InvalidState("no active provider stream")
+    None => raise @lj.InvalidState("no active provider stream")
   }
 }
 
 ///|
 /// `llm.close`: finish every call and report the provider's verdict.
-fn handle_llm_close(state : ServeState) -> Json raise @ij.InterJSONError {
+fn handle_llm_close(state : ServeState) -> Json raise @lj.LIWENJSONError {
   match state.llm_stream {
     Some(stream) => {
       let views = stream.finish()
@@ -798,7 +798,7 @@ fn handle_llm_close(state : ServeState) -> Json raise @ij.InterJSONError {
         ("ignored_events", jnum(ignored)),
       ])
     }
-    None => raise @ij.InvalidState("no active provider stream")
+    None => raise @lj.InvalidState("no active provider stream")
   }
 }
 
@@ -807,8 +807,8 @@ fn handle_llm_close(state : ServeState) -> Json raise @ij.InterJSONError {
 /// event list.
 fn handle_llm_run(
   params : Map[String, Json],
-  base : @ij.Options,
-) -> Json raise @ij.InterJSONError {
+  base : @lj.Options,
+) -> Json raise @lj.LIWENJSONError {
   let provider = provider_param(params)
   let stream = @llm.ToolStream::new(
     provider,
@@ -821,10 +821,10 @@ fn handle_llm_run(
           Json::String(s) => {
             let _ = stream.push_event(s)
           }
-          _ => raise @ij.InvalidOption("`events` must be an array of strings")
+          _ => raise @lj.InvalidOption("`events` must be an array of strings")
         }
       }
-    Some(_) => raise @ij.InvalidOption("`events` must be an array of strings")
+    Some(_) => raise @lj.InvalidOption("`events` must be an array of strings")
     None => ()
   }
   let views = stream.finish()
@@ -839,10 +839,10 @@ fn handle_llm_run(
 /// Dispatch one method.
 fn handle_request(
   state : ServeState,
-  base : @ij.Options,
+  base : @lj.Options,
   meth : String,
   params : Map[String, Json],
-) -> Json raise @ij.InterJSONError {
+) -> Json raise @lj.LIWENJSONError {
   if meth == "hello" {
     hello_json()
   } else if meth == "repair" {
@@ -868,7 +868,7 @@ fn handle_request(
   } else if meth == "llm.run" {
     handle_llm_run(params, base)
   } else {
-    raise @ij.InvalidOption("unknown method `" + meth + "`")
+    raise @lj.InvalidOption("unknown method `" + meth + "`")
   }
 }
 
@@ -916,7 +916,7 @@ fn request_params(v : Json) -> Map[String, Json] {
 fn run_serve(o : CliOpts) -> Unit {
   let stream = open_input(None)
   if stream == 0L {
-    eprintln("interjson: 无法读取 <stdin>")
+    eprintln("liwenjson: 无法读取 <stdin>")
     return quit(3)
   }
   let reader = LineReader::new(stream)
@@ -993,7 +993,7 @@ fn run_serve(o : CliOpts) -> Unit {
         } else if meth == "" {
           write_line(
             proto,
-            response_err(id, @ij.InvalidOption("missing `method`")),
+            response_err(id, @lj.InvalidOption("missing `method`")),
           )
         } else {
           let out = response_ok(id, handle_request(state, base, meth, params)) catch {

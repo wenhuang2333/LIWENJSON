@@ -1,12 +1,12 @@
 # Publish the browser demo to GitHub Pages.
 #
 # static/demo/ is a static directory with no build step: live.html and
-# index.html drive the MoonBit-compiled interjson.js in the browser. The whole
+# index.html drive the MoonBit-compiled liwenjson.js in the browser. The whole
 # directory is uploaded verbatim, so every relative reference (including
-# ./interjson.js) resolves at the published URL:
+# ./liwenjson.js) resolves at the published URL:
 #
-#   https://wenhuang2333.github.io/Moonbit-haker/          -> index.html
-#   https://wenhuang2333.github.io/Moonbit-haker/live.html -> the live demo
+#   https://wenhuang2333.github.io/LIWENJSON/          -> index.html
+#   https://wenhuang2333.github.io/LIWENJSON/live.html -> the live demo
 #
 # Pages is enabled with build_type "workflow"; this file is the only source of
 # deployments. See code/docs/REPRODUCE.md for the manual equivalent.
@@ -46,7 +46,7 @@ jobs:
           cp -R static/demo/. _site/
           test -f _site/live.html
           test -f _site/index.html
-          test -f _site/interjson.js
+          test -f _site/liwenjson.js
           ls -l _site
 
       - uses: actions/configure-pages@v5

@@ -5,9 +5,9 @@
 /// engine reachable.
 fn main {
   try {
-    let r = @interjson.repair("{'a':1,}")
+    let r = @liwenjson.repair("{'a':1,}")
     println(r.text)
-    let p = @interjson.PartialParser::new()
+    let p = @liwenjson.PartialParser::new()
     p.feed("{\"b\":[1,2")
     println(p.snapshot().value.unwrap().stringify())
     let fin = Some(p.finish()) catch { _ => None }
@@ -15,7 +15,7 @@ fn main {
       Some(r) => println(r.text)
       None => println("error")
     }
-    println(@interjson.is_valid_json("{}").to_string())
+    println(@liwenjson.is_valid_json("{}").to_string())
   } catch {
     _ => println("error")
   }

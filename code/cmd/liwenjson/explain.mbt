@@ -1,11 +1,11 @@
-// `interjson explain` — the whole analysis in one block (FR-32, FR-33).
+// `liwenjson explain` — the whole analysis in one block (FR-32, FR-33).
 //
 // The three pieces the library already had (repair records, exactness, retry
 // hints) were only useful to a caller who knew how to read all three at once.
 // `explain` prints them as one decision, which is also the shortest way to show
 // a reviewer what the gate actually does:
 //
-//   InterJSON Analysis
+//   LIWENJSON Analysis
 //   ────────────────────────────────
 //   Input:
 //     {"name":"Alice","age":18,}
@@ -30,7 +30,7 @@ fn read_stdin_or_file(path : String?) -> String {
       Some(p) => p
       None => "<stdin>"
     }
-    eprintln("interjson: 无法读取 " + name)
+    eprintln("liwenjson: 无法读取 " + name)
     quit(3)
     return ""
   }
@@ -45,11 +45,11 @@ fn read_stdin_or_file(path : String?) -> String {
 ///
 /// `parse_args` has already read the declaration once, so the fallback branch
 /// is unreachable; it exists because a `catch` arm must produce a value.
-fn schema_of(o : CliOpts) -> @ij.Schema? {
+fn schema_of(o : CliOpts) -> @lj.Schema? {
   if o.schema == "" {
     None
   } else {
-    Some(@ij.Schema::parse(o.schema) catch { _ => @ij.Schema::Any })
+    Some(@lj.Schema::parse(o.schema) catch { _ => @lj.Schema::Any })
   }
 }
 
@@ -58,9 +58,9 @@ fn schema_of(o : CliOpts) -> @ij.Schema? {
 /// fractions of the input, plus the members that never arrived.
 fn print_readiness_lines(
   text : String,
-  schema : @ij.Schema,
+  schema : @lj.Schema,
   step : Int32,
-  options : @ij.Options,
+  options : @lj.Options,
 ) -> Unit {
   let mut err = ""
   // The curve is a property of the input and the declaration, not of how strict
@@ -69,13 +69,13 @@ fn print_readiness_lines(
   // plan was built with (a prefixed sentence must not break the measurement)
   // and drops the gate's safety knobs, which would otherwise turn an unfinished
   // document into "no measurement at all".
-  let measure : @ij.Options = {
+  let measure : @lj.Options = {
     ..options,
-    mode: @ij.Lenient,
-    max_loss: @ij.Lossy,
+    mode: @lj.Lenient,
+    max_loss: @lj.Lossy,
     reject_ambiguous: false,
   }
-  let r = @ij.semantic_readiness(text, schema, step~, options=measure) catch {
+  let r = @lj.semantic_readiness(text, schema, step~, options=measure) catch {
     e => {
       err = e.to_string()
       {
@@ -94,11 +94,11 @@ fn print_readiness_lines(
     }
   }
   if err != "" {
-    eprintln("interjson: " + err)
+    eprintln("liwenjson: " + err)
     return
   }
   let sb = StringBuilder()
-  sb.write_string("interjson: syntax-ready ")
+  sb.write_string("liwenjson: syntax-ready ")
   sb.write_string(r.syntax_permille.to_string())
   sb.write_string("/1000 settled ")
   // `settled` is the runtime number: every declared member is final, whether or
@@ -129,7 +129,7 @@ fn print_readiness_lines(
 }
 
 ///|
-/// `interjson explain`: analyse the input and print the decision (FR-32).
+/// `liwenjson explain`: analyse the input and print the decision (FR-32).
 fn run_explain(o : CliOpts) -> Unit {
   let text = read_stdin_or_file(o.path)
   let schema = schema_of(o)
@@ -144,8 +144,8 @@ fn run_explain(o : CliOpts) -> Unit {
     opts
   }
   let plan = match schema {
-    Some(s) => @ij.analyze(text, options=plan_opts, schema=s)
-    None => @ij.analyze(text, options=plan_opts)
+    Some(s) => @lj.analyze(text, options=plan_opts, schema=s)
+    None => @lj.analyze(text, options=plan_opts)
   }
   if o.json_out {
     println(plan.to_json())

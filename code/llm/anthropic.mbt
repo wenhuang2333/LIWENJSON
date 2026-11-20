@@ -18,7 +18,7 @@
 fn ToolStream::push_anthropic(
   self : ToolStream,
   v : Json,
-) -> Array[ToolCall] raise @interjson.InterJSONError {
+) -> Array[ToolCall] raise @liwenjson.LIWENJSONError {
   let out : Array[ToolCall] = []
   let kind = match field_string(v, "type") {
     Some(t) => t

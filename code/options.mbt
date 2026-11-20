@@ -415,7 +415,7 @@ pub fn Options::for_text() -> Options {
 
 ///|
 /// Validate option values, raising `E050` for anything out of range.
-pub fn Options::validate(self : Options) -> Unit raise InterJSONError {
+pub fn Options::validate(self : Options) -> Unit raise LIWENJSONError {
   if self.max_depth <= 0 {
     raise InvalidOption("max_depth must be a positive integer")
   }

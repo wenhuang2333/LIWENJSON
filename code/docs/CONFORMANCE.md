@@ -5,8 +5,8 @@ same thing:
 
 | Channel | How it is checked |
 | --- | --- |
-| `interjson serve` | every case in `cases.jsonl`, over one connection per case |
-| `interjson mcp` | the MCP half of the runner (four tools, safe gate default, the closed per-tool `outputSchema`, the summary text channel vs `structuredContent`, three accepted protocol revisions, `-32002` before `initialize`, `-32602` for an unknown tool or non-object `arguments`, notification rules) |
+| `liwenjson serve` | every case in `cases.jsonl`, over one connection per case |
+| `liwenjson mcp` | the MCP half of the runner (four tools, safe gate default, the closed per-tool `outputSchema`, the summary text channel vs `structuredContent`, three accepted protocol revisions, `-32002` before `initialize`, `-32602` for an unknown tool or non-object `arguments`, notification rules) |
 | Python package | `code/python/tests/` drives `Client`, which speaks the same protocol |
 | npm package | `code/npm/tests/node.test.mjs` drives the same engine through the JS entry points |
 
@@ -18,9 +18,9 @@ silently diverge.
 
 ```bash
 cd code
-moon build cmd/interjson --target native --release
+moon build cmd/liwenjson --target native --release
 python3 tests/conformance/run_conformance.py \
-  --cli ./_build/native/release/build/cmd/interjson/interjson.exe
+  --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe
 ```
 
 Exit status is 0 only when every group passes. The runner prints one `ok`/`FAIL`
@@ -62,11 +62,11 @@ failure.
 
 ## The MCP half
 
-The runner also starts `interjson mcp` and checks:
+The runner also starts `liwenjson mcp` and checks:
 
 1. each supported legacy `protocolVersion` (`2024-11-05` and `2025-03-26`) is
-   echoed, and `serverInfo.name == "interjson"` with a title and instructions
-   that name `interjson_gate`;
+   echoed, and `serverInfo.name == "liwenjson"` with a title and instructions
+   that name `liwenjson_gate`;
 2. an unsupported `protocolVersion` is answered with `2025-06-18`, never echoed
    back;
 3. a request before `initialize` (for example `tools/list`) is JSON-RPC error
@@ -74,15 +74,15 @@ The runner also starts `interjson mcp` and checks:
 3. a notification (`notifications/initialized`, or any message without an
    `id`, including `tools/list`) produces **no line** — the next line must be
    the answer to the following `ping`;
-4. `tools/list` returns exactly `interjson_gate`, `interjson_repair`,
-   `interjson_validate`, `interjson_readiness`, each with `outputSchema` and
+4. `tools/list` returns exactly `liwenjson_gate`, `liwenjson_repair`,
+   `liwenjson_validate`, `liwenjson_readiness`, each with `outputSchema` and
    `annotations.readOnlyHint == true`;
-5. `tools/call interjson_gate` on a truncated document with **no** `profile`
+5. `tools/call liwenjson_gate` on a truncated document with **no** `profile`
    refuses (`executable == false`, E010 in `retry.prompt`) with `value: null`;
 6. a prose-prefixed document (`Here are the args:\n{"a":1}`) is **accepted** by
    the default `agent` profile, because that profile is `Options::for_agent()`
    including `skip_prose`, while `profile: "execution"` still refuses it;
-7. `tools/call interjson_gate` on `{"words":["a" "b"]}` with
+7. `tools/call liwenjson_gate` on `{"words":["a" "b"]}` with
    `profile: "execution"` returns `decision == "ambiguous"` and
    `isError == false`;
 8. `tools/call` with an unsupported JSON Schema keyword returns `isError: true`,
@@ -92,7 +92,7 @@ The runner also starts `interjson mcp` and checks:
 10. `mcp --print-config=claude` prints the exact one-line command, and
     `--print-config=cursor` prints a usable `mcpServers` object; an unknown
     client name exits `2`;
-11. an executable named `interjson-mcp` starts the server with no arguments
+11. an executable named `liwenjson-mcp` starts the server with no arguments
     (the alias path a client config actually uses).
 
 ## Adding a case

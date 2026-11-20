@@ -22,7 +22,7 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-from interjson.client import _not_found_message, _platform_key, find_binary
+from liwenjson.client import _not_found_message, _platform_key, find_binary
 
 # The platform keys the wheel ships. Kept next to the assertions rather than
 # imported from the client so a typo in one is caught by the other.
@@ -70,17 +70,17 @@ class BundledBinaryTests(unittest.TestCase):
     """`find_binary()` must prefer the wheel's directory and say why if it can't."""
 
     def setUp(self) -> None:
-        # CI exports INTERJSON_BIN for the client tests, and that variable is
+        # CI exports LIWENJSON_BIN for the client tests, and that variable is
         # by design the first thing `find_binary()` looks at -- so leaving it
         # set would make every assertion below pass or fail for a reason this
         # class is not testing. It is cleared here and restored afterwards.
-        self._saved_bin = os.environ.pop("INTERJSON_BIN", None)
+        self._saved_bin = os.environ.pop("LIWENJSON_BIN", None)
         # `PATH` can also answer the question before the bundled directory is
         # reached, for the same reason.
         self._saved_which = shutil.which
         shutil.which = lambda _name: None
         self.tmp = tempfile.TemporaryDirectory()
-        self.pkg = Path(self.tmp.name) / "interjson"
+        self.pkg = Path(self.tmp.name) / "liwenjson"
         self.pkg.mkdir()
         # `find_binary()` derives the package directory from `__file__`, so the
         # fake module file has to sit one level inside it.
@@ -90,10 +90,10 @@ class BundledBinaryTests(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.which = self._saved_which
         if self._saved_bin is not None:
-            os.environ["INTERJSON_BIN"] = self._saved_bin
+            os.environ["LIWENJSON_BIN"] = self._saved_bin
         self.tmp.cleanup()
 
-    def _place(self, key: str, name: str = "interjson") -> Path:
+    def _place(self, key: str, name: str = "liwenjson") -> Path:
         directory = self.pkg / "bin" / key
         directory.mkdir(parents=True)
         binary = directory / name
@@ -104,22 +104,22 @@ class BundledBinaryTests(unittest.TestCase):
     def test_it_prefers_the_directory_for_this_platform(self) -> None:
         self._place("linux-x86_64")
         with mock.patch(
-            "interjson.client._platform_key", lambda: "linux-x86_64"
-        ), mock.patch("interjson.client.shutil.which", lambda _: None), mock.patch(
-            "interjson.client.Path", lambda *_: self.module_file
+            "liwenjson.client._platform_key", lambda: "linux-x86_64"
+        ), mock.patch("liwenjson.client.shutil.which", lambda _: None), mock.patch(
+            "liwenjson.client.Path", lambda *_: self.module_file
         ):
             found = find_binary()
 
-        self.assertTrue(found.endswith("bin/linux-x86_64/interjson"), found)
+        self.assertTrue(found.endswith("bin/linux-x86_64/liwenjson"), found)
 
     def test_it_restores_a_missing_executable_bit(self) -> None:
         # A binary that is present but not executable fails with PermissionError
         # naming a file the user never installed by hand.
         binary = self._place("macos-arm64")
         with mock.patch(
-            "interjson.client._platform_key", lambda: "macos-arm64"
-        ), mock.patch("interjson.client.shutil.which", lambda _: None), mock.patch(
-            "interjson.client.Path", lambda *_: self.module_file
+            "liwenjson.client._platform_key", lambda: "macos-arm64"
+        ), mock.patch("liwenjson.client.shutil.which", lambda _: None), mock.patch(
+            "liwenjson.client.Path", lambda *_: self.module_file
         ):
             find_binary()
 
@@ -127,12 +127,12 @@ class BundledBinaryTests(unittest.TestCase):
 
     def test_an_explicit_binary_still_wins(self) -> None:
         # A caller pointing at a newer CLI must not silently get the bundled one.
-        # setUp popped INTERJSON_BIN, so this sets the case explicitly instead
+        # setUp popped LIWENJSON_BIN, so this sets the case explicitly instead
         # of inheriting whatever the shell had.
-        with mock.patch.dict(os.environ, {"INTERJSON_BIN": "/opt/interjson"}), mock.patch(
-            "interjson.client.shutil.which", lambda _: None
+        with mock.patch.dict(os.environ, {"LIWENJSON_BIN": "/opt/liwenjson"}), mock.patch(
+            "liwenjson.client.shutil.which", lambda _: None
         ):
-            self.assertEqual(find_binary(), "/opt/interjson")
+            self.assertEqual(find_binary(), "/opt/liwenjson")
 
     def test_the_error_names_the_platforms_the_wheel_carries(self) -> None:
         self._place("linux-x86_64")
@@ -161,7 +161,7 @@ class WheelShapeTests(unittest.TestCase):
         for key in RELEASE_PLATFORMS:
             suffix = ".exe" if key.startswith("windows") else ""
             self.assertIn(
-                f"interjson/bin/{key}/interjson{suffix}",
+                f"liwenjson/bin/{key}/liwenjson{suffix}",
                 names,
                 f"the wheel does not carry the engine for {key}",
             )

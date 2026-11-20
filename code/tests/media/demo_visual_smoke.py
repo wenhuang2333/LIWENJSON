@@ -53,7 +53,7 @@ def main() -> None:
 
             # The "surfaces" panel of live.html is the poster used by README.
             page.goto(f"{base}/live.html", wait_until="networkidle")
-            page.wait_for_function("() => globalThis.interjson && globalThis.interjson.live")
+            page.wait_for_function("() => globalThis.liwenjson && globalThis.liwenjson.live")
             page.get_by_role("button", name="接入面").click()
             page.wait_for_selector("#surfaces:not([hidden])")
             page.locator("#surfaces").screenshot(path=str(DEMO / "surfaces-poster.png"))

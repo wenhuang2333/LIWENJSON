@@ -14,7 +14,7 @@
 // never produce.
 //
 // Every generator is deterministic: a fixed seed means a failure is
-// reproducible from the printed bytes. `INTERJSON_LONGRUN=N` raises the case
+// reproducible from the printed bytes. `LIWENJSON_LONGRUN=N` raises the case
 // count the way it does for the property tests.
 
 ///|
@@ -24,13 +24,13 @@ let tf_cases_default : Int32 = 300
 ///|
 /// How many fuzz cases to run.
 ///
-/// The budget is `INTERJSON_FUZZ`, not `INTERJSON_LONGRUN`. The two measure
+/// The budget is `LIWENJSON_FUZZ`, not `LIWENJSON_LONGRUN`. The two measure
 /// different things and cost wildly different amounts: a property case is one
 /// parse, while a fuzz case is fifteen (three shapes times five chunk sizes).
-/// Sharing the nightly's `INTERJSON_LONGRUN=1000000` would have turned a
+/// Sharing the nightly's `LIWENJSON_LONGRUN=1000000` would have turned a
 /// ten-minute nightly into fifteen million parses.
 fn tf_cases() -> Int32 {
-  match @env.get_env_var("INTERJSON_FUZZ") {
+  match @env.get_env_var("LIWENJSON_FUZZ") {
     Some(v) => {
       let mut n = 0
       let mut ok = v.length() > 0

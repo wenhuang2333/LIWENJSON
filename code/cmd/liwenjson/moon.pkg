@@ -2,8 +2,8 @@ import {
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/json",
   "moonbitlang/core/env",
-  "zhanshishan/interjson" @ij,
-  "zhanshishan/interjson/llm",
+  "zhanshishan/liwenjson" @lj,
+  "zhanshishan/liwenjson/llm",
 }
 
 pkgtype(kind: "executable")

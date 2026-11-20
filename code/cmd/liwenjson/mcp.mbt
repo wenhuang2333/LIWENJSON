@@ -1,9 +1,9 @@
-// `interjson mcp` — InterJSON as a local Model Context Protocol server over
+// `liwenjson mcp` — LIWENJSON as a local Model Context Protocol server over
 // stdio (JSON-RPC 2.0).
 //
-// The positioning is the protocol: InterJSON is the *execution gate* between a
+// The positioning is the protocol: LIWENJSON is the *execution gate* between a
 // model's output and the tool call the host is about to run. The gate tool is
-// therefore named `interjson_gate` and its description tells the model to call
+// therefore named `liwenjson_gate` and its description tells the model to call
 // it before executing arguments; `repair`, `validate` and `readiness` are the
 // supporting tools. Every tool is pure (same input, same output, no files, no
 // network), so all four are annotated read-only.
@@ -181,13 +181,13 @@ fn mcp_object_or_null() -> Json {
 ///|
 /// A JSON Schema fragment for one repair record.
 ///
-/// The field names are the ones `@ij.repair_record_json` writes, which is the
+/// The field names are the ones `@lj.repair_record_json` writes, which is the
 /// only definition of the shape. `tests/mcp_schema.py` validates every tool's
 /// real response against this schema, so a field cannot be added on one side
 /// and forgotten on the other (audit 3.7).
 fn mcp_repair_schema() -> Json {
   let members : Array[(String, Json)] = []
-  for field in @ij.repair_record_fields() {
+  for field in @lj.repair_record_fields() {
     members.push(
       (
         field,
@@ -199,7 +199,7 @@ fn mcp_repair_schema() -> Json {
       ),
     )
   }
-  mcp_object(members, @ij.repair_record_fields())
+  mcp_object(members, @lj.repair_record_fields())
 }
 
 ///|
@@ -406,7 +406,7 @@ fn mcp_readiness_output_schema() -> Json {
 /// says.
 fn mcp_annotations() -> Json {
   jobj([
-    ("title", Json::string("InterJSON")),
+    ("title", Json::string("LIWENJSON")),
     ("readOnlyHint", Json::boolean(true)),
     ("destructiveHint", Json::boolean(false)),
     ("idempotentHint", Json::boolean(true)),
@@ -459,7 +459,7 @@ fn mcp_tool_list() -> Json {
 fn mcp_tools() -> Json {
   let tools : Array[Json] = [
     mcp_tool(
-      "interjson_gate",
+      "liwenjson_gate",
       "Gate: may I execute this?",
       "The execution gate for LLM output. Call this before executing tool arguments or trusting structured output. Returns decision (safe/cosmetic_repair/lossy_repair/ambiguous/invalid), executable, exactness, ambiguity, schema satisfaction, the parsed value, and a retry hint. If `executable` is false, do not execute: send `retry.prompt` back to the model and re-emit the arguments.",
       [
@@ -472,7 +472,7 @@ fn mcp_tools() -> Json {
       mcp_gate_output_schema(),
     ),
     mcp_tool(
-      "interjson_repair",
+      "liwenjson_repair",
       "Repair malformed JSON",
       "Repair malformed JSON (markdown fences, single quotes, comments, trailing commas, Python literals, truncated values) and return the repaired text with the exactness label and the repair records. Use this when you need the document, not a decision.",
       [
@@ -485,7 +485,7 @@ fn mcp_tools() -> Json {
       mcp_repair_output_schema(),
     ),
     mcp_tool(
-      "interjson_validate",
+      "liwenjson_validate",
       "Validate without repairing",
       "Report whether text is legal JSON and, when a declaration is given, whether it satisfies it. This never repairs: a document that could be fixed is still reported as invalid, with the repair the lenient profile would make.",
       [
@@ -497,7 +497,7 @@ fn mcp_tools() -> Json {
       mcp_validate_output_schema(),
     ),
     mcp_tool(
-      "interjson_readiness",
+      "liwenjson_readiness",
       "When do fields become final?",
       "Given a declaration, report when each required field becomes final in the stream: syntax/schema/settled fractions and the missing members. Use this to stop a generation early when the arguments are already settled.",
       [
@@ -517,11 +517,11 @@ fn mcp_tools() -> Json {
 /// an instruction the model cannot act on in one step is noise.
 fn mcp_instructions() -> String {
   let lines : Array[String] = [
-    "InterJSON is a local execution gate for model output. It runs on this machine over stdio and performs no network requests.",
-    "", "Before executing tool arguments or trusting structured output, call `interjson_gate` with the raw argument text and the tool's inputSchema as `schema_json`.",
+    "LIWENJSON is a local execution gate for model output. It runs on this machine over stdio and performs no network requests.",
+    "", "Before executing tool arguments or trusting structured output, call `liwenjson_gate` with the raw argument text and the tool's inputSchema as `schema_json`.",
     "- `executable: true` means the arguments are safe to execute; `value` is the parsed object.",
     "- `executable: false` means do not execute: send `retry.prompt` back to the model and use the re-emitted arguments.",
-    "", "`interjson_repair` returns repaired text, `interjson_validate` reports legality without repairing, and `interjson_readiness` reports when streaming fields become final.",
+    "", "`liwenjson_repair` returns repaired text, `liwenjson_validate` reports legality without repairing, and `liwenjson_readiness` reports when streaming fields become final.",
   ]
   let sb = StringBuilder()
   for i = 0; i < lines.length(); i = i + 1 {
@@ -579,8 +579,8 @@ fn mcp_discovery() -> Json {
     (
       "serverInfo",
       jobj([
-        ("name", Json::string("interjson")),
-        ("title", Json::string("InterJSON — the execution gate")),
+        ("name", Json::string("liwenjson")),
+        ("title", Json::string("LIWENJSON — the execution gate")),
         ("version", Json::string(ENGINE_VERSION)),
       ]),
     ),
@@ -750,13 +750,13 @@ fn json_field(m : Map[String, Json], key : String) -> String {
 /// Run one tool. The mapping is one-to-one with `serve` methods, so the two
 /// entry points cannot drift.
 fn mcp_tool_method(name : String) -> String {
-  if name == "interjson_gate" {
+  if name == "liwenjson_gate" {
     "analyze"
-  } else if name == "interjson_repair" {
+  } else if name == "liwenjson_repair" {
     "repair"
-  } else if name == "interjson_validate" {
+  } else if name == "liwenjson_validate" {
     "validate"
-  } else if name == "interjson_readiness" {
+  } else if name == "liwenjson_readiness" {
     "readiness"
   } else {
     ""
@@ -768,7 +768,7 @@ fn mcp_tool_method(name : String) -> String {
 /// entry points cannot drift.
 fn mcp_call_tool(
   state : ServeState,
-  base : @ij.Options,
+  base : @lj.Options,
   name : String,
   args : Map[String, Json],
 ) -> Json {
@@ -847,7 +847,7 @@ fn mcp_envelope_error(message : Json) -> String? {
 /// Handle one JSON-RPC message. `None` means "a notification, answer nothing".
 fn mcp_handle(
   state : ServeState,
-  base : @ij.Options,
+  base : @lj.Options,
   message : Json,
 ) -> String? {
   let id = request_id(message)
@@ -919,8 +919,8 @@ fn mcp_handle(
           (
             "serverInfo",
             jobj([
-              ("name", Json::string("interjson")),
-              ("title", Json::string("InterJSON — the execution gate")),
+              ("name", Json::string("liwenjson")),
+              ("title", Json::string("LIWENJSON — the execution gate")),
               ("version", Json::string(ENGINE_VERSION)),
             ]),
           ),
@@ -992,7 +992,7 @@ fn mcp_handle(
 /// notifications has no responses to send.
 fn mcp_dispatch(
   state : ServeState,
-  base : @ij.Options,
+  base : @lj.Options,
   message : Json,
 ) -> String? {
   match message {
@@ -1047,14 +1047,14 @@ fn mcp_dispatch(
 /// The mcp-specific help text.
 fn mcp_help_text() -> String {
   let lines : Array[String] = [
-    "interjson mcp [选项]", "", "  以 MCP stdio server 运行：stdin/stdout 上是 JSON-RPC 2.0，诊断只走 stderr。",
+    "liwenjson mcp [选项]", "", "  以 MCP stdio server 运行：stdin/stdout 上是 JSON-RPC 2.0，诊断只走 stderr。",
     "  进程只读写自己的管道，不监听端口、不发起网络请求。",
-    "", "工具：", "  interjson_gate       执行门：能不能执行、为什么不能、回灌模型的话（首选）",
-    "  interjson_repair     修复并返回文本", "  interjson_validate   只校验，不修复",
-    "  interjson_readiness  流式字段何时定稿", "", "  --print-config[=CLIENT]  打印客户端配置后退出；CLIENT 为 claude、cursor、",
+    "", "工具：", "  liwenjson_gate       执行门：能不能执行、为什么不能、回灌模型的话（首选）",
+    "  liwenjson_repair     修复并返回文本", "  liwenjson_validate   只校验，不修复",
+    "  liwenjson_readiness  流式字段何时定稿", "", "  --print-config[=CLIENT]  打印客户端配置后退出；CLIENT 为 claude、cursor、",
     "                           vscode、codex、windsurf、zed 或 json（默认）",
     "  -h, --help               显示本帮助", "", "配置示例（Claude Code）：",
-    "  claude mcp add interjson -- interjson mcp",
+    "  claude mcp add liwenjson -- liwenjson mcp",
   ]
   let sb = StringBuilder()
   for i = 0; i < lines.length(); i = i + 1 {
@@ -1070,22 +1070,22 @@ fn mcp_help_text() -> String {
 /// The client configuration `--print-config` prints. Pure JSON for the clients
 /// that read a JSON file, a command line for Claude Code, TOML for Codex.
 fn mcp_config_text(client : String) -> String? {
-  let generic = "{\"mcpServers\":{\"interjson\":{\"command\":\"interjson\",\"args\":[\"mcp\"]}}}"
+  let generic = "{\"mcpServers\":{\"liwenjson\":{\"command\":\"liwenjson\",\"args\":[\"mcp\"]}}}"
   if client == "claude" {
-    Some("claude mcp add interjson -- interjson mcp")
+    Some("claude mcp add liwenjson -- liwenjson mcp")
   } else if client == "cursor" {
     Some(generic)
   } else if client == "vscode" {
     Some(
-      "{\"servers\":{\"interjson\":{\"type\":\"stdio\",\"command\":\"interjson\",\"args\":[\"mcp\"]}}}",
+      "{\"servers\":{\"liwenjson\":{\"type\":\"stdio\",\"command\":\"liwenjson\",\"args\":[\"mcp\"]}}}",
     )
   } else if client == "codex" {
-    Some("[mcp_servers.interjson]\ncommand = \"interjson\"\nargs = [\"mcp\"]")
+    Some("[mcp_servers.liwenjson]\ncommand = \"liwenjson\"\nargs = [\"mcp\"]")
   } else if client == "windsurf" {
     Some(generic)
   } else if client == "zed" {
     Some(
-      "{\"context_servers\":{\"interjson\":{\"command\":{\"path\":\"interjson\",\"args\":[\"mcp\"]}}}}",
+      "{\"context_servers\":{\"liwenjson\":{\"command\":{\"path\":\"liwenjson\",\"args\":[\"mcp\"]}}}}",
     )
   } else if client == "json" {
     Some(generic)
@@ -1108,7 +1108,7 @@ fn run_mcp(o : CliOpts) -> Unit {
       }
       None => {
         eprintln(
-          "interjson: 未知客户端 `" +
+          "liwenjson: 未知客户端 `" +
           o.mcp_config +
           "`；可用：claude、cursor、vscode、codex、windsurf、zed、json",
         )
@@ -1122,7 +1122,7 @@ fn run_mcp(o : CliOpts) -> Unit {
   }
   let stream = open_input(None)
   if stream == 0L {
-    eprintln("interjson: 无法读取 <stdin>")
+    eprintln("liwenjson: 无法读取 <stdin>")
     return quit(3)
   }
   let reader = LineReader::new(stream)

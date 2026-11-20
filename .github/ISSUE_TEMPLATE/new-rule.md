@@ -12,7 +12,7 @@ labels: enhancement
 
 **Expected repair** (the output you expect, and why that is the least surprising answer):
 
-**What InterJSON does today**
+**What LIWENJSON does today**
 
 **Which reference implementations agree** (`jsonrepair`, `json-repair`, or neither):
 

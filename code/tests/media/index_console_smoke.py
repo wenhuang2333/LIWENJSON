@@ -27,7 +27,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[3]
-DEMO = Path(os.environ.get("JSONMEND_DEMO_DIR") or (ROOT / "static" / "demo"))
+DEMO = Path(os.environ.get("LIWENJSON_DEMO_DIR") or (ROOT / "static" / "demo"))
 
 SECTIONS = ["mcp", "workbench", "gate", "stream", "rules", "readiness", "cli", "surfaces"]
 # The evidence strip quotes figures that `claims.sh` already derives and checks

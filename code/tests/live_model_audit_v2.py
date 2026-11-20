@@ -26,15 +26,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 OUT = ROOT / "test" / "live_model_audit_v2_evidence.json"
-CLI = ROOT / "code" / "_build" / "native" / "release" / "build" / "cmd" / "interjson" / "interjson.exe"
+CLI = ROOT / "code" / "_build" / "native" / "release" / "build" / "cmd" / "liwenjson" / "liwenjson.exe"
 
 # The endpoint, the key and the model come from the environment first, and from
 # the workspace's own note file only as a convenience for a local run. The key
 # is never written to the evidence file.
-CONFIG = Path(os.environ.get("INTERJSON_PROVIDER_CONFIG", ROOT / "AI 后端.txt"))
-BASE = os.environ.get("INTERJSON_BASE_URL", "").rstrip("/")
-KEY = os.environ.get("INTERJSON_API_KEY", "")
-MODEL = os.environ.get("INTERJSON_MODEL", "")
+CONFIG = Path(os.environ.get("LIWENJSON_PROVIDER_CONFIG", ROOT / "AI 后端.txt"))
+BASE = os.environ.get("LIWENJSON_BASE_URL", "").rstrip("/")
+KEY = os.environ.get("LIWENJSON_API_KEY", "")
+MODEL = os.environ.get("LIWENJSON_MODEL", "")
 if not (BASE and KEY and MODEL):
     config = CONFIG.read_text(encoding="utf-8")
     BASE = BASE or re.search(r"请求地址：(\S+)", config).group(1).rstrip("/")
@@ -333,12 +333,12 @@ def offline_cases():
     check("the gate does not claim business authorization", r.get("business_authorized") is False, r)
     # 11. The MCP tools' own responses satisfy their own outputSchema.
     for name, args in [
-        ("interjson_gate", {"text": '{"a":1,}', "profile": "agent"}),
-        ("interjson_gate", {"text": '{"a":1}', "schema": "{!a:integer}"}),
-        ("interjson_gate", {"text": "not json"}),
-        ("interjson_repair", {"text": "{a:1,}"}),
-        ("interjson_validate", {"text": '{"a":1}'}),
-        ("interjson_readiness", {"text": '{"q":"x"}', "schema": "{!q:string}"}),
+        ("liwenjson_gate", {"text": '{"a":1,}', "profile": "agent"}),
+        ("liwenjson_gate", {"text": '{"a":1}', "schema": "{!a:integer}"}),
+        ("liwenjson_gate", {"text": "not json"}),
+        ("liwenjson_repair", {"text": "{a:1,}"}),
+        ("liwenjson_validate", {"text": '{"a":1}'}),
+        ("liwenjson_readiness", {"text": '{"q":"x"}', "schema": "{!q:string}"}),
     ]:
         schema, content = mcp_call(name, args)
         ok = schema_valid(content, schema)
@@ -360,7 +360,7 @@ def offline_cases():
             "id": 3,
             "method": "tools/call",
             "params": {
-                "name": "interjson_gate",
+                "name": "liwenjson_gate",
                 "arguments": {"text": json.dumps(sample), "schema_json": t["inputSchema"]},
             },
         }

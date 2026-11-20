@@ -1,4 +1,4 @@
-"""A thin, dependency-free client for the `interjson serve` protocol.
+"""A thin, dependency-free client for the `liwenjson serve` protocol.
 
 The server is a child process speaking one JSON object per line on stdin and
 stdout. A reader thread turns stdout into a queue so a request can time out
@@ -17,12 +17,12 @@ import time
 from pathlib import Path
 from typing import Any, Iterable
 
-__all__ = ["Client", "InterJSONError", "find_binary", "repair", "analyze", "validate"]
+__all__ = ["Client", "LIWENJSONError", "find_binary", "repair", "analyze", "validate"]
 
 _EOF = object()
 
 
-class InterJSONError(RuntimeError):
+class LIWENJSONError(RuntimeError):
     """A structured refusal from the engine (`E010`, `E011`, `E070`, ...)."""
 
     def __init__(self, error: dict[str, Any]) -> None:
@@ -50,7 +50,7 @@ def _platform_key() -> str | None:
     every platform the release supports, and the cost is a few unused
     megabytes.
 
-    The keys are the release asset names with the `interjson-` prefix removed,
+    The keys are the release asset names with the `liwenjson-` prefix removed,
     so a wheel and a release can be compared by eye. There is deliberately no
     Intel-macOS key: the MoonBit toolchain publishes no `darwin-x86_64`
     target, so there is no binary to name.
@@ -92,7 +92,7 @@ def _make_executable(path: Path) -> None:
 def find_binary() -> str:
     """Locate the engine.
 
-    Order: `INTERJSON_BIN`, `PATH`, the binary this wheel carries for this
+    Order: `LIWENJSON_BIN`, `PATH`, the binary this wheel carries for this
     platform, a binary placed directly in `bin/`, then the development build
     inside this repository.
 
@@ -101,26 +101,26 @@ def find_binary() -> str:
     engine happened to be current when the Python package was built.
     """
 
-    env = os.environ.get("INTERJSON_BIN")
+    env = os.environ.get("LIWENJSON_BIN")
     if env:
         return env
-    found = shutil.which("interjson")
+    found = shutil.which("liwenjson")
     if found:
         return found
     here = Path(__file__).resolve().parent
     key = _platform_key()
     if key is not None:
-        for name in ("interjson", "interjson.exe"):
+        for name in ("liwenjson", "liwenjson.exe"):
             candidate = here / "bin" / key / name
             if candidate.is_file():
                 _make_executable(candidate)
                 return str(candidate)
-    for name in ("interjson", "interjson.exe"):
+    for name in ("liwenjson", "liwenjson.exe"):
         candidate = here / "bin" / name
         if candidate.is_file():
             _make_executable(candidate)
             return str(candidate)
-    # Development checkout: code/python/interjson/client.py -> code/
+    # Development checkout: code/python/liwenjson/client.py -> code/
     code_dir = here.parents[1]
     for target in ("native",):
         candidate = (
@@ -130,8 +130,8 @@ def find_binary() -> str:
             / "release"
             / "build"
             / "cmd"
-            / "interjson"
-            / "interjson.exe"
+            / "liwenjson"
+            / "liwenjson.exe"
         )
         if candidate.is_file():
             return str(candidate)
@@ -142,7 +142,7 @@ def _not_found_message(here: Path, key: str | None) -> str:
     """Say what is missing in terms of what this installation actually has.
 
     Three different situations used to produce the same sentence, and only one
-    of them was fixed by setting `INTERJSON_BIN`:
+    of them was fixed by setting `LIWENJSON_BIN`:
 
       * a source checkout with no build -- "build it";
       * a wheel installed for a platform the release does not cover, such as
@@ -160,20 +160,20 @@ def _not_found_message(here: Path, key: str | None) -> str:
     where = f"{_platform.system()} {_platform.machine() or 'unknown'} ({sys.platform})"
     if bundled and key is None:
         return (
-            f"the interjson engine is not available for {where}: the package "
-            f"carries {', '.join(bundled)}. Set INTERJSON_BIN to a binary built "
+            f"the liwenjson engine is not available for {where}: the package "
+            f"carries {', '.join(bundled)}. Set LIWENJSON_BIN to a binary built "
             "for this platform, or build one with "
-            "`moon build cmd/interjson --target native --release`."
+            "`moon build cmd/liwenjson --target native --release`."
         )
     return (
-        "the interjson engine was not found. Reinstall `interjson-moonbit` from "
-        "PyPI to get the bundled binary, or set INTERJSON_BIN, put `interjson` on "
-        "PATH, or build it with `moon build cmd/interjson --target native --release`"
+        "the liwenjson engine was not found. Reinstall `liwenjson` from "
+        "PyPI to get the bundled binary, or set LIWENJSON_BIN, put `liwenjson` on "
+        "PATH, or build it with `moon build cmd/liwenjson --target native --release`"
     )
 
 
 class Client:
-    """A long-lived `interjson serve` process.
+    """A long-lived `liwenjson serve` process.
 
     Use it as a context manager, or call `close()`. One client is not shared
     between threads; a lock serialises requests so a caller that does share one
@@ -251,11 +251,11 @@ class Client:
                 break
 
     def request(self, method: str, **params: Any) -> Any:
-        """Send one request and return its `result`, or raise `InterJSONError`."""
+        """Send one request and return its `result`, or raise `LIWENJSONError`."""
         with self._lock:
             if self.proc.poll() is not None:
                 raise RuntimeError(
-                    f"interjson exited with {self.proc.returncode}; "
+                    f"liwenjson exited with {self.proc.returncode}; "
                     f"stderr: {' | '.join(self._stderr_lines[-3:])}"
                 )
             self._next_id += 1
@@ -280,18 +280,18 @@ class Client:
                 if remaining <= 0:
                     self._resync()
                     raise TimeoutError(
-                        f"interjson did not answer `{method}` in {self.timeout}s"
+                        f"liwenjson did not answer `{method}` in {self.timeout}s"
                     )
                 try:
                     response = self._responses.get(timeout=remaining)
                 except queue.Empty:
                     self._resync()
                     raise TimeoutError(
-                        f"interjson did not answer `{method}` in {self.timeout}s"
+                        f"liwenjson did not answer `{method}` in {self.timeout}s"
                     )
                 if response is _EOF:
                     raise RuntimeError(
-                        f"interjson closed the stream; "
+                        f"liwenjson closed the stream; "
                         f"stderr: {' | '.join(self._stderr_lines[-3:])}"
                     )
                 if response.get("id") != request_id:
@@ -300,7 +300,7 @@ class Client:
                     continue
                 if response.get("ok"):
                     return response["result"]
-                raise InterJSONError(response.get("error") or {})
+                raise LIWENJSONError(response.get("error") or {})
 
     # -- methods ----------------------------------------------------------
 

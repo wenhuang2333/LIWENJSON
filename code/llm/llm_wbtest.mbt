@@ -7,7 +7,7 @@
 fn fx_play(
   provider : Provider,
   fixture : String,
-) -> ToolStream raise @interjson.InterJSONError {
+) -> ToolStream raise @liwenjson.LIWENJSONError {
   let s = ToolStream::new(provider)
   for line in fx_lines(fixture) {
     ignore(s.push_event(line))
@@ -36,10 +36,10 @@ fn fx_expect(
       assert_eq(v.exactness.name(), "exact")
     } else {
       // The streamed value equals repairing the accumulated text in one shot.
-      let once = @interjson.parse(args)
+      let once = @liwenjson.parse(args)
       assert_eq(v.snapshot.value.unwrap().stringify(), once.value.stringify())
       assert_eq(v.exactness.name(), once.exactness.name())
-      assert_eq(v.snapshot.completeness is @interjson.Complete, true)
+      assert_eq(v.snapshot.completeness is @liwenjson.Complete, true)
     }
   }
 }
@@ -137,7 +137,7 @@ test "views are available while the call is still being written" {
   assert_eq(mid[0].done, false)
   // The value is visible while it is still being written ...
   assert_eq(mid[0].snapshot.value.unwrap().stringify(), "{\"a\":\"x\"}")
-  assert_eq(mid[0].snapshot.completeness is @interjson.Partial, true)
+  assert_eq(mid[0].snapshot.completeness is @liwenjson.Partial, true)
   // ... and the exactness only moves once a repair has actually happened.
   assert_eq(mid[0].exactness.name(), "exact")
   let mid2 = s.push_event(

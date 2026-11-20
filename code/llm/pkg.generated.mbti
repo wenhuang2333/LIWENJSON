@@ -1,8 +1,8 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "zhanshishan/interjson/llm"
+package "zhanshishan/liwenjson/llm"
 
 import {
-  "zhanshishan/interjson",
+  "zhanshishan/liwenjson",
 }
 
 // Values
@@ -67,7 +67,7 @@ pub fn SseBuffer::push(Self, String) -> Array[String]
 
 pub struct TextStream {
   provider : Provider
-  parser : @interjson.PartialParser
+  parser : @liwenjson.PartialParser
   buf : StringBuilder
   mut end : CallEnd
   mut stop_reason : String
@@ -77,10 +77,10 @@ pub struct TextStream {
 }
 pub fn TextStream::end(Self) -> CallEnd
 pub fn TextStream::error(Self) -> String
-pub fn TextStream::finish(Self) -> @interjson.FinalResult?
+pub fn TextStream::finish(Self) -> @liwenjson.FinalResult?
 pub fn TextStream::ignored_events(Self) -> Int32
-pub fn TextStream::new(Provider, options? : @interjson.Options) -> Self raise @interjson.InterJSONError
-pub fn TextStream::push_event(Self, String) -> @interjson.Snapshot? raise @interjson.InterJSONError
+pub fn TextStream::new(Provider, options? : @liwenjson.Options) -> Self raise @liwenjson.LIWENJSONError
+pub fn TextStream::push_event(Self, String) -> @liwenjson.Snapshot? raise @liwenjson.LIWENJSONError
 pub fn TextStream::stop_reason(Self) -> String
 pub fn TextStream::text(Self) -> String
 
@@ -91,8 +91,8 @@ pub(all) struct ToolCallView {
   index : Int32
   id : String
   name : String
-  snapshot : @interjson.Snapshot
-  exactness : @interjson.Exactness
+  snapshot : @liwenjson.Snapshot
+  exactness : @liwenjson.Exactness
   done : Bool
   end : CallEnd
   stop_reason : String
@@ -101,7 +101,7 @@ pub fn ToolCallView::is_executable(Self) -> Bool
 
 pub struct ToolStream {
   provider : Provider
-  options : @interjson.Options
+  options : @liwenjson.Options
   calls : Array[ToolCall]
   mut error_message : String
   mut ignored : Int32
@@ -110,10 +110,10 @@ pub struct ToolStream {
 pub fn ToolStream::arguments(Self, Int32) -> String
 pub fn ToolStream::arguments_at(Self, Int32, Int32) -> String
 pub fn ToolStream::error(Self) -> String
-pub fn ToolStream::finish(Self) -> Array[ToolCallView] raise @interjson.InterJSONError
+pub fn ToolStream::finish(Self) -> Array[ToolCallView] raise @liwenjson.LIWENJSONError
 pub fn ToolStream::ignored_events(Self) -> Int32
-pub fn ToolStream::new(Provider, options? : @interjson.Options) -> Self raise @interjson.InterJSONError
-pub fn ToolStream::push_event(Self, String) -> Array[ToolCallView] raise @interjson.InterJSONError
+pub fn ToolStream::new(Provider, options? : @liwenjson.Options) -> Self raise @liwenjson.LIWENJSONError
+pub fn ToolStream::push_event(Self, String) -> Array[ToolCallView] raise @liwenjson.LIWENJSONError
 pub fn ToolStream::unsupported_events(Self) -> Array[String]
 pub fn ToolStream::views(Self) -> Array[ToolCallView]
 

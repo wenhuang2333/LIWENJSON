@@ -773,7 +773,7 @@ test "a refusal keeps the rule that was refused as an operation" {
   assert_eq(strict.repairs[0].confidence_class, "refused")
   assert_true(strict.explain_text().contains("R003"), msg=strict.explain_text())
   assert_true(
-    strict.prompt().contains("InterJSON refused"),
+    strict.prompt().contains("LIWENJSON refused"),
     msg=strict.prompt(),
   )
   // The other refusal shape is an ambiguity refused by the execution profile.

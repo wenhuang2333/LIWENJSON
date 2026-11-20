@@ -2,7 +2,7 @@
 //
 // Two signal families are kept strictly apart (ADR-006):
 //   * repair records (R codes) are informational and travel with the result;
-//   * fatal errors (E codes) abort processing and are raised as `InterJSONError`.
+//   * fatal errors (E codes) abort processing and are raised as `LIWENJSONError`.
 
 ///|
 /// Severity of a repair record.
@@ -423,7 +423,7 @@ pub fn has_ambiguity(repairs : Array[Repair]) -> Bool {
 ///|
 /// Fatal error. Every variant carries the data needed to diagnose the input
 /// without re-running the parser.
-pub(all) suberror InterJSONError {
+pub(all) suberror LIWENJSONError {
   EmptyInput
   NoJsonFound(Int32)
   StrictViolation(RepairCode, Position, String)
@@ -438,7 +438,7 @@ pub(all) suberror InterJSONError {
   InvalidUtf8(Int32)
   InvalidOption(String)
   /// A provider event payload could not be interpreted (E060). Raised by the
-  /// `interjson/llm` adapters; the payload is a fixed explanation.
+  /// `liwenjson/llm` adapters; the payload is a fixed explanation.
   InvalidEvent(String)
   /// A skeleton declaration could not be read, or a value does not satisfy it
   /// (E070, FR-34). The payload is a fixed explanation.
@@ -447,7 +447,7 @@ pub(all) suberror InterJSONError {
 
 ///|
 /// Stable error code string, e.g. `E010`.
-pub fn InterJSONError::code(self : InterJSONError) -> String {
+pub fn LIWENJSONError::code(self : LIWENJSONError) -> String {
   match self {
     EmptyInput => "E001"
     NoJsonFound(_offset) => "E002"
@@ -466,7 +466,7 @@ pub fn InterJSONError::code(self : InterJSONError) -> String {
 
 ///|
 /// One-line diagnostic, e.g. `E020 DepthLimit: limit 3 exceeded at offset 3`.
-pub fn InterJSONError::to_string(self : InterJSONError) -> String {
+pub fn LIWENJSONError::to_string(self : LIWENJSONError) -> String {
   let sb = StringBuilder()
   match self {
     EmptyInput =>

@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const api = require("./index.cjs");
 
-export const InterJSONError = api.InterJSONError;
+export const LIWENJSONError = api.LIWENJSONError;
 export const repair = api.repair;
 export const repairResult = api.repairResult;
 export const analyze = api.analyze;

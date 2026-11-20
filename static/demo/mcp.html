@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>InterJSON × MCP — 执行门接入</title>
+    <title>LIWENJSON × MCP — 执行门接入</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -116,45 +116,45 @@
   </head>
   <body>
     <main>
-      <h1>InterJSON × MCP — 执行门接入</h1>
+      <h1>LIWENJSON × MCP — 执行门接入</h1>
       <p class="lead">
         MCP 让 agent 发现工具；真正的价值是宿主在执行工具参数之前过闸。
-        <code>interjson_gate</code> 返回 <code>executable</code>；为 false 时把
+        <code>liwenjson_gate</code> 返回 <code>executable</code>；为 false 时把
         <code>retry.prompt</code> 原样回灌模型。服务本地运行、只读、无网络。
       </p>
       <p class="nav">
         <a href="./index.html">演示目录</a> ·
         <a href="./live.html">流式执行门</a> ·
-        <a href="https://github.com/wenhuang2333/Moonbit-haker">GitHub</a> ·
-        <a href="https://github.com/wenhuang2333/Moonbit-haker/blob/main/code/README.zh.md">接入说明</a>
+        <a href="https://github.com/wenhuang2333/LIWENJSON">GitHub</a> ·
+        <a href="https://github.com/wenhuang2333/LIWENJSON/blob/main/code/README.zh.md">接入说明</a>
       </p>
 
       <h2>1. 一行配置</h2>
       <div class="grid">
         <div class="card">
           <h3>Claude Code</h3>
-          <pre id="cfg-claude">claude mcp add interjson -- interjson mcp</pre>
+          <pre id="cfg-claude">claude mcp add liwenjson -- liwenjson mcp</pre>
           <button data-copy="cfg-claude">复制</button>
         </div>
         <div class="card">
           <h3>mcp.json（Cursor / Cline / Windsurf 等）</h3>
-          <pre id="cfg-json">{"mcpServers":{"interjson":{"command":"interjson","args":["mcp"]}}}</pre>
+          <pre id="cfg-json">{"mcpServers":{"liwenjson":{"command":"liwenjson","args":["mcp"]}}}</pre>
           <button data-copy="cfg-json">复制</button>
         </div>
       </div>
       <p class="muted">
-        装 pip 包时命令是 <code>interjson-mcp</code>（它解析二进制并替换进程）；
-        npm 包 <code>interjson-moonbit</code> 的 bin 也是 <code>interjson-mcp</code>，
-        需要本机原生可执行文件。四个工具：<code>interjson_gate</code>（主入口，默认
-        <code>agent</code> 档） / <code>interjson_repair</code> /
-        <code>interjson_validate</code> / <code>interjson_readiness</code>，
+        装 pip 包时命令是 <code>liwenjson-mcp</code>（它解析二进制并替换进程）；
+        npm 包 <code>liwenjson</code> 的 bin 也是 <code>liwenjson-mcp</code>，
+        需要本机原生可执行文件。四个工具：<code>liwenjson_gate</code>（主入口，默认
+        <code>agent</code> 档） / <code>liwenjson_repair</code> /
+        <code>liwenjson_validate</code> / <code>liwenjson_readiness</code>，
         每个都只读。结果分两条通道：<code>content[0].text</code> 是给模型的摘要（判定、
         <code>executable</code>、以及拒绝时要回灌的句子），<code>structuredContent</code>
         是完整载荷。不可执行时一定带非空的 <code>retry.prompt</code>，且 <code>value</code> 为
         <code>null</code> —— 门拒绝的值不会同时递给调用方。
       </p>
       <p class="muted">
-        不想记命令：<code>interjson mcp --print-config=claude</code> 直接打印上面那行，
+        不想记命令：<code>liwenjson mcp --print-config=claude</code> 直接打印上面那行，
         <code>--print-config=json</code> 打印 <code>mcpServers</code> 片段；另外支持
         <code>cursor</code> / <code>vscode</code> / <code>codex</code> /
         <code>windsurf</code> / <code>zed</code>。
@@ -166,16 +166,16 @@
           <h3>模型输出（被 max_tokens 截断）</h3>
           <textarea id="model-text">{"amount":100,"currency":"USD"</textarea>
           <div>
-            <button id="run-bad">运行 interjson_gate</button>
+            <button id="run-bad">运行 liwenjson_gate</button>
             <button id="run-good">模型重发</button>
           </div>
           <p class="muted" id="tool-hint">
             schema 就是工具已有的 <code>inputSchema</code>；这里用 JSON Schema 子集直接传给
-            <code>interjson_gate</code>，档位用默认的 <code>agent</code>。
+            <code>liwenjson_gate</code>，档位用默认的 <code>agent</code>。
           </p>
         </div>
         <div class="card">
-          <h3>interjson_gate 的回答</h3>
+          <h3>liwenjson_gate 的回答</h3>
           <div class="kv">
             <span>decision</span><span id="decision" class="verdict">—</span>
             <span>executable</span><span id="executable" class="verdict">—</span>
@@ -196,12 +196,12 @@
       </ol>
 
       <h2>4. 会话实录</h2>
-      <pre>→ tools/call  interjson_gate
+      <pre>→ tools/call  liwenjson_gate
 ← decision: lossy_repair      executable: false
   error: E010  CloseContainer at 1:31
-  retry: "InterJSON refused the arguments: E010 ..."
+  retry: "LIWENJSON refused the arguments: E010 ..."
 
-→ tools/call  interjson_gate
+→ tools/call  liwenjson_gate
 ← decision: safe              executable: true
 OK  execute create_invoice({"amount":100,"currency":"USD"})</pre>
       <p class="muted">
@@ -209,26 +209,26 @@ OK  execute create_invoice({"amount":100,"currency":"USD"})</pre>
         <a href="./mcp-claude/README.md">mcp-claude/</a> 与
         <a href="./mcp-claude-session.txt">mcp-claude-session.txt</a>，
         录制于更名之前、是不可改写的逐字节证据，因此保留旧服务名与旧工具名
-        （现在的 <code>interjson_gate</code> 当时叫 <code>*_analyze</code>）。
+        （现在的 <code>liwenjson_gate</code> 当时叫 <code>*_analyze</code>）。
       </p>
 
       <footer>
         页面里的每一次 gate 判定都由同一份 MoonBit 引擎编译成的
-        <code>interjson.js</code> 在浏览器里计算，不是预写的结果。
+        <code>liwenjson.js</code> 在浏览器里计算，不是预写的结果。
         MCP 传输、四个工具与协议协商见
-        <a href="https://github.com/wenhuang2333/Moonbit-haker/blob/main/code/README.zh.md">code/README.zh.md</a>。
+        <a href="https://github.com/wenhuang2333/LIWENJSON/blob/main/code/README.zh.md">code/README.zh.md</a>。
       </footer>
     </main>
 
     <script>
-      globalThis.interjsonRegister1 = function (name, fn) {
-        globalThis.interjson = globalThis.interjson || {};
-        globalThis.interjson[name] = fn;
+      globalThis.liwenjsonRegister1 = function (name, fn) {
+        globalThis.liwenjson = globalThis.liwenjson || {};
+        globalThis.liwenjson[name] = fn;
       };
-      globalThis.interjsonRegister2 = globalThis.interjsonRegister1;
-      globalThis.interjsonRegister3 = globalThis.interjsonRegister1;
+      globalThis.liwenjsonRegister2 = globalThis.liwenjsonRegister1;
+      globalThis.liwenjsonRegister3 = globalThis.liwenjsonRegister1;
     </script>
-    <script src="./interjson.js"></script>
+    <script src="./liwenjson.js"></script>
     <script>
       const $ = (id) => document.getElementById(id);
       const schema = JSON.stringify({
@@ -261,7 +261,7 @@ OK  execute create_invoice({"amount":100,"currency":"USD"})</pre>
       }
 
       function analyze(text) {
-        const raw = globalThis.interjson.analyze_json_schema(text, "agent", schema);
+        const raw = globalThis.liwenjson.analyze_json_schema(text, "agent", schema);
         const plan = JSON.parse(raw);
         if (plan.error && !plan.decision) {
           $("decision").textContent = "invalid schema";

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for looking at InterJSON. This file covers the environment, the test
+Thanks for looking at LIWENJSON. This file covers the environment, the test
 commands and the rules a change has to follow.
 
 ## Environment
@@ -20,7 +20,7 @@ Python 3 and Node.js are only needed for the differential harness.
 | --- | --- |
 | `code/*.mbt` | the library, one flat package |
 | `code/*_wbtest.mbt` | whitebox tests (same package, can reach private fields) |
-| `code/cmd/interjson/` | native command line front end |
+| `code/cmd/liwenjson/` | native command line front end |
 | `code/bench/` | benchmark harness and the wasm-gc size probe |
 | `code/examples/web/` | browser demo entry points (JS backend) |
 | `code/tests/diff/` | differential harness against `jsonrepair` / `json-repair` |
@@ -30,18 +30,18 @@ Python 3 and Node.js are only needed for the differential harness.
 
 ## MCP surface
 
-`interjson mcp` (alias `interjson-mcp`) is the primary way the product is used:
+`liwenjson mcp` (alias `liwenjson-mcp`) is the primary way the product is used:
 a local stdio MCP server, no network, no API key, exposing four read-only tools
-— `interjson_gate` (primary, defaults to the `agent` profile),
-`interjson_repair`, `interjson_validate`, `interjson_readiness`. The server
+— `liwenjson_gate` (primary, defaults to the `agent` profile),
+`liwenjson_repair`, `liwenjson_validate`, `liwenjson_readiness`. The server
 speaks protocol `2025-06-18` (accepting `2024-11-05`), returns text plus
-`structuredContent`, and `interjson mcp --print-config=claude|cursor|vscode|codex|windsurf|zed|json`
+`structuredContent`, and `liwenjson mcp --print-config=claude|cursor|vscode|codex|windsurf|zed|json`
 prints the client configuration.
 
 A change to a tool name, an input schema or the result envelope is a
 public-surface change: update `docs/MCP.md`, `docs/CONFORMANCE.md`, the
 `static/demo/*.html` pages and `CHANGELOG.md` in the same commit, and run
-`python3 tests/conformance/run_conformance.py` (it starts `interjson mcp` and
+`python3 tests/conformance/run_conformance.py` (it starts `liwenjson mcp` and
 checks the MCP half as well as `serve`).
 
 ## Tests a change must pass
@@ -51,8 +51,8 @@ cd code
 moon check                     # 0 warnings — warnings are treated as failures
 moon fmt --check
 moon test && moon test --target native && moon test --target js
-bash tests/cli_smoke.sh        # after: moon build cmd/interjson --target native --release
-python3 tests/diff/run_diff.py --cli ./_build/native/release/build/cmd/interjson/interjson.exe
+bash tests/cli_smoke.sh        # after: moon build cmd/liwenjson --target native --release
+python3 tests/diff/run_diff.py --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe
 ```
 
 The differential script must exit 0: every divergence from the reference
@@ -86,7 +86,7 @@ intended in `docs/DIVERGENCES.md` (the file is generated; put the explanation in
 - streaming is chunk invariant: one-shot and any chunking agree on text,
   records and errors;
 - snapshots are a stable prefix: once `Complete`, they never change again;
-- no panic on any byte sequence: only the documented `InterJSONError`s may escape.
+- no panic on any byte sequence: only the documented `LIWENJSONError`s may escape.
 
 ## Style
 

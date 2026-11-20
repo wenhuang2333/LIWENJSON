@@ -1,10 +1,10 @@
-"""Console entry point for an MCP client: `interjson-mcp`.
+"""Console entry point for an MCP client: `liwenjson-mcp`.
 
-The MCP server itself is implemented in the MoonBit binary (`interjson mcp`);
+The MCP server itself is implemented in the MoonBit binary (`liwenjson mcp`);
 this module only resolves the binary and replaces the process with it, so
 stdin/stdout remain a clean JSON-RPC channel with no Python in the middle.
 
-    {"mcpServers": {"interjson": {"command": "interjson-mcp"}}}
+    {"mcpServers": {"liwenjson": {"command": "liwenjson-mcp"}}}
 """
 
 from __future__ import annotations

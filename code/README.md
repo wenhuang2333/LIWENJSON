@@ -1,9 +1,9 @@
-# InterJSON
+# LIWENJSON
 
 **The execution gate for LLM output — a local MCP server, one native binary.**
 
-InterJSON answers the only question between a model's tool call and the code that
-would run it: *may I execute this?* `interjson mcp` serves that decision over
+LIWENJSON answers the only question between a model's tool call and the code that
+would run it: *may I execute this?* `liwenjson mcp` serves that decision over
 stdio as a Model Context Protocol server — no socket, no network, no API key, no
 model output leaving the machine. The engine underneath is pure MoonBit with
 wasm-gc, native, JS and wasm backends, and the same engine answers the same
@@ -11,13 +11,13 @@ question for host-side callers (`serve`, npm, pip, HTTP).
 
 | | |
 | --- | --- |
-| Module | `zhanshishan/interjson` |
+| Module | `zhanshishan/liwenjson` |
 | Version | 1.5.2 |
 | License | Apache-2.0 |
-| MCP server | `interjson mcp`, also `interjson-mcp`; JSON-RPC 2.0 over stdio, protocol `2025-06-18` (`2025-03-26` and `2024-11-05` accepted) |
+| MCP server | `liwenjson mcp`, also `liwenjson-mcp`; JSON-RPC 2.0 over stdio, protocol `2025-06-18` (`2025-03-26` and `2024-11-05` accepted) |
 | Backends | wasm-gc, native, JS, wasm — one test suite, all four |
-| Registry | [`mooncakes.io zhanshishan/interjson`](https://mooncakes.io/docs/zhanshishan/interjson) — 0.14.0 is the 1.5.2 correspondence and is the source on `main`; 0.13.0 (1.5.1) was published on 2026-10-29, 0.12.0 (1.5.0) on 2026-10-28, 0.11.0 (1.4.0) on 2026-10-27; older releases are under the former name `zhanshishan/jsonmend` |
-| Prebuilt binaries | The GitHub release `v1.5.2` (and `v1.5.1` before it): four binaries across three operating systems (`linux-x86_64`, `linux-arm64`, `macos-arm64`, `windows-x86_64.exe`), the wasm probe, the browser bundle, `SHA256SUMS` and the `interjson-install.sh` one-command installer. There is **no Intel macOS build** — the MoonBit toolchain publishes no `darwin-x86_64` target. Older releases keep the `jsonmend-*` asset prefix |
+| Registry | [`mooncakes.io zhanshishan/liwenjson`](https://mooncakes.io/docs/zhanshishan/liwenjson) — 0.14.0 is the 1.5.2 correspondence and is the source on `main`; 0.13.0 (1.5.1) was published on 2026-10-29, 0.12.0 (1.5.0) on 2026-10-28, 0.11.0 (1.4.0) on 2026-10-27. Those four numbers are **not yet published under this name**: 0.11.0–0.13.0 live on mooncakes as `zhanshishan/interjson`, and everything earlier as `zhanshishan/jsonmend` |
+| Prebuilt binaries | The GitHub release `v1.5.2` (and `v1.5.1` before it): four binaries across three operating systems (`linux-x86_64`, `linux-arm64`, `macos-arm64`, `windows-x86_64.exe`), the wasm probe, the browser bundle, `SHA256SUMS` and the `liwenjson-install.sh` one-command installer. There is **no Intel macOS build** — the MoonBit toolchain publishes no `darwin-x86_64` target. The `liwenjson-*` asset names apply from the next release: `v1.4.0`–`v1.5.2` were published with `interjson-*` assets, `v1.3.0` and earlier with `jsonmend-*` |
 | Docs | [`docs/MCP.md`](docs/MCP.md) (deployment), [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) (host-side recipes), [`docs/SPEC.md`](docs/SPEC.md) (the normative contract), [../README.md](../README.md) (project front page) |
 
 This page is the package page for mooncakes.io and the **API reference**: the
@@ -28,18 +28,18 @@ the [repository front page](../README.md); the MCP deployment guide is
 
 ## The gate
 
-`interjson mcp` exposes four read-only tools. A client — Claude Code, Cursor,
+`liwenjson mcp` exposes four read-only tools. A client — Claude Code, Cursor,
 Cline, Windsurf, VS Code, Codex CLI, Zed, or anything that speaks MCP — starts
 the server locally and can then ask:
 
 | Tool | What it answers |
 | --- | --- |
-| `interjson_gate` | **may I execute this?** `decision`, `executable`, `exactness`, ambiguity, schema satisfaction, `value`, `retry.prompt` when refused, and `refusal.kind` (whether an automatic retry is safe) |
-| `interjson_repair` | what is the repaired document, and what changed? |
-| `interjson_validate` | is this legal JSON, and does it satisfy the declaration? |
-| `interjson_readiness` | at which input fraction is each declared field final? |
+| `liwenjson_gate` | **may I execute this?** `decision`, `executable`, `exactness`, ambiguity, schema satisfaction, `value`, `retry.prompt` when refused, and `refusal.kind` (whether an automatic retry is safe) |
+| `liwenjson_repair` | what is the repaired document, and what changed? |
+| `liwenjson_validate` | is this legal JSON, and does it satisfy the declaration? |
+| `liwenjson_readiness` | at which input fraction is each declared field final? |
 
-`interjson_gate` defaults to the `agent` profile when the caller omits one:
+`liwenjson_gate` defaults to the `agent` profile when the caller omits one:
 a lossy or ambiguous repair is refused instead of guessed, and the refusal
 carries a prompt that can be sent straight back to the model. That default is
 exactly `Options::for_agent()`, protocol included: prose before the arguments
@@ -50,10 +50,10 @@ non-empty `retry.prompt` and `value: null`; an executable result always carries 
 live `value` and `retry: null`. `content[0].text` is a summary the model can act
 on; `structuredContent` is the payload, once.
 
-**MCP is advisory.** `interjson_gate` is a tool the model *may* call, and nothing
+**MCP is advisory.** `liwenjson_gate` is a tool the model *may* call, and nothing
 in MCP makes the host check the answer. What makes the gate mandatory is a
 host-side insertion point: a Claude Code `PreToolUse` hook, a `gate(args)` call in
-the host SDK, or `interjson serve` / npm / pip / HTTP. Recipes:
+the host SDK, or `liwenjson serve` / npm / pip / HTTP. Recipes:
 [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md#making-the-gate-mandatory).
 
 ## Install
@@ -61,7 +61,7 @@ the host SDK, or `interjson serve` / npm / pip / HTTP. Recipes:
 ### The MoonBit library
 
 ```sh
-moon add zhanshishan/interjson
+moon add zhanshishan/liwenjson
 ```
 
 Then import the package in your `moon.pkg` with the alias used throughout this
@@ -69,7 +69,7 @@ document:
 
 ```
 import {
-  "zhanshishan/interjson" @interjson,
+  "zhanshishan/liwenjson" @liwenjson,
 }
 ```
 
@@ -79,8 +79,8 @@ The server is a single native binary: no runtime, no API key, no network.
 
 ```sh
 cd code
-moon build cmd/interjson --target native --release
-./_build/native/release/build/cmd/interjson/interjson.exe mcp --print-config=claude
+moon build cmd/liwenjson --target native --release
+./_build/native/release/build/cmd/liwenjson/liwenjson.exe mcp --print-config=claude
 ```
 
 The installer, the per-client configuration, the pip/npm launchers and the
@@ -97,12 +97,12 @@ Four entry points, one engine:
 | `analyze(input, options?, readiness?, schema?)` | `RepairPlan`: decision, operations, retry prompt, JSON channel — **never raises** |
 | `PartialParser` | `feed` / `feed_bytes` / `snapshot` / `finish` / `drain_deltas` |
 
-`repair` raises `InterJSONError`, so wrap the calls in `try`/`catch` (the three
+`repair` raises `LIWENJSONError`, so wrap the calls in `try`/`catch` (the three
 statements below are the whole example):
 
 ```moonbit
 try {
-  let result = @interjson.repair("{'a': 1,}")   // RepairResult
+  let result = @liwenjson.repair("{'a': 1,}")   // RepairResult
   println(result.text)                         // {"a":1}
   println(result.repairs.length())             // number of repair records
 } catch {
@@ -110,15 +110,15 @@ try {
 }
 ```
 
-Use `@interjson.parse` instead when you want the `Json` tree rather than the text;
+Use `@liwenjson.parse` instead when you want the `Json` tree rather than the text;
 it returns the same `repairs` and `completeness` alongside a `value`.
 
 ### One call: "may I execute this"
 
 ```moonbit
-let plan = @interjson.analyze(text,
-  options=@interjson.Options::for_agent(),
-  schema=@interjson.Schema::parse("{!query:string,!limit:integer}"))
+let plan = @liwenjson.analyze(text,
+  options=@liwenjson.Options::for_agent(),
+  schema=@liwenjson.Schema::parse("{!query:string,!limit:integer}"))
 plan.decision          // Safe | CosmeticRepair | LossyRepair | Ambiguous | Invalid
 plan.is_executable()   // the only question a gate has to ask
 plan.repairs           // rule, action, position, confidence class, information loss
@@ -154,7 +154,7 @@ plan.to_json()         // machine channel: decision/exactness/value/retry/repair
   `Options::reject_ambiguous` / `Options::for_execution()`, before the exactness
   gate. 10/10 adversarial cases are flagged and refused, while both reference
   libraries answer all 10 with a silent value (`docs/EVAL_AMBIGUITY.md`).
-- **Reject as feedback**: `InterJSONError::retry_hint` (and `--retry-hint`) turns a
+- **Reject as feedback**: `LIWENJSONError::retry_hint` (and `--retry-hint`) turns a
   refusal into a prompt fragment — error code, repair code, position, the second
   reading, a bounded context window with a caret.
 - **Field readiness (FR-29)**: `field_readiness` reports, for every top-level
@@ -163,7 +163,7 @@ plan.to_json()         // machine channel: decision/exactness/value/retry/repair
 - **Incremental deltas**: with `Options::collect_deltas`, `drain_deltas()` returns
   `Set` / `AppendText` / `Close` operations with RFC 6901 JSON Pointer paths;
   `drain_views()` / `for_each_delta()` are the zero-path-allocation entry points.
-- **LLM provider adapters** in the `interjson/llm` sub-package (*experimental*):
+- **LLM provider adapters** in the `liwenjson/llm` sub-package (*experimental*):
   Anthropic fine-grained tool streaming and OpenAI-compatible tool-call deltas, an
   SSE framer, and a text stream that reads the JSON out of `delta.text` /
   `delta.content`. The end of a call is reported as `Complete`, `MaxTokens`,
@@ -176,18 +176,18 @@ including an escape sequence or a surrogate pair.
 
 ```moonbit
 try {
-  let p = @interjson.PartialParser::new()
+  let p = @liwenjson.PartialParser::new()
   p.feed("{\"name\":\"Mo")
   let s1 = p.snapshot()
   match s1.value {
     Some(v) => println(v.stringify())          // {"name":"Mo"}
     None => println("<none>")
   }
-  println(s1.completeness is @interjson.Partial) // true
+  println(s1.completeness is @liwenjson.Partial) // true
   p.feed("n\"}")
   let done = p.finish()
   println(done.text)                            // {"name":"Mon"}
-  println(done.completeness is @interjson.Complete) // true
+  println(done.completeness is @liwenjson.Complete) // true
 } catch {
   e => println(e.to_string())
 }
@@ -198,10 +198,10 @@ UTF-8 raises `E040`. Options are passed by keyword:
 
 ```moonbit
 try {
-  let p = @interjson.PartialParser::new(options={
-    ..@interjson.Options::default(),
-    incomplete_number: @interjson.TrimToValid,
-    pending_key: @interjson.NullKey,
+  let p = @liwenjson.PartialParser::new(options={
+    ..@liwenjson.Options::default(),
+    incomplete_number: @liwenjson.TrimToValid,
+    pending_key: @liwenjson.NullKey,
   })
   p.feed_bytes(b"[1, 1.")
   let s = p.snapshot()
@@ -226,7 +226,7 @@ the four-episode self-healing loop is `examples/agent_loop/`.
 
 ## Options
 
-Every field of `Options`. `@interjson.Options::default()` is the documented
+Every field of `Options`. `@liwenjson.Options::default()` is the documented
 default set.
 
 | Field | Type | Default | Meaning |
@@ -295,7 +295,7 @@ package.
 
 Two signal families are kept apart: repair records are informational and travel
 with the result; fatal errors abort processing and are raised as
-`InterJSONError`.
+`LIWENJSONError`.
 
 A `Repair` carries `code : RepairCode`, `position : Position`,
 `severity : Severity`, and `message : String`. `repair`, `parse`, and `finish`
@@ -317,10 +317,10 @@ templates and never embed user input.
 | `E030` | `InvalidState` | `feed` after `finish`, or `finish` called twice or after a fatal error. |
 | `E040` | `InvalidUtf8` | Invalid or truncated UTF-8 in `feed_bytes` (payload is the byte offset). |
 | `E050` | `InvalidOption` | An option value is out of range, or a combination is invalid (`collect_deltas` with `KeepFirst`/`TrimToValid`). |
-| `E060` | `InvalidEvent` | `interjson/llm` received an event payload it cannot interpret. |
+| `E060` | `InvalidEvent` | `liwenjson/llm` received an event payload it cannot interpret. |
 | `E070` | `SchemaError` | The declaration itself is malformed, or uses a keyword outside the supported subset. |
 
-`RepairCode::code`, `InterJSONError::code`, and `InterJSONError::to_string`
+`RepairCode::code`, `LIWENJSONError::code`, and `LIWENJSONError::to_string`
 produce the stable strings (`R005`, `E020`, and a one-line diagnostic
 respectively). The tables above are the complete set of both families, and the
 exit codes are in the [Command line](#command-line) section. The longer
@@ -364,26 +364,26 @@ trims numbers (`R011`), completes literals (`R012`), and fills a dangling key wi
 
 ## Command line
 
-Build and run the CLI (native-only; `cmd/interjson/moon.pkg` declares
+Build and run the CLI (native-only; `cmd/liwenjson/moon.pkg` declares
 `supported_targets = "native"`):
 
 ```sh
-moon build cmd/interjson --target native --release
-echo "{'a': 1,}" | ./_build/native/release/build/cmd/interjson/interjson.exe
+moon build cmd/liwenjson --target native --release
+echo "{'a': 1,}" | ./_build/native/release/build/cmd/liwenjson/liwenjson.exe
 ```
 
-The CLI has six subcommands (`repair` is the default action; `interjson --help`
+The CLI has six subcommands (`repair` is the default action; `liwenjson --help`
 prints the full help, which is in Chinese). The English reference:
 
 | Command | Use |
 | --- | --- |
-| `interjson [file]` | Read a file or stdin, write the repaired JSON to stdout. |
-| `interjson repair [file]` | The default action, spelled out: the document and nothing else. |
-| `interjson explain [file]` | Full analysis: what was repaired, why, how risky, and whether it may execute; on a refusal, the retry hint. Exit code 0 when executable, 5 when refused. |
-| `interjson readiness [file]` | Field-readiness curve: when each top-level field becomes final. |
-| `interjson llm [file]` | Feed a provider event stream through the adapter; one result JSON per tool call. |
-| `interjson serve` | Long-lived stdio protocol ([`docs/PROTOCOL.md`](docs/PROTOCOL.md)): one request JSON per line, one response JSON per line. |
-| `interjson mcp` | MCP stdio server (JSON-RPC 2.0) exposing the four tools; `--print-config[=CLIENT]` prints a client configuration and exits. |
+| `liwenjson [file]` | Read a file or stdin, write the repaired JSON to stdout. |
+| `liwenjson repair [file]` | The default action, spelled out: the document and nothing else. |
+| `liwenjson explain [file]` | Full analysis: what was repaired, why, how risky, and whether it may execute; on a refusal, the retry hint. Exit code 0 when executable, 5 when refused. |
+| `liwenjson readiness [file]` | Field-readiness curve: when each top-level field becomes final. |
+| `liwenjson llm [file]` | Feed a provider event stream through the adapter; one result JSON per tool call. |
+| `liwenjson serve` | Long-lived stdio protocol ([`docs/PROTOCOL.md`](docs/PROTOCOL.md)): one request JSON per line, one response JSON per line. |
+| `liwenjson mcp` | MCP stdio server (JSON-RPC 2.0) exposing the four tools; `--print-config[=CLIENT]` prints a client configuration and exits. |
 
 Flags:
 
@@ -413,7 +413,7 @@ Flags:
 | `--chunk N` | Feed the input in N-code-unit chunks (≤1048576) to exercise the streaming path. |
 | `--batch` | Read `{"id","input"}` objects line by line and write one result object per line. |
 | `-h`, `--help` | Show help. |
-| `--version` | Show the version (`interjson 1.5.2`). |
+| `--version` | Show the version (`liwenjson 1.5.2`). |
 | file, or `-` | Read a file; `-` or an omitted argument reads standard input. |
 
 `--indent=N`, `--multi-root=MODE`, and `--max-repairs=N` are accepted as
@@ -434,8 +434,8 @@ Exit codes:
 The browser demo lives in `examples/web`; the built page is `static/demo/index.html`
 and can be opened directly from disk. The demo's MoonBit entry points are plain
 `String`-in/`String`-out functions registered on the host page through
-`globalThis.interjsonRegister*`, so the page contains no second implementation.
-The same bundle backs `static/demo/interjson.js` and the npm package. Rebuild it
+`globalThis.liwenjsonRegister*`, so the page contains no second implementation.
+The same bundle backs `static/demo/liwenjson.js` and the npm package. Rebuild it
 with `bash static/demo/build.sh`; the build steps and how to open the page are in
 [`static/demo/README.md`](../static/demo/README.md), and
 `node code/tests/demo_smoke.mjs` checks the committed bundle still answers.
@@ -451,9 +451,9 @@ moon test --target wasm        # wasm backend
 bash tests/cli_smoke.sh        # command line assertions, including the MCP checks
 bash tests/examples.sh         # example inputs vs code/examples/cases/*.expected
 node ../code/tests/demo_smoke.mjs   # the committed browser bundle still answers
-python3 tests/conformance/run_conformance.py --cli ./_build/native/release/build/cmd/interjson/interjson.exe
-python3 tests/diff/run_diff.py --cli ./_build/native/release/build/cmd/interjson/interjson.exe
-python3 tests/eval/run_eval.py --cli ./_build/native/release/build/cmd/interjson/interjson.exe
+python3 tests/conformance/run_conformance.py --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe
+python3 tests/diff/run_diff.py --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe
+python3 tests/eval/run_eval.py --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe
 moon run examples/agent_loop --target native --release
 ```
 
@@ -469,7 +469,7 @@ and [`docs/EVAL.md`](docs/EVAL.md).
 
 ## Differences from jsonrepair
 
-InterJSON is not a port of `jsonrepair` and does not aim for byte-identical
+LIWENJSON is not a port of `jsonrepair` and does not aim for byte-identical
 output. Several differences are deliberate, documented policy choices: trailing
 content after the root value keeps the first value by default instead of merging
 it, Markdown fences are stripped by default, duplicate keys keep the last value,
@@ -525,12 +525,12 @@ published.
 - **Lone surrogates differ by backend.** On the wasm backend, `\uD800`-style lone
   surrogates survive in the output; on the other backends the `InvalidUtf8`
   (`E040`) path substitutes U+FFFD.
-- **The `interjson/llm` and delta sub-packages are experimental.** Their APIs may
+- **The `liwenjson/llm` and delta sub-packages are experimental.** Their APIs may
   change in a minor release; the core `repair` / `parse` / `PartialParser` surface
   is the stable one.
 - **The CLI is native-only**, and **parser instances are not thread-safe**: use one
   instance per input stream.
-- **Recovery guarantees are heuristic, not a conformance claim.** InterJSON is not
+- **Recovery guarantees are heuristic, not a conformance claim.** LIWENJSON is not
   a JSON standard, and it does not guarantee a particular interpretation for every
   malformed input; the differential report is the evidence for the behaviour it
   does document.
@@ -597,7 +597,7 @@ published.
 
 ## License and acknowledgements
 
-InterJSON is released under the Apache License 2.0 (`license = "Apache-2.0"` in
+LIWENJSON is released under the Apache License 2.0 (`license = "Apache-2.0"` in
 `code/moon.mod`).
 
 - [jsonrepair](https://github.com/josdejong/jsonrepair) (TypeScript) and

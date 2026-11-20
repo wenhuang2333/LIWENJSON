@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record a real Claude Code session against the InterJSON MCP server.
+"""Record a real Claude Code session against the LIWENJSON MCP server.
 
 This script is the only producer of the judge-facing assets:
 
@@ -13,9 +13,9 @@ sentence of the final summary is read out of the `claude --output-format
 stream-json` log that this script captured in the same run.  The script
 refuses to write any asset unless the capture really contains
 
-  1. a `interjson_gate` call whose text is truncated JSON,
+  1. a `liwenjson_gate` call whose text is truncated JSON,
   2. a tool response carrying the E010 refusal with `executable: false`,
-  3. a second `interjson_gate` call with re-emitted arguments,
+  3. a second `liwenjson_gate` call with re-emitted arguments,
   4. a second tool response with `executable: true`,
 
 so a failed or refused session produces an error message and no files, never a
@@ -26,7 +26,7 @@ Run from the repository root:
     python3 code/tests/media/record_claude_mcp.py
 
 Options:
-    --keep-server     leave `interjson` registered in Claude Code afterwards
+    --keep-server     leave `liwenjson` registered in Claude Code afterwards
     --skip-build      reuse the existing native binary
     --no-render       capture only; do not paint the gif/poster
 """
@@ -45,7 +45,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-BIN = ROOT / "code" / "_build" / "native" / "release" / "build" / "cmd" / "interjson" / "interjson.exe"
+BIN = ROOT / "code" / "_build" / "native" / "release" / "build" / "cmd" / "liwenjson" / "liwenjson.exe"
 RAW = ROOT / "code" / "tests" / "media" / "mcp-claude-raw.jsonl"
 OUT_TXT = ROOT / "static" / "demo" / "mcp-claude-session.txt"
 OUT_GIF = ROOT / "code" / "tests" / "media" / "out" / "mcp-claude-demo.gif"
@@ -54,13 +54,13 @@ OUT_PNG = ROOT / "code" / "tests" / "media" / "out" / "mcp-claude-poster.png"
 CLAUDE = shutil.which("claude") or str(Path.home() / ".npm-global/bin/claude")
 MOON = shutil.which("moon") or str(Path.home() / ".moon/bin/moon")
 
-SERVER = "interjson"
+SERVER = "liwenjson"
 ALLOWED_TOOLS = ",".join(
     [
-        "mcp__interjson__interjson_gate",
-        "mcp__interjson__interjson_repair",
-        "mcp__interjson__interjson_validate",
-        "mcp__interjson__interjson_readiness",
+        "mcp__liwenjson__liwenjson_gate",
+        "mcp__liwenjson__liwenjson_repair",
+        "mcp__liwenjson__liwenjson_validate",
+        "mcp__liwenjson__liwenjson_readiness",
     ]
 )
 
@@ -68,9 +68,9 @@ ALLOWED_TOOLS = ",".join(
 # transcript; nothing downstream rewrites it.
 PROMPT = """You are wiring an execution gate in front of a create_invoice tool. A model produced tool arguments, but the provider stream hit max_tokens and the JSON was cut off mid-object.
 
-Use the interjson_gate MCP tool, and only that tool. Work in these steps:
+Use the liwenjson_gate MCP tool, and only that tool. Work in these steps:
 
-1. Call interjson_gate with profile "agent" and with this schema_json:
+1. Call liwenjson_gate with profile "agent" and with this schema_json:
 {"type":"object","properties":{"amount":{"type":"number","minimum":0},"currency":{"type":"string","pattern":"^[A-Z]{3}$"}},"required":["amount","currency"]}
 
 For the `text` argument, pass exactly this string, copied character for character:
@@ -78,7 +78,7 @@ For the `text` argument, pass exactly this string, copied character for characte
 
 That string is 30 characters long. It starts with an opening brace and its last character is the double quote that closes the "USD" value; the closing brace is missing on purpose. It is not valid JSON. Do not repair it before the first call.
 
-2. Read the result. If executable is false, take the retry.prompt and re-emit the arguments as valid JSON yourself, then call interjson_gate again with the same profile and the same schema_json, using your corrected text.
+2. Read the result. If executable is false, take the retry.prompt and re-emit the arguments as valid JSON yourself, then call liwenjson_gate again with the same profile and the same schema_json, using your corrected text.
 
 3. Finish with a short summary listing: the first call's decision, the first call's executable flag, the first call's error code, the corrected text you sent on the second call, and the second call's decision and executable flag."""
 
@@ -103,7 +103,7 @@ def build_cli() -> None:
     env["PATH"] = str(Path.home() / ".moon/bin") + os.pathsep + env.get("PATH", "")
     print("[1/6] building the native CLI ...", flush=True)
     proc = subprocess.run(
-        [MOON, "build", "cmd/interjson", "--target", "native", "--release"],
+        [MOON, "build", "cmd/liwenjson", "--target", "native", "--release"],
         cwd=ROOT / "code",
         capture_output=True,
         text=True,
@@ -287,7 +287,7 @@ def transcript(parsed: dict, cmd: list[str], env_info: dict) -> str:
     w = out.append
 
     w("=" * 78)
-    w("InterJSON x Claude Code - a REAL recorded session")
+    w("LIWENJSON x Claude Code - a REAL recorded session")
     w("=" * 78)
     w("")
     w("Every line below was produced by the commands shown here.  The raw")
@@ -315,7 +315,7 @@ def transcript(parsed: dict, cmd: list[str], env_info: dict) -> str:
     w("$ claude --version")
     w(env_info["claude_version"].rstrip())
     w("")
-    w("$ claude mcp add interjson -- " + str(BIN) + " mcp")
+    w("$ claude mcp add liwenjson -- " + str(BIN) + " mcp")
     for line in env_info["mcp_add"].rstrip().splitlines():
         w("  " + line)
     w("")
@@ -526,7 +526,7 @@ def json_spans(text: str):
 
 def readout(plan: dict, accent: tuple) -> list[tuple[str, tuple]]:
     """A short, mechanical extraction of the decision fields of a real
-    `interjson_gate` response.  Every value is copied from the response."""
+    `liwenjson_gate` response.  Every value is copied from the response."""
     out = []
     rows = [
         ("decision", plan.get("decision")),
@@ -571,7 +571,7 @@ def build_chapters(parsed: dict, env_info: dict, cmd: list[str]) -> list[list[tu
     c.append(("$ claude --version", CYAN))
     c.append(("  " + env_info["claude_version"].rstrip(), FG))
     c.append(("", FG))
-    c.append(("$ claude mcp add interjson -- " + str(BIN) + " mcp", CYAN))
+    c.append(("$ claude mcp add liwenjson -- " + str(BIN) + " mcp", CYAN))
     for line in env_info["mcp_add"].rstrip().splitlines():
         c.append(("  " + line, DIM))
     c.append(("", FG))
@@ -582,7 +582,7 @@ def build_chapters(parsed: dict, env_info: dict, cmd: list[str]) -> list[list[tu
 
     # 2 - the request
     c = []
-    c.append(("$ claude -p \"<prompt>\" --allowedTools mcp__interjson__interjson_gate,... \\", CYAN))
+    c.append(("$ claude -p \"<prompt>\" --allowedTools mcp__liwenjson__liwenjson_gate,... \\", CYAN))
     c.append(("    --output-format stream-json --verbose", CYAN))
     c.append(("", FG))
     for line in wrap(PROMPT, COLS - 2, "> ", "> "):
@@ -663,7 +663,7 @@ def render_gif(chapters, out_path: Path) -> None:
             d.ellipse([18 + i * 22, 16, 30 + i * 22, 28], fill=color)
         d.text(
             (104, 14),
-            "claude  -  interjson execution gate over MCP  -  real session",
+            "claude  -  liwenjson execution gate over MCP  -  real session",
             font=bold,
             fill=DIM,
         )
@@ -719,9 +719,9 @@ def render_poster(parsed: dict, env_info: dict, out_path: Path) -> None:
     d.rectangle([0, 0, PW, 56], fill=BAR)
     for i, color in enumerate([(255, 95, 86), (255, 189, 46), (39, 201, 63)]):
         d.ellipse([24 + i * 24, 20, 38 + i * 24, 34], fill=color)
-    d.text((116, 19), "interjson x Claude Code", font=mid, fill=DIM)
+    d.text((116, 19), "liwenjson x Claude Code", font=mid, fill=DIM)
 
-    d.text((64, 96), "InterJSON x Claude Code", font=big, fill=FG)
+    d.text((64, 96), "LIWENJSON x Claude Code", font=big, fill=FG)
     d.text(
         (64, 146),
         "A real session: truncated tool arguments -> E010 refusal -> retry -> executable",
@@ -746,7 +746,7 @@ def render_poster(parsed: dict, env_info: dict, out_path: Path) -> None:
 
     card(
         64,
-        "1st call - interjson_gate",
+        "1st call - liwenjson_gate",
         RED,
         [
             ("text: " + json.dumps(first_in["text"]), FG),
@@ -763,7 +763,7 @@ def render_poster(parsed: dict, env_info: dict, out_path: Path) -> None:
     )
     card(
         716,
-        "2nd call - interjson_gate",
+        "2nd call - liwenjson_gate",
         GREEN,
         [
             ("text: " + json.dumps(second_in["text"]), FG),
@@ -791,7 +791,7 @@ def render_poster(parsed: dict, env_info: dict, out_path: Path) -> None:
     )
     d.text(
         (64, 778),
-        "MCP server: interjson "
+        "MCP server: liwenjson "
         + env_info["engine_version"]
         + " (MoonBit engine, native build) - connected over stdio"
         + "  |  "
@@ -881,7 +881,7 @@ def main() -> None:
         "stamp": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"),
         "host": " ".join(os.uname()),
         "claude_version": need(run([CLAUDE, "--version"]), "claude --version").strip(),
-        "engine_version": need(run([str(BIN), "--version"]), "interjson --version").strip().split()[-1],
+        "engine_version": need(run([str(BIN), "--version"]), "liwenjson --version").strip().split()[-1],
         "mcp_add": add_out,
         "mcp_list": list_out,
     }

@@ -4,7 +4,7 @@
 // The library has never been and is still not a JSON Schema validator. There is
 // no `$ref`, no `oneOf`, no `format`, no `pattern`, and no plan to add them:
 // validating a finished document is a solved problem with mature
-// implementations, and InterJSON's contribution is the streaming half.
+// implementations, and LIWENJSON's contribution is the streaming half.
 //
 // What a streaming consumer actually knows that the document does not is *what
 // it is waiting for*. A tool call declares its arguments; a UI declares the
@@ -786,7 +786,7 @@ fn sp_at(p : SchemaParser, word : String) -> Bool {
 
 ///|
 /// Parse a schema at `p.i`, leaving the cursor after it.
-fn sp_schema(p : SchemaParser) -> Schema raise InterJSONError {
+fn sp_schema(p : SchemaParser) -> Schema raise LIWENJSONError {
   if p.depth > MAX_SCHEMA_DEPTH {
     raise SchemaError(
       "schema: declaration nests deeper than " +
@@ -802,7 +802,7 @@ fn sp_schema(p : SchemaParser) -> Schema raise InterJSONError {
 
 ///|
 /// The body of `sp_schema`, with the depth already accounted for.
-fn sp_schema_body(p : SchemaParser) -> Schema raise InterJSONError {
+fn sp_schema_body(p : SchemaParser) -> Schema raise LIWENJSONError {
   sp_skip_ws(p)
   let n = p.text.length()
   if p.i >= n {
@@ -917,7 +917,7 @@ fn sp_schema_body(p : SchemaParser) -> Schema raise InterJSONError {
 fn sp_wrap_constraints(
   p : SchemaParser,
   base : Schema,
-) -> Schema raise InterJSONError {
+) -> Schema raise LIWENJSONError {
   if p.i >= p.text.length() || p.text.at(p.i).to_int() != 0x28 {
     return base
   }
@@ -934,7 +934,7 @@ fn sp_wrap_constraints(
 fn sp_constraints(
   p : SchemaParser,
   base : Schema,
-) -> Constraints raise InterJSONError {
+) -> Constraints raise LIWENJSONError {
   let n = p.text.length()
   p.i = p.i + 1
   let out = Constraints::none()
@@ -987,7 +987,7 @@ fn sp_constraints(
 ///|
 /// One constraint name: ASCII letters, matched case-insensitively against the
 /// eight names the language has.
-fn sp_constraint_name(p : SchemaParser) -> String raise InterJSONError {
+fn sp_constraint_name(p : SchemaParser) -> String raise LIWENJSONError {
   let n = p.text.length()
   let sb = StringBuilder()
   while p.i < n {
@@ -1045,7 +1045,7 @@ fn sp_constraint_value(
   base : Schema,
   name_at : Int32,
   out : Constraints,
-) -> Unit raise InterJSONError {
+) -> Unit raise LIWENJSONError {
   let kind = base.name()
   if name_eq_ci(name, "minimum") ||
     name_eq_ci(name, "exclusiveMinimum") ||
@@ -1162,7 +1162,7 @@ fn sp_constraint_value(
 fn sp_constraint_number(
   p : SchemaParser,
   name : String,
-) -> Dec raise InterJSONError {
+) -> Dec raise LIWENJSONError {
   let at = p.i
   let tok = sp_constraint_token(p)
   if tok == "" || !is_json_number_text(tok) {
@@ -1241,7 +1241,7 @@ fn sp_constraint_token(p : SchemaParser) -> String {
 fn sp_constraint_length(
   p : SchemaParser,
   name : String,
-) -> Int32 raise InterJSONError {
+) -> Int32 raise LIWENJSONError {
   let at = p.i
   let d = sp_constraint_number(p, name)
   match d.length_value() {
@@ -1265,7 +1265,7 @@ fn sp_constraint_length(
 fn sp_constraint_enum(
   p : SchemaParser,
   base : Schema,
-) -> Array[Json] raise InterJSONError {
+) -> Array[Json] raise LIWENJSONError {
   let n = p.text.length()
   if p.i >= n || p.text.at(p.i).to_int() != 0x5B {
     raise SchemaError(
@@ -1340,7 +1340,7 @@ fn sp_constraint_enum(
 fn sp_scan_brackets(
   p : SchemaParser,
   start : Int32,
-) -> Int32 raise InterJSONError {
+) -> Int32 raise LIWENJSONError {
   let n = p.text.length()
   let mut i = start
   let mut depth = 0
@@ -1380,7 +1380,7 @@ fn sp_scan_brackets(
 
 ///|
 /// A `pattern` value: one character class, `[...]`, and nothing else.
-fn sp_constraint_class(p : SchemaParser) -> String raise InterJSONError {
+fn sp_constraint_class(p : SchemaParser) -> String raise LIWENJSONError {
   let n = p.text.length()
   if p.i >= n || p.text.at(p.i).to_int() != 0x5B {
     raise SchemaError(
@@ -1420,7 +1420,7 @@ fn sp_constraint_class(p : SchemaParser) -> String raise InterJSONError {
 /// a range that starts or ends at an escape, and an inverted range. Everything
 /// else (including `.`, `*` and `+` inside the brackets) is a literal character,
 /// which is the whole point of "a character class, not a regular expression".
-fn guard_class(inner : String, open : Int32) -> Unit raise InterJSONError {
+fn guard_class(inner : String, open : Int32) -> Unit raise LIWENJSONError {
   let n = inner.length()
   let mut i = 0
   let mut prev_escape = false
@@ -1503,7 +1503,7 @@ fn guard_class(inner : String, open : Int32) -> Unit raise InterJSONError {
 
 ///|
 /// A member name: a bare identifier, or a double quoted string.
-fn sp_key(p : SchemaParser) -> String raise InterJSONError {
+fn sp_key(p : SchemaParser) -> String raise LIWENJSONError {
   let n = p.text.length()
   if p.i < n && p.text.at(p.i).to_int() == 0x22 {
     p.i = p.i + 1
@@ -1537,7 +1537,7 @@ fn sp_key(p : SchemaParser) -> String raise InterJSONError {
 /// Reject a declaration that names the same member twice: the order of the two
 /// would decide which one wins, which is exactly the kind of silent choice this
 /// library refuses to make elsewhere.
-fn guard_no_dup(members : Array[SchemaMember]) -> Unit raise InterJSONError {
+fn guard_no_dup(members : Array[SchemaMember]) -> Unit raise LIWENJSONError {
   for i = 0; i < members.length(); i = i + 1 {
     for j = i + 1; j < members.length(); j = j + 1 {
       if members[i].key == members[j].key {
@@ -1552,7 +1552,7 @@ fn guard_no_dup(members : Array[SchemaMember]) -> Unit raise InterJSONError {
 ///|
 /// Parse the text form of a skeleton (FR-36). Raises `E070` with the offset of
 /// the problem; the text is never partially accepted.
-pub fn Schema::parse(text : String) -> Schema raise InterJSONError {
+pub fn Schema::parse(text : String) -> Schema raise LIWENJSONError {
   let p : SchemaParser = { text, i: 0, depth: 0, }
   let s = sp_schema(p)
   sp_skip_ws(p)
@@ -2120,7 +2120,7 @@ pub fn semantic_readiness(
   schema : Schema,
   step? : Int32,
   options? : Options,
-) -> SemanticReadiness raise InterJSONError {
+) -> SemanticReadiness raise LIWENJSONError {
   let opts = match options {
     Some(o) => o
     None => Options::default()

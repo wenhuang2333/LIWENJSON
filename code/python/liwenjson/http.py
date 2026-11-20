@@ -2,12 +2,12 @@
 
 This is the integration path for tools that speak HTTP rather than stdio —
 n8n, Dify, Coze, a gateway, or a browser page. It is deliberately a thin
-translation of one request to one `interjson serve` call: no state, no caching,
+translation of one request to one `liwenjson serve` call: no state, no caching,
 no retries. A new engine process is used per request and closed afterwards, so
 a crash cannot poison the next request; a caller that needs throughput should
 use `Client` directly.
 
-    python -m interjson.http --port 8080
+    python -m liwenjson.http --port 8080
 
     POST /repair    {"text": "...", "profile": "agent", "schema_json": {...}}
     POST /analyze   {"text": "...", "profile": "agent", "schema_json": {...}}
@@ -25,9 +25,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from . import __version__
-from .client import Client, InterJSONError, find_binary
+from .client import Client, LIWENJSONError, find_binary
 
-__all__ = ["InterJSONHTTPServer", "create_server", "main"]
+__all__ = ["LIWENJSONHTTPServer", "create_server", "main"]
 
 _METHODS = {
     "/repair": "repair",
@@ -37,7 +37,7 @@ _METHODS = {
 }
 
 
-class InterJSONHTTPServer(ThreadingHTTPServer):
+class LIWENJSONHTTPServer(ThreadingHTTPServer):
     """A threaded server that keeps the binary path and nothing else."""
 
     daemon_threads = True
@@ -48,7 +48,7 @@ class InterJSONHTTPServer(ThreadingHTTPServer):
 
 
 class _Handler(BaseHTTPRequestHandler):
-    server_version = "interjson/" + __version__
+    server_version = "liwenjson/" + __version__
     protocol_version = "HTTP/1.1"
 
     # -- helpers ----------------------------------------------------------
@@ -109,33 +109,33 @@ class _Handler(BaseHTTPRequestHandler):
             with Client(binary=self.server.binary) as client:  # type: ignore[attr-defined]
                 result = client.request(method, **params)
             self._send(200, {"ok": True, "result": result})
-        except InterJSONError as exc:
+        except LIWENJSONError as exc:
             self._send(400, {"ok": False, "error": exc.to_dict()})
         except Exception as exc:  # pragma: no cover - defensive
             self._send(500, {"ok": False, "error": {"code": "E030", "message": str(exc)}})
 
     def log_message(self, fmt: str, *args: Any) -> None:
-        sys.stderr.write("interjson http: " + (fmt % args) + "\n")
+        sys.stderr.write("liwenjson http: " + (fmt % args) + "\n")
 
 
 def create_server(
     host: str = "127.0.0.1",
     port: int = 8080,
     binary: str | None = None,
-) -> InterJSONHTTPServer:
+) -> LIWENJSONHTTPServer:
     """Bind a server; pass `port=0` to let the OS choose one."""
-    return InterJSONHTTPServer((host, port), binary=binary)
+    return LIWENJSONHTTPServer((host, port), binary=binary)
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="interjson-http", description=__doc__)
+    parser = argparse.ArgumentParser(prog="liwenjson-http", description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8080)
-    parser.add_argument("--binary", default=None, help="path to the interjson executable")
+    parser.add_argument("--binary", default=None, help="path to the liwenjson executable")
     args = parser.parse_args(argv)
     server = create_server(args.host, args.port, args.binary)
     host, port = server.server_address[:2]
-    print(f"interjson http listening on http://{host}:{port}", flush=True)
+    print(f"liwenjson http listening on http://{host}:{port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -20,7 +20,7 @@
 /// Reads the JSON a model writes as plain text (FR-30).
 pub struct TextStream {
   provider : Provider
-  parser : @interjson.PartialParser
+  parser : @liwenjson.PartialParser
   buf : StringBuilder
   mut end : CallEnd
   mut stop_reason : String
@@ -39,16 +39,16 @@ pub struct TextStream {
 /// be the default — a scalar root (`0`, `"x"`) would be skipped as prose.
 pub fn TextStream::new(
   provider : Provider,
-  options? : @interjson.Options,
-) -> TextStream raise @interjson.InterJSONError {
+  options? : @liwenjson.Options,
+) -> TextStream raise @liwenjson.LIWENJSONError {
   let opts = match options {
     Some(o) => o
-    None => @interjson.Options::for_llm()
+    None => @liwenjson.Options::for_llm()
   }
   opts.validate()
   {
     provider,
-    parser: @interjson.PartialParser::new(options=opts),
+    parser: @liwenjson.PartialParser::new(options=opts),
     buf: StringBuilder(),
     end: Open,
     stop_reason: "",
@@ -94,9 +94,9 @@ pub fn TextStream::ignored_events(self : TextStream) -> Int32 {
 pub fn TextStream::push_event(
   self : TextStream,
   event_json : String,
-) -> @interjson.Snapshot? raise @interjson.InterJSONError {
+) -> @liwenjson.Snapshot? raise @liwenjson.LIWENJSONError {
   let v = @json.parse(event_json) catch {
-    _ => raise @interjson.InvalidEvent("event payload is not valid JSON")
+    _ => raise @liwenjson.InvalidEvent("event payload is not valid JSON")
   }
   let fragment = match self.provider {
     Anthropic => self.text_of_anthropic(v)
@@ -293,7 +293,7 @@ pub fn stop_end(reason : String) -> CallEnd {
 /// all: a caller that asked for JSON but got prose should see "nothing", not an
 /// empty object. A stream that was still open when this is called is reported
 /// as `Interrupted`, because the provider never said it had finished.
-pub fn TextStream::finish(self : TextStream) -> @interjson.FinalResult? {
+pub fn TextStream::finish(self : TextStream) -> @liwenjson.FinalResult? {
   if self.end is Open {
     self.end = Interrupted
   }

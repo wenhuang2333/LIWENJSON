@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Ground-truth evaluation harness for InterJSON (I-4).
+"""Ground-truth evaluation harness for LIWENJSON (I-4).
 
 Runs the pre-registered corpus (`corpus.py`, registration in
-`code/docs/EVAL_REGISTRATION.md`) through `interjson --batch` and writes
+`code/docs/EVAL_REGISTRATION.md`) through `liwenjson --batch` and writes
 `code/docs/EVAL.md`.
 
-    python3 code/tests/eval/run_eval.py --cli <path to interjson>
+    python3 code/tests/eval/run_eval.py --cli <path to liwenjson>
 
 Exit status is 0 when every pre-registered acceptance criterion holds.
 """
@@ -268,7 +268,7 @@ def main() -> int:
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     lines = []
     w = lines.append
-    w("# InterJSON 真值评测报告（I-4）")
+    w("# LIWENJSON 真值评测报告（I-4）")
     w("")
     w("本文件由 `code/tests/eval/run_eval.py` 生成，请勿手工编辑。")
     w("")

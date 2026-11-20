@@ -24,7 +24,7 @@ python3 -c 'import playwright' 2>/dev/null || {
   exit 1
 }
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/interjson-media.XXXXXX")"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/liwenjson-media.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 echo "refresh.sh: bundle"
@@ -40,8 +40,8 @@ echo "refresh.sh: MCP transcript GIF"
 python3 code/tests/media/render_mcp_gif.py
 
 echo "refresh.sh: demo video"
-(cd code && moon build cmd/interjson --target native --release)
-BIN="$ROOT/code/_build/native/release/build/cmd/interjson/interjson.exe"
+(cd code && moon build cmd/liwenjson --target native --release)
+BIN="$ROOT/code/_build/native/release/build/cmd/liwenjson/liwenjson.exe"
 (cd "$ROOT/code" && moon run examples/agent_loop --target native --release) >"$TMP/agent_loop.txt" 2>&1
 printf '%s' '{"a":"b","a":"c"}' | "$BIN" explain --json --policy execution >"$TMP/explain.json" 2>/dev/null || true
 mkdir -p "$TMP/demo"

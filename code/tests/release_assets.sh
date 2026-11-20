@@ -21,8 +21,8 @@
 #   bash code/tests/release_assets.sh <tag> [options]
 #
 #   --repo OWNER/NAME    repository to check
-#                        (default: $INTERJSON_REPO, else
-#                        wenhuang2333/Moonbit-haker)
+#                        (default: $LIWENJSON_REPO, else
+#                        wenhuang2333/LIWENJSON)
 #   --api URL            GitHub API base URL (default: $GH_API, else
 #                        https://api.github.com)
 #   --sums-file PATH     additionally require the published SHA256SUMS to be
@@ -45,7 +45,7 @@
 #
 set -uo pipefail
 
-REPO="${INTERJSON_REPO:-wenhuang2333/Moonbit-haker}"
+REPO="${LIWENJSON_REPO:-wenhuang2333/LIWENJSON}"
 API="${GH_API:-https://api.github.com}"
 SUMS_FILE=""
 VERIFY_HASHES=0

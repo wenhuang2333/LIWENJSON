@@ -5,7 +5,7 @@ This is the gate the audit asked for (marks/迭代.md §3.7): a strict MCP clien
 validates `structuredContent` against the tool's own `outputSchema`, so a
 response that fails its own schema is a protocol defect, not a cosmetic one.
 
-    python3 test/mcp_contract_check.py [path-to-interjson]
+    python3 test/mcp_contract_check.py [path-to-liwenjson]
 """
 import json
 import subprocess
@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 J = sys.argv[1] if len(sys.argv) > 1 else str(
-    ROOT / "code/_build/native/release/build/cmd/interjson/interjson.exe"
+    ROOT / "code/_build/native/release/build/cmd/liwenjson/liwenjson.exe"
 )
 
 INIT = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
@@ -22,26 +22,26 @@ INIT = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
 
 CASES = [
     # (tool, arguments)
-    ("interjson_gate", {"text": '{"a":1,}', "profile": "agent"}),
-    ("interjson_gate", {"text": '{"a":1}', "profile": "permissive",
+    ("liwenjson_gate", {"text": '{"a":1,}', "profile": "agent"}),
+    ("liwenjson_gate", {"text": '{"a":1}', "profile": "permissive",
                         "schema": "{!a:integer}"}),
-    ("interjson_gate", {"text": '{"a":2}', "schema": "{!a:integer(maximum:1)}"}),
-    ("interjson_gate", {"text": "not json at all"}),
-    ("interjson_gate", {"text": '{"n":9007199254740993}',
+    ("liwenjson_gate", {"text": '{"a":2}', "schema": "{!a:integer(maximum:1)}"}),
+    ("liwenjson_gate", {"text": "not json at all"}),
+    ("liwenjson_gate", {"text": '{"n":9007199254740993}',
                         "schema_json": {"type": "object",
                                         "properties": {"n": {"type": "number",
                                                              "maximum": 9007199254740992}},
                                         "required": ["n"]}}),
-    ("interjson_gate", {"text": '{"query":"MoonBit"}', "with_text": True,
+    ("liwenjson_gate", {"text": '{"query":"MoonBit"}', "with_text": True,
                         "schema_json": {"type": "object",
                                         "properties": {"query": {"type": "string"}},
                                         "required": ["query"],
                                         "additionalProperties": False}}),
-    ("interjson_repair", {"text": "{a:1,}"}),
-    ("interjson_repair", {"text": "{\"a\":1}", "schema": "{!a:string}"}),
-    ("interjson_validate", {"text": '{"a":1}'}),
-    ("interjson_validate", {"text": "{a:1,}"}),
-    ("interjson_readiness",
+    ("liwenjson_repair", {"text": "{a:1,}"}),
+    ("liwenjson_repair", {"text": "{\"a\":1}", "schema": "{!a:string}"}),
+    ("liwenjson_validate", {"text": '{"a":1}'}),
+    ("liwenjson_validate", {"text": "{a:1,}"}),
+    ("liwenjson_readiness",
      {"text": '{"query":"x","limit":10}', "schema": "{!query:string,!limit:integer}"}),
 ]
 
@@ -71,7 +71,7 @@ def main():
         for key in schema.get("required", []):
             args[key] = "{}"
         probe = {"jsonrpc": "2.0", "id": 99, "method": "tools/call",
-                 "params": {"name": "interjson_gate",
+                 "params": {"name": "liwenjson_gate",
                             "arguments": {"text": "{}", "schema_json": schema}}}
         res = call([probe])[0].get("result") or {}
         if res.get("isError"):

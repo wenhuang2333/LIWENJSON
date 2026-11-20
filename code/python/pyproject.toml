@@ -3,13 +3,13 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "interjson-moonbit"
+name = "liwenjson"
 version = "1.5.2"
 description = "The local execution gate for LLM output: an MCP server and streaming JSON repair, powered by the MoonBit engine."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-authors = [{ name = "InterJSON contributors" }]
+authors = [{ name = "LIWENJSON contributors" }]
 keywords = [
   "json",
   "repair",
@@ -40,28 +40,28 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/wenhuang2333/Moonbit-haker"
-Repository = "https://github.com/wenhuang2333/Moonbit-haker"
-Issues = "https://github.com/wenhuang2333/Moonbit-haker/issues"
-Changelog = "https://github.com/wenhuang2333/Moonbit-haker/blob/main/code/CHANGELOG.md"
+Homepage = "https://github.com/wenhuang2333/LIWENJSON"
+Repository = "https://github.com/wenhuang2333/LIWENJSON"
+Issues = "https://github.com/wenhuang2333/LIWENJSON/issues"
+Changelog = "https://github.com/wenhuang2333/LIWENJSON/blob/main/code/CHANGELOG.md"
 
 [project.scripts]
-interjson-mcp = "interjson.mcp:main"
-interjson-http = "interjson.http:main"
+liwenjson-mcp = "liwenjson.mcp:main"
+liwenjson-http = "liwenjson.http:main"
 
 [tool.setuptools]
-packages = ["interjson"]
+packages = ["liwenjson"]
 
 # The package is typed, so the marker has to ship with it. Without it a type
 # checker ignores the annotations and a consumer gets `Any` everywhere.
 #
-# `bin/*/interjson` is the engine, one directory per release platform: the
-# wheel is self-contained, so `pip install interjson-moonbit` is enough to make
+# `bin/*/liwenjson` is the engine, one directory per release platform: the
+# wheel is self-contained, so `pip install liwenjson` is enough to make
 # a call. `find_binary()` picks the directory this interpreter can run, and
 # `build_wheel.sh` is what fills them in -- a plain `pip wheel` on a checkout
 # builds the client without them and says so through `find_binary()`.
 [tool.setuptools.package-data]
-interjson = ["py.typed", "bin/*/interjson", "bin/*/interjson.exe"]
+liwenjson = ["py.typed", "bin/*/liwenjson", "bin/*/liwenjson.exe"]
 
 # Apache-2.0 section 4(d): a redistributor has to pass the NOTICE on. Keeping it
 # at the distribution root makes it part of the sdist and the wheel's metadata.

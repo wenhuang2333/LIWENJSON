@@ -7,12 +7,12 @@
 # Why the wheel carries the binaries
 # ----------------------------------
 #
-# `pip install interjson-moonbit` used to install a client with no engine: the
-# package is a thin client for `interjson serve`, and the binary came from the
+# `pip install liwenjson` used to install a client with no engine: the
+# package is a thin client for `liwenjson serve`, and the binary came from the
 # GitHub release. That is a working install only if the user already knew to
 # fetch the binary, so the first thing a pip user saw was
 #
-#   FileNotFoundError: the interjson engine was not found
+#   FileNotFoundError: the liwenjson engine was not found
 #
 # The npm package does not have this problem because the engine compiles to
 # JavaScript and travels inside the tarball. The native binary cannot be
@@ -81,11 +81,11 @@ command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 2; 
 VERSION="$(sed -n 's/^version *= *"\(.*\)"/\1/p' "$ROOT/code/moon.mod")"
 [ -n "$VERSION" ] || { echo "could not read the version from code/moon.mod" >&2; exit 2; }
 
-# The four binaries the release publishes. `interjson-probe.wasm`,
-# `interjson-demo.js` and `interjson-install.sh` are not part of the wheel: the
+# The four binaries the release publishes. `liwenjson-probe.wasm`,
+# `liwenjson-demo.js` and `liwenjson-install.sh` are not part of the wheel: the
 # first two are not the CLI, and the installer would be a second copy of a
 # download path that the wheel exists to remove.
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/interjson-wheel.XXXXXX")"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/liwenjson-wheel.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 ASSETS="$WORK/assets"
@@ -98,18 +98,18 @@ if [ -n "$LOCAL_PLATFORM" ]; then
   # checksum here only proves the copy is intact; the published release's own
   # SHA256SUMS is what a released wheel is verified against.
   case "$LOCAL_PLATFORM" in
-    windows-*) local_name="interjson.exe" ;;
-    *)         local_name="interjson" ;;
+    windows-*) local_name="liwenjson.exe" ;;
+    *)         local_name="liwenjson" ;;
   esac
-  local_bin="$ROOT/code/_build/native/release/build/cmd/interjson/interjson.exe"
+  local_bin="$ROOT/code/_build/native/release/build/cmd/liwenjson/liwenjson.exe"
   [ -f "$local_bin" ] || {
     echo "--from-local needs $local_bin; build it with" >&2
-    echo "  moon build cmd/interjson --target native --release" >&2
+    echo "  moon build cmd/liwenjson --target native --release" >&2
     exit 2
   }
   case "$LOCAL_PLATFORM" in
-    windows-*) staged="interjson-windows-x86_64.exe" ;;
-    *)         staged="interjson-$LOCAL_PLATFORM" ;;
+    windows-*) staged="liwenjson-windows-x86_64.exe" ;;
+    *)         staged="liwenjson-$LOCAL_PLATFORM" ;;
   esac
   cp "$local_bin" "$ASSETS/$staged"
   ( cd "$ASSETS" && shasum -a 256 "$staged" > SHA256SUMS )
@@ -121,7 +121,7 @@ else
   # github.com is not reachable from every network; api.github.com is, and the
   # asset endpoint redirects to the same bytes. The release API gives us the
   # asset ids, so the download does not depend on a redirect chain either.
-  API="https://api.github.com/repos/wenhuang2333/Moonbit-haker/releases/tags/v$VERSION"
+  API="https://api.github.com/repos/wenhuang2333/LIWENJSON/releases/tags/v$VERSION"
   curl -fsSL --max-time 60 "$API" -o "$WORK/release.json" || {
     echo "could not read the v$VERSION release; pass --from-dir with the assets" >&2
     exit 2
@@ -134,7 +134,7 @@ release = sys.argv[1]
 data = json.load(open(release, encoding="utf-8"))
 names = {"SHA256SUMS"}
 for platform in ("linux-x86_64", "linux-arm64", "macos-arm64", "windows-x86_64.exe"):
-    names.add("interjson-" + platform)
+    names.add("liwenjson-" + platform)
 for asset in data["assets"]:
     if asset["name"] in names:
         print(asset["id"], asset["name"])
@@ -144,7 +144,7 @@ PY
     curl -fsSL --max-time 180 \
       -H "Accept: application/octet-stream" \
       -o "$ASSETS/$name" \
-      "https://api.github.com/repos/wenhuang2333/Moonbit-haker/releases/assets/$id"
+      "https://api.github.com/repos/wenhuang2333/LIWENJSON/releases/assets/$id"
   done < "$WORK/ids.txt"
 fi
 
@@ -164,8 +164,8 @@ fi
   filtered="$(mktemp)"
   for platform in $PLATFORMS; do
     case "$platform" in
-      windows-*) name="interjson-windows-x86_64.exe" ;;
-      *) name="interjson-$platform" ;;
+      windows-*) name="liwenjson-windows-x86_64.exe" ;;
+      *) name="liwenjson-$platform" ;;
     esac
     grep -E "  $name\$" SHA256SUMS >> "$filtered"
   done
@@ -175,25 +175,25 @@ fi
 
 # --- assemble the package tree ----------------------------------------------
 mkdir -p "$WORK/tree"
-cp -R "$HERE/interjson" "$WORK/tree/interjson"
+cp -R "$HERE/liwenjson" "$WORK/tree/liwenjson"
 cp "$HERE/README.md" "$HERE/LICENSE" "$HERE/NOTICE" "$WORK/tree/"
 cp "$HERE/pyproject.toml" "$WORK/tree/"
 
 # Strip bytecode and build leftovers, then place one directory per platform so
 # `find_binary()` can pick the one this interpreter can actually run.
 find "$WORK/tree" -name '__pycache__' -type d -prune -exec rm -rf {} +
-rm -rf "$WORK/tree/interjson/bin"
+rm -rf "$WORK/tree/liwenjson/bin"
 for platform in $PLATFORMS; do
   case "$platform" in
-    windows-*) name="interjson-windows-x86_64.exe" ;;
-    *) name="interjson-$platform" ;;
+    windows-*) name="liwenjson-windows-x86_64.exe" ;;
+    *) name="liwenjson-$platform" ;;
   esac
-  mkdir -p "$WORK/tree/interjson/bin/$platform"
+  mkdir -p "$WORK/tree/liwenjson/bin/$platform"
   case "$platform" in
-    windows-*) cp "$ASSETS/$name" "$WORK/tree/interjson/bin/$platform/interjson.exe" ;;
-    *)         cp "$ASSETS/$name" "$WORK/tree/interjson/bin/$platform/interjson" ;;
+    windows-*) cp "$ASSETS/$name" "$WORK/tree/liwenjson/bin/$platform/liwenjson.exe" ;;
+    *)         cp "$ASSETS/$name" "$WORK/tree/liwenjson/bin/$platform/liwenjson" ;;
   esac
-  chmod +x "$WORK/tree/interjson/bin/$platform"/*
+  chmod +x "$WORK/tree/liwenjson/bin/$platform"/*
 done
 
 mkdir -p "$OUT"
@@ -212,7 +212,7 @@ else
   ( cd "$WORK/tree" && python3 -c 'from setuptools import setup; setup()' sdist --dist-dir "$OUT" >/dev/null )
 fi
 
-WHEEL="$(ls "$OUT"/interjson_moonbit-"$VERSION"-*.whl 2>/dev/null | head -1)"
+WHEEL="$(ls "$OUT"/liwenjson-"$VERSION"-*.whl 2>/dev/null | head -1)"
 [ -n "$WHEEL" ] || { echo "no wheel was produced" >&2; exit 1; }
 
 # --- the built artefact must carry what the install needs --------------------
@@ -224,11 +224,11 @@ wheel, platforms, version = sys.argv[1], sys.argv[2].split(), sys.argv[3]
 names = zipfile.ZipFile(wheel).namelist()
 fails = []
 for platform in platforms:
-    entry = f"interjson/bin/{platform}/interjson"
-    # Windows binaries keep their .exe suffix; everything else is `interjson`.
+    entry = f"liwenjson/bin/{platform}/liwenjson"
+    # Windows binaries keep their .exe suffix; everything else is `liwenjson`.
     if entry not in names and f"{entry}.exe" not in names:
         fails.append(f"wheel does not carry {entry}")
-for want in ("interjson/py.typed", "interjson/client.py", "interjson/mcp.py"):
+for want in ("liwenjson/py.typed", "liwenjson/client.py", "liwenjson/mcp.py"):
     if want not in names:
         fails.append(f"wheel does not carry {want}")
 if not any(n.endswith("dist-info/licenses/LICENSE") or n.endswith(".data/data/LICENSE") for n in names):

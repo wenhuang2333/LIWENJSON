@@ -1,6 +1,6 @@
-# InterJSON 规范（SPEC）
+# LIWENJSON 规范（SPEC）
 
-> **状态**：1.0.0 现行（公开面稳定）。本文件规定 InterJSON 的**公开契约**，不是实现说明。
+> **状态**：1.0.0 现行（公开面稳定）。本文件规定 LIWENJSON 的**公开契约**，不是实现说明。
 > 规范性关键词：**必须**（MUST）、**必须不**（MUST NOT）、**应当**（SHOULD）、**可以**（MAY）。
 > 每条要求有编号（`SR-n`），测试与评审可以逐条引用。
 >
@@ -40,7 +40,7 @@
 
 **SR-1**　规范对象是三个入口：一次性 `repair` / `parse` / `analyze`，流式
 `PartialParser`（`feed` / `feed_bytes` / `snapshot` / `finish`），以及把两者包成文件与进程的
-`interjson` CLI。任何实现只要满足本文全部要求即为合规实现；本文不规定内部数据结构。
+`liwenjson` CLI。任何实现只要满足本文全部要求即为合规实现；本文不规定内部数据结构。
 
 **SR-2**　对任意输入，库**必须**满足三条不变量，且由属性测试强制（`prop_wbtest.mbt`）：
 
@@ -54,7 +54,7 @@
 
 ```bash
 # 复现：文本、记录、退出码在任意分块下相同
-cd code && J=./_build/native/release/build/cmd/interjson/interjson.exe
+cd code && J=./_build/native/release/build/cmd/liwenjson/liwenjson.exe
 for n in 1 2 3 7 1000; do
   printf '%s' '{"a":[1,2,{"b":"x y"}],"c":NaN,}' | $J --report          > /tmp/a 2>/tmp/ae
   printf '%s' '{"a":[1,2,{"b":"x y"}],"c":NaN,}' | $J --report --chunk $n > /tmp/b 2>/tmp/be
@@ -113,7 +113,7 @@ done
 `settled` 与 `schema_ready` 落在不同桶里，正是 0.5.0 报不出前两行的原因。
 
 ```bash
-cd code && J=./_build/native/release/build/cmd/interjson/interjson.exe
+cd code && J=./_build/native/release/build/cmd/liwenjson/liwenjson.exe
 printf '%s' '{"limit":"ten","pad":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}' \
   | $J readiness --schema '{!limit:integer}'          # settled 218/1000, schema-ready 1000/1000
 printf '%s' '{"outer":{"pad":"xxxxxxxxxxxxxxxxxxxx"},"tail":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}' \
@@ -153,11 +153,11 @@ printf '%s' '{"outer":{"pad":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}' \
 
 `analyze` / `explain --json` **必须**同时给出下面四个互相独立的答案：
 
-**SR-18**　`valid_json : Bool` —— **输入本身**是不是合法 JSON（RFC 8259），与 InterJSON 做了什么无关。
+**SR-18**　`valid_json : Bool` —— **输入本身**是不是合法 JSON（RFC 8259），与 LIWENJSON 做了什么无关。
 口径是「记录为空，或全部记录都是 `R018` 重复键归一化」：在合法的 JSON 上只有 `R018` 会触发，
 该口径在 `nst/JSONTestSuite` 的 95 个 `y_` 文件与 188 个 `n_` 文件上验证过。
 
-**SR-19**　`normalized : Bool` —— InterJSON **有没有改写文本**（即记录是否非空）。
+**SR-19**　`normalized : Bool` —— LIWENJSON **有没有改写文本**（即记录是否非空）。
 
 **SR-20**　`ambiguity ∈ {none, syntactic, semantic}` —— 前缀是否还有第二种读法：
 
@@ -168,12 +168,12 @@ printf '%s' '{"outer":{"pad":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}' \
 **SR-21**　`execution ∈ {allowed, blocked}` —— 当前前缀**能不能直接执行**。
 
 **SR-22**　**本项目的核心原则**：语法合法**不等于**可以执行。
-`{"a":"b","a":"c"}` 是合法 JSON，却没有唯一含义；InterJSON 把它归一化、标成 `Lossy`、
+`{"a":"b","a":"c"}` 是合法 JSON，却没有唯一含义；LIWENJSON 把它归一化、标成 `Lossy`、
 报 `ambiguity = "semantic"`，并在执行档下 `execution = "blocked"`（退出码 5）。
 `valid_json: true` 与 `execution: "blocked"` 并列出现**必须**是可能的，这正是这条原则的全文。
 
 ```bash
-cd code && J=./_build/native/release/build/cmd/interjson/interjson.exe
+cd code && J=./_build/native/release/build/cmd/liwenjson/liwenjson.exe
 printf '%s' '{"a":"b","a":"c"}' | $J explain --json --policy execution ; echo "exit=$?"
 # {"decision":"lossy_repair",...,"valid_json":true,"normalized":true,
 #  "ambiguity":"semantic","execution":"blocked",...}   exit=5
@@ -308,7 +308,7 @@ key        = 裸标识符 | 双引号字符串 ;
 
 ```bash
 # 复现：约束在 0.7.0 上逐条生效（退出码 5 = 拒绝执行，2 = E070 声明写错）
-cd code && J=./_build/native/release/build/cmd/interjson/interjson.exe
+cd code && J=./_build/native/release/build/cmd/liwenjson/liwenjson.exe
 printf '%s' '{"limit":0}'    | $J explain --json --schema '{!limit:integer(minimum:1)}'    ; # 5
 printf '%s' '{"s":"abcdef"}' | $J explain --json --schema '{!s:string(maxLength:3)}'      ; # 5
 printf '%s' '{"s":"abcD"}'   | $J explain --json --schema '{!s:string(pattern:[a-z])}'    ; # 5
@@ -322,7 +322,7 @@ printf '%s' '{"a":"x","b":1}' | $J explain --json --schema '{!a:string b:integer
 
 ## 8. 明确不在范围内
 
-**SR-32**　InterJSON **不是** JSON Schema 实现，也不打算成为：
+**SR-32**　LIWENJSON **不是** JSON Schema 实现，也不打算成为：
 不支持 `$ref`、`oneOf`/`allOf`/`anyOf`、`if`/`then`、正则表达式，也不执行 `format`
 断言。判定**已完成**的文档是成熟领域；本库的贡献在**流式**这一半。
 `format` 的契约见 SR-44：它**不是**被忽略的 annotation，而是被拒绝的关键字。
@@ -338,9 +338,9 @@ cd code
 moon test                                  # wasm-gc 后端：SR-2/3/5/6/7/8 的属性测试
 moon test --target native && moon test --target js
 bash tests/cli_smoke.sh                    # SR-12/16/18–24 的命令行断言
-python3 tests/eval/run_readiness.py --cli ./_build/native/release/build/cmd/interjson/interjson.exe --check
-python3 tests/eval/run_independent.py --cli ./_build/native/release/build/cmd/interjson/interjson.exe --node-dir <node_modules>
-python3 tests/json_schema_diff.py --cli ./_build/native/release/build/cmd/interjson/interjson.exe  # SR-34…SR-39
+python3 tests/eval/run_readiness.py --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe --check
+python3 tests/eval/run_independent.py --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe --node-dir <node_modules>
+python3 tests/json_schema_diff.py --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe  # SR-34…SR-39
 ```
 
 需求编号与用例的对应关系维护在仓库内的 `docs/TRACEABILITY.md`，每条规则的详细语义

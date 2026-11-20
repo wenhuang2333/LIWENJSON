@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Peak-memory gate: the ratios the documents quote are the ratios this build has.
 
-    python3 code/tests/memory_gate.py --cli <interjson binary> [--json]
+    python3 code/tests/memory_gate.py --cli <liwenjson binary> [--json]
 
 Why this exists
 ---------------
@@ -48,7 +48,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CLI = os.path.join(
-    HERE, "..", "_build", "native", "release", "build", "cmd", "interjson", "interjson.exe"
+    HERE, "..", "_build", "native", "release", "build", "cmd", "liwenjson", "liwenjson.exe"
 )
 
 # Elements per generated document. Large enough that the runtime baseline is a
@@ -109,7 +109,7 @@ def main() -> int:
 
     binary = os.path.abspath(args.cli)
     if not os.path.isfile(binary):
-        print(f"interjson not found: {binary}", file=sys.stderr)
+        print(f"liwenjson not found: {binary}", file=sys.stderr)
         return 2
 
     n = int(N * args.scale)

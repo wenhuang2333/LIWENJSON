@@ -1,6 +1,6 @@
 # Changelog
 
-本文件记录 InterJSON 的所有重要变更。
+本文件记录 LIWENJSON 的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
@@ -72,9 +72,9 @@
 ### MCP：公布的契约与实际响应
 
 - **四个工具的真实 `structuredContent` 全部不能通过自己公布的 `outputSchema`。**
-  `interjson_gate` 缺 required `text`（默认不发送，是 `value` 的渲染形式）；
-  `interjson_repair`/`interjson_validate` 的修复记录是 `code/threshold` 而 schema 要求
-  `rule/name/confidence_class`；`interjson_readiness` 返回了未声明的 `events`。
+  `liwenjson_gate` 缺 required `text`（默认不发送，是 `value` 的渲染形式）；
+  `liwenjson_repair`/`liwenjson_validate` 的修复记录是 `code/threshold` 而 schema 要求
+  `rule/name/confidence_class`；`liwenjson_readiness` 返回了未声明的 `events`。
   修复记录现在只有**一份定义**（`repair_record_json()` 写、`repair_record_fields()` 列、
   `outputSchema` 从它生成），四个入口（analyze / repair / validate / 工具）形状一致。
   `code/tests/mcp_contract_check.py` 对真实二进制跑完整矩阵。
@@ -88,7 +88,7 @@
 把 `PreToolUse` hook 装进真实的 Claude Code 2.1.145 会话（`claude -p ...`），
 让模型执行 `touch pwned.txt`：hook 拒绝，模型读到 gate 的 `retry.prompt`，
 **文件从未被创建**；同一会话里 `echo read-only-ok`（声明里唯一允许的命令）
-通过并执行。另一次会话里模型直接调用 `mcp__interjson__interjson_gate`，
+通过并执行。另一次会话里模型直接调用 `mcp__liwenjson__liwenjson_gate`，
 得到 `decision: invalid, executable: false` 并按此回答。
 
 真实会话推翻了配方里的一条结论：**`exit 1` 不阻止调用**。第一版 hook 在
@@ -101,7 +101,7 @@
 `code/tests/hook_replay.py` 把录制的 payload 重放进那个脚本，包含
 「gate 二进制缺失必须 exit 2」这一支，所以接线不会在两次录制之间腐坏。
 接线本身是可安装的：`code/tests/install_gate_hook.sh [项目目录]` 会装好 hook、
-声明文件与 `settings.json`，并把 `INTERJSON_BIN` 指到二进制（hook 几乎没有
+声明文件与 `settings.json`，并把 `LIWENJSON_BIN` 指到二进制（hook 几乎没有
 `PATH`，不指名字就是 exit 127，然后工具照常执行）。
 
 被拒的那次会话里模型**只调用了 Bash、从未调用 MCP 工具**——它绕过了 MCP，
@@ -197,7 +197,7 @@ JSON-RPC 检查，`docs/LLM_EVENTS.md` 写明 Responses 协议与终态语义。
 - **裸标量根类型不参与判定。** `{"type":"string"}` 放行数字 `42`。根声明现在和
   其它节点一样检查；这是公开语义变化：`Schema::evaluate` 对裸标量根的判定在
   1.5.1 及更早版本里恒为真，自本次修复起按声明检查。
-- **`interjson_repair` 完全不读 `schema` / `schema_json`。** 连不支持的 `$ref` 都不报
+- **`liwenjson_repair` 完全不读 `schema` / `schema_json`。** 连不支持的 `$ref` 都不报
   `E070`，修复后的文档违反声明也返回 `ok: true`。现在 `repair` 解析声明（不支持的
   关键字是 `E070`），修复后的值不满足声明时拒绝，与 CLI 的 `--schema` 门一致。
 - **`Schema::stringify` 丢失容器约束。** `Constrained(Arr/Obj, c).stringify()` 只写回
@@ -266,19 +266,19 @@ JSON-RPC 检查，`docs/LLM_EVENTS.md` 写明 Responses 协议与终态语义。
 
 ### 语言包：npm 与 PyPI 都发布了（2026-10-30）
 
-`interjson-moonbit@1.5.1` 于 2026-10-30 发布到 npm 与 PyPI。两个渠道的安装形态不同，
+`interjson-moonbit@1.5.1` 于 2026-10-30 发布到 npm 与 PyPI（当时的发布名；本仓库现名 LIWENJSON，包已改名 `liwenjson`）。两个渠道的安装形态不同，
 这不是疏漏：
 
-- **npm**：包内带引擎的 JavaScript 编译产物（`vendor/interjson.js`），装完在 Node 里
-  直接可调；`interjson-mcp` 启动器仍需要原生二进制。
+- **npm**：包内带引擎的 JavaScript 编译产物（`vendor/liwenjson.js`），装完在 Node 里
+  直接可调；`liwenjson-mcp` 启动器仍需要原生二进制。
 - **PyPI**：wheel 内带**四个平台的 native 二进制**（`linux-x86_64`、`linux-arm64`、
   `macos-arm64`、`windows-x86_64`，共约 3.4 MB 未压缩），`find_binary()` 按
   `sys.platform` + `platform.machine()` 选当前平台那一份。`pip install interjson-moonbit`
-  是完整安装，不需要 `INTERJSON_BIN`、不需要 PATH 上有 `interjson`、不需要 MoonBit
+  是完整安装，不需要 `LIWENJSON_BIN`、不需要 PATH 上有 `liwenjson`、不需要 MoonBit
   工具链。
 
   在此之前 Python 包是个"壳"：`pip install` 之后第一次调用会
-  `FileNotFoundError: the interjson engine was not found`。把二进制放进 wheel 是唯一
+  `FileNotFoundError: the liwenjson engine was not found`。把二进制放进 wheel 是唯一
   能消掉这一步的做法——装的时候不编译，跑的时候不下载。`code/python/build_wheel.sh`
   从 Release 取四个二进制并逐个核对 Release 自带的 `SHA256SUMS`，构建后断言 wheel 里
   确实有它们；`code/tests/package_dist.sh` 在空 venv 里装这个 wheel 并断言
@@ -310,7 +310,7 @@ JSON-RPC 检查，`docs/LLM_EVENTS.md` 写明 Responses 协议与终态语义。
 「测试绿」的状态下发布过，这本身就是这一节要记下来的事实。
 
 版本对应 **1.5.0**（GitHub）↔ **0.12.0**（mooncakes）。发布状态：
-**`0.12.0` 已于 2026-10-28 上传 mooncakes**（`moon search interjson` 可见，
+**`0.12.0` 已于 2026-10-28 上传 mooncakes**（当时以 `zhanshishan/interjson` 上传，`moon search interjson` 可见，
 重复上传返回 409）；GitHub 侧 tag `v1.5.0` 已推送，Release 随该 tag 构建。
 语言包当时还没有发布；npm 与 PyPI 的 `interjson-moonbit@1.5.1` 于 2026-10-30 补齐。
 
@@ -355,7 +355,7 @@ JSON-RPC 检查，`docs/LLM_EVENTS.md` 写明 Responses 协议与终态语义。
 
 - **MCP `agent` 档现在等于 `Options::for_agent()`**。按名字选档（MCP 工具、`--policy`、
   `serve`）此前只应用了 `SafetyPolicy` 的**安全字段**，丢掉了该档的**协议字段**——
-  对 `agent` 就是 `skip_prose`。结果是旗舰工具 `interjson_gate` 拒绝最常见的模型输出
+  对 `agent` 就是 `skip_prose`。结果是旗舰工具 `liwenjson_gate` 拒绝最常见的模型输出
   形状 `Here are the args:\n{"a":1}`（`E002`）。现在新增 `Options::with_profile(policy)`
   与 `Options::for_profile(name)`，「一个档是什么意思」只有一处定义，库预设与按名选档
   走同一条路径。`execution` / `strict` / `interactive` / `permissive` 行为不变，仍然
@@ -437,7 +437,7 @@ JSON-RPC 检查，`docs/LLM_EVENTS.md` 写明 Responses 协议与终态语义。
 
 ## [1.4.0] - 2026-10-27
 
-更名 **InterJSON**，把「LLM 输出的执行门」作为产品定位，对外主入口改为**本地部署的
+更名 **InterJSON**（项目现名 LIWENJSON），把「LLM 输出的执行门」作为产品定位，对外主入口改为**本地部署的
 MCP server**。引擎、修复语义与全部不变量不变；版本对应 **1.4.0**（GitHub）↔
 **0.11.0**（mooncakes）。这是模块路径与 MCP 工具名的破坏性重命名；1.3.0 的 registry
 对应号 0.10.0 尚未上传 mooncakes，因此 registry 上的已发布历史（0.3.0 … 0.8.1）不构成
@@ -459,12 +459,12 @@ MCP server**。引擎、修复语义与全部不变量不变；版本对应 **1.
   `readOnlyHint` 与 `outputSchema`；协议协商首选 `2025-06-18`、接受 `2024-11-05`，不支持的版本回落到
   `2025-06-18`。stdout 只写 JSON-RPC；没有 `id` 的请求（通知）一律不回答。
   成功结果同时带 `content` 文本与 `structuredContent`，错误结果只带可读文本。
-- **配置生成**：`interjson mcp --print-config[=claude|cursor|vscode|codex|windsurf|zed|json]`
+- **配置生成**：`liwenjson mcp --print-config[=claude|cursor|vscode|codex|windsurf|zed|json]`
   打印对应客户端配置；`--print-config=claude` 输出
-  `claude mcp add interjson -- interjson mcp`。
-- **同一入口的别名**：`interjson-mcp` 等价于 `interjson mcp`；npm 包
+  `claude mcp add liwenjson -- liwenjson mcp`。
+- **同一入口的别名**：`liwenjson-mcp` 等价于 `liwenjson mcp`；npm 包
   `interjson-moonbit` 的 bin 为 `interjson-mcp`（需本机原生二进制），Python 包
-  同时提供 `interjson-mcp` 控制台入口。
+  同时提供 `liwenjson-mcp` 控制台入口。
 - **文档**：新增 `docs/MCP.md` 作为本地部署指南；`docs/PROTOCOL.md` 补充
   `serve` 与 MCP 的分工（宿主侧传输 vs 模型侧传输）；演示页、CHANGELOG 与
   其余接入文档同步新工具名。更早的版本记录、`static/demo/mcp-claude-session.txt`

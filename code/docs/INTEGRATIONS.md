@@ -1,6 +1,6 @@
-# Integrating InterJSON into an agent
+# Integrating LIWENJSON into an agent
 
-InterJSON is the execution gate for LLM output. There are two sides to
+LIWENJSON is the execution gate for LLM output. There are two sides to
 integrate with, and the right one depends on *where* in the loop you need the
 gate. The distinction that matters:
 
@@ -17,14 +17,14 @@ config, the privacy model, troubleshooting — is [MCP.md](MCP.md).
 
 | Where you are | Use | Why |
 | --- | --- | --- |
-| Claude Code / Cursor / Cline / Windsurf / VS Code / Codex CLI / Zed | `interjson mcp` | one stdio server, no code change |
-| Python application or agent SDK | `interjson-moonbit` (pip), `import interjson`, `Client` | one long-lived process, full decision object |
-| Node / TypeScript application | `interjson-moonbit` (npm) | same engine as the browser bundle |
+| Claude Code / Cursor / Cline / Windsurf / VS Code / Codex CLI / Zed | `liwenjson mcp` | one stdio server, no code change |
+| Python application or agent SDK | `liwenjson` (pip), `import liwenjson`, `Client` | one long-lived process, full decision object |
+| Node / TypeScript application | `liwenjson` (npm) | same engine as the browser bundle |
 | LangChain / LlamaIndex output parsing | Python `Client` in a parser | repairs before the framework parses |
 | Vercel AI SDK / raw provider stream | npm `analyze`, or `llm.*` over `serve` | gate the raw argument text |
-| n8n / Dify / Coze / a gateway | `interjson-http` | one POST per call, stateless |
-| Browser | npm package or `static/demo/interjson.js` | same engine, no server |
-| MoonBit | `moon add zhanshishan/interjson` | in-process library |
+| n8n / Dify / Coze / a gateway | `liwenjson-http` | one POST per call, stateless |
+| Browser | npm package or `static/demo/liwenjson.js` | same engine, no server |
+| MoonBit | `moon add zhanshishan/liwenjson` | in-process library |
 
 The MCP server, the `serve` protocol, the npm package, the pip package, the
 HTTP facade, and the browser bundle are all wrappers over the same engine. They
@@ -46,8 +46,8 @@ execute(json.loads(plan["text"]))
 content. `schema_json` is the tool declaration you already have, so there is no
 second source of truth to keep in sync.
 
-`interjson mcp`'s gate tool applies the same rule with the same default: the
-model or the client calls `interjson_gate` with the raw argument text, reads
+`liwenjson mcp`'s gate tool applies the same rule with the same default: the
+model or the client calls `liwenjson_gate` with the raw argument text, reads
 `executable`, and sends `retry.prompt` back when it is false.
 
 ## Making the gate mandatory
@@ -56,14 +56,14 @@ This is the distinction that decides whether you have a gate or a suggestion:
 
 | You wired up | The gate runs when | Is it a gate? |
 | --- | --- | --- |
-| `interjson mcp` only | the model chooses to call `interjson_gate` | **no — advisory** |
+| `liwenjson mcp` only | the model chooses to call `liwenjson_gate` | **no — advisory** |
 | a `PreToolUse` hook, or `gate()` in the host SDK | every matching tool call, before execution | **yes** |
 
-Plain MCP is **advisory**: `interjson_gate` is one tool among many, the model can
+Plain MCP is **advisory**: `liwenjson_gate` is one tool among many, the model can
 skip it, and nothing in the protocol makes the host check the answer. A model
 that never calls the gate is not violating anything — it is doing what an
 optional tool allows. Every MCP client has this property; it is not specific to
-InterJSON.
+LIWENJSON.
 
 If the requirement is "no tool call executes without passing the gate", the check
 has to live on the **host** side, at a point the model cannot route around.
@@ -79,7 +79,7 @@ bash code/tests/install_gate_hook.sh /path/to/project
 
 It copies the hook, writes the declarations file, adds the `PreToolUse` entry to
 `.claude/settings.json` (keeping whatever was there), and points
-`env.INTERJSON_BIN` at the binary. The exact wiring it installs is the one
+`env.LIWENJSON_BIN` at the binary. The exact wiring it installs is the one
 recorded in `code/tests/claude-e2e/`, and `code/tests/hook_replay.py` replays the
 recorded `PreToolUse` payloads through it — including the branch where the gate
 binary is missing, which must block.
@@ -96,7 +96,7 @@ The exchange, end to end:
 Claude builds a tool call
       │
       ▼
-PreToolUse hook ──► interjson explain --policy agent --json
+PreToolUse hook ──► liwenjson explain --policy agent --json
       │                       │
       │                       └─ exit 0 → executable, exit 5 → refused
       ▼
@@ -113,7 +113,7 @@ Configuration, in `.claude/settings.json` (project scope; use
 
 ```json
 {
-  "env": { "INTERJSON_BIN": "/usr/local/bin/interjson" },
+  "env": { "LIWENJSON_BIN": "/usr/local/bin/liwenjson" },
   "hooks": {
     "PreToolUse": [
       {
@@ -121,7 +121,7 @@ Configuration, in `.claude/settings.json` (project scope; use
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/interjson-gate.sh",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/liwenjson-gate.sh",
             "timeout": 30
           }
         ]
@@ -131,8 +131,8 @@ Configuration, in `.claude/settings.json` (project scope; use
 }
 ```
 
-`env.INTERJSON_BIN` is not decoration: a hook process inherits almost no
-`PATH`, so a bare `interjson` is `exit 127` — a hook error, which Claude Code
+`env.LIWENJSON_BIN` is not decoration: a hook process inherits almost no
+`PATH`, so a bare `liwenjson` is `exit 127` — a hook error, which Claude Code
 reports and then ignores, so the tool runs.
 
 `matcher` is a tool-name filter. `mcp__orders__.*` matches every tool from an MCP
@@ -144,7 +144,7 @@ you keep next to it, and asks the gate:
 
 ```bash
 #!/bin/bash
-# .claude/hooks/interjson-gate.sh — route a tool call through the execution gate.
+# .claude/hooks/liwenjson-gate.sh — route a tool call through the execution gate.
 set -u
 input=$(cat)
 tool=$(printf '%s' "$input" | jq -r '.tool_name // empty')
@@ -158,17 +158,17 @@ tool_input=$(printf '%s' "$input" |
 
 # The declarations this project gates, keyed by the tool name the hook sees.
 # A tool that is not listed is not gated: start narrow, widen deliberately.
-declarations="${CLAUDE_PROJECT_DIR:-.}/.claude/interjson-schemas.json"
+declarations="${CLAUDE_PROJECT_DIR:-.}/.claude/liwenjson-schemas.json"
 [ -f "$declarations" ] || exit 0
 decl=$(jq -r --arg t "$tool" '.[$t] // empty' "$declarations")
 [ -n "$decl" ] || exit 0
 
-# A hook inherits almost no PATH, so a bare `interjson` is usually exit 127 --
+# A hook inherits almost no PATH, so a bare `liwenjson` is usually exit 127 --
 # and the call then runs, because a 127 is just another hook error. Name the
 # binary, in the hook's `env` (see the settings example) or here.
-gate="${INTERJSON_BIN:-interjson}"
+gate="${LIWENJSON_BIN:-liwenjson}"
 if [ ! -x "$gate" ] && ! command -v "$gate" >/dev/null 2>&1; then
-  echo "interjson gate: \"$gate\" is not executable; refusing to run $tool" >&2
+  echo "liwenjson gate: \"$gate\" is not executable; refusing to run $tool" >&2
   exit 2
 fi
 plan=$(printf '%s' "$tool_input" | "$gate" explain \
@@ -188,7 +188,7 @@ case "$status" in
   0) exit 0 ;;                       # no decision: normal permission flow
   5) ;;
   *)
-    echo "interjson gate failed (exit $status); refusing to run $tool" >&2
+    echo "liwenjson gate failed (exit $status); refusing to run $tool" >&2
     exit 2
     ;;
 esac
@@ -204,7 +204,7 @@ jq -n --arg p "$prompt" '{
 exit 0
 ```
 
-And `.claude/interjson-schemas.json`, mapping tool name → declaration. The
+And `.claude/liwenjson-schemas.json`, mapping tool name → declaration. The
 declaration is the library's skeleton language; a JSON Schema subset also works
 via `schema_json` in the SDK path, but the CLI flag `--schema` takes the DSL:
 
@@ -214,13 +214,13 @@ via `schema_json` in the SDK path, but the CLI flag `--schema` takes the DSL:
 }
 ```
 
-Make the script executable (`chmod +x .claude/hooks/interjson-gate.sh`) and
+Make the script executable (`chmod +x .claude/hooks/liwenjson-gate.sh`) and
 install `jq`. Three behaviours worth knowing:
 
 - **Denial carries the retry prompt.** `permissionDecisionReason` is shown to
   Claude, so the refusal reaches the model in the same wording the MCP tool
   would have used. The model can re-emit and the call passes the next time.
-- **A tool with no declaration is not gated.** `interjson explain` without
+- **A tool with no declaration is not gated.** `liwenjson explain` without
   `--schema` still checks syntax and exactness, but it cannot check a schema it
   was not given. Listing a tool is a deliberate act.
 - **Fail closed on a broken hook — with `exit 2`.** A non-zero exit that is not
@@ -236,7 +236,7 @@ install `jq`. Three behaviours worth knowing:
 >   and **the file was never created**;
 > * ran `echo read-only-ok`, which is the one command the declaration admits —
 >   the hook allowed it and the command ran;
-> * called `mcp__interjson__interjson_gate` and reported
+> * called `mcp__liwenjson__liwenjson_gate` and reported
 >   `decision: invalid, executable: false`.
 >
 > The wiring, the declarations and both sessions are in `test/claude-e2e/`
@@ -252,7 +252,7 @@ Whatever the SDK, the insertion point is the same — the function that turns a
 model's tool call into an execution:
 
 ```python
-from interjson import Client
+from liwenjson import Client
 
 GATE = Client()   # one long-lived engine process for the session
 
@@ -273,7 +273,7 @@ execute(call.name, args)
 The same shape in Node:
 
 ```js
-import { analyze } from "interjson-moonbit";
+import { analyze } from "liwenjson";
 
 function gate(argsText, toolSpec) {
   const plan = analyze(argsText, {
@@ -295,12 +295,12 @@ Three properties this has that the MCP surface does not:
 
 ## MCP
 
-`interjson mcp` is a local MCP server over stdio (JSON-RPC 2.0): no socket, no
-network, no API key. The binary under the alias `interjson-mcp` starts the same
+`liwenjson mcp` is a local MCP server over stdio (JSON-RPC 2.0): no socket, no
+network, no API key. The binary under the alias `liwenjson-mcp` starts the same
 server with no arguments. It implements `initialize`, `tools/list`, `tools/call`
-and `ping`, and exposes four read-only tools — `interjson_gate` (**the gate**;
+and `ping`, and exposes four read-only tools — `liwenjson_gate` (**the gate**;
 `decision`, `exactness`, ambiguity, schema, retry hint, defaults to the `agent`
-profile), `interjson_repair`, `interjson_validate` and `interjson_readiness`.
+profile), `liwenjson_repair`, `liwenjson_validate` and `liwenjson_readiness`.
 `content[0].text` is a summary and `structuredContent` is the payload; a tool
 failure carries `isError: true` and no `structuredContent`. The tools, their
 `outputSchema` fields, the protocol revisions and the JSON-RPC error codes are
@@ -311,39 +311,39 @@ With the binary on `PATH`:
 ```json
 {
   "mcpServers": {
-    "interjson": { "command": "interjson", "args": ["mcp"] }
+    "liwenjson": { "command": "liwenjson", "args": ["mcp"] }
   }
 }
 ```
 
 Installed with pip, the console script resolves the engine itself (`pip
 install` alone does not provide it; the binary must be on `PATH` or named by
-`INTERJSON_BIN`):
+`LIWENJSON_BIN`):
 
 ```json
 {
   "mcpServers": {
-    "interjson": { "command": "interjson-mcp" }
+    "liwenjson": { "command": "liwenjson-mcp" }
   }
 }
 ```
 
-Installed from npm, `interjson-mcp` is the package's bin; it spawns the
+Installed from npm, `liwenjson-mcp` is the package's bin; it spawns the
 resolved native binary with `mcp`. **The npm package is the JS engine; the MCP
 server still needs the native binary**, so build one
-(`moon build cmd/interjson --target native --release`) or set `INTERJSON_BIN`
+(`moon build cmd/liwenjson --target native --release`) or set `LIWENJSON_BIN`
 as well. The server writes JSON-RPC to stdout and nothing else;
 diagnostics go to stderr.
 
 Print the right snippet for your client instead of transcribing it:
 
 ```sh
-interjson mcp --print-config=claude    # claude mcp add interjson -- interjson mcp
-interjson mcp --print-config=cursor    # mcpServers JSON (also Cline, Windsurf)
-interjson mcp --print-config=vscode
-interjson mcp --print-config=codex
-interjson mcp --print-config=zed
-interjson mcp --print-config=json      # generic
+liwenjson mcp --print-config=claude    # claude mcp add liwenjson -- liwenjson mcp
+liwenjson mcp --print-config=cursor    # mcpServers JSON (also Cline, Windsurf)
+liwenjson mcp --print-config=vscode
+liwenjson mcp --print-config=codex
+liwenjson mcp --print-config=zed
+liwenjson mcp --print-config=json      # generic
 ```
 
 Version negotiation, the 8 MiB request-line cap, the security model, and
@@ -351,36 +351,36 @@ troubleshooting are in [MCP.md](MCP.md).
 
 ## Python
 
-> Registry names: this repository ships the npm package and the PyPI
-> distribution as **`interjson-moonbit`** (the suffix identifies the MoonBit
-> engine). Both packages are published — `npm install interjson-moonbit` and
-> `pip install interjson-moonbit`. The Python import name is `interjson`.
+> Registry names: the npm package and the PyPI distribution are both
+> **`liwenjson`** — the bare name, no suffix, and the same name on both
+> registries and as the Python import. `1.5.2` is the first release published
+> under it; everything up to `1.5.1` was published as `interjson-moonbit`.
 
 ```bash
-pip install interjson-moonbit        # no dependencies; the wheel carries the engine
-interjson-mcp --version              # the MCP console script
+pip install liwenjson        # no dependencies; the wheel carries the engine
+liwenjson-mcp --version              # the MCP console script
 ```
 
-Keep one client for the session; each `Client` is one `interjson serve` process.
+Keep one client for the session; each `Client` is one `liwenjson serve` process.
 
 ```python
-from interjson import Client
+from liwenjson import Client
 
 with Client() as jm:
     plan = jm.analyze(text, profile="agent", schema_json=tool["inputSchema"])
 ```
 
-The package installs two console scripts: `interjson-mcp` (the MCP launcher,
-see [MCP.md](MCP.md)) and `interjson-http` (below).
+The package installs two console scripts: `liwenjson-mcp` (the MCP launcher,
+see [MCP.md](MCP.md)) and `liwenjson-http` (below).
 
 A LangChain output parser is a thin wrapper:
 
 ```python
 import json
 from langchain_core.output_parsers import BaseOutputParser
-from interjson import Client
+from liwenjson import Client
 
-class InterJSONParser(BaseOutputParser[dict]):
+class LIWENJSONParser(BaseOutputParser[dict]):
     def __init__(self, schema_json: dict | None = None):
         self._jm = Client()
         self._schema = schema_json
@@ -402,11 +402,11 @@ call.
 ## Node / TypeScript
 
 ```bash
-npm install interjson-moonbit
+npm install liwenjson
 ```
 
 ```js
-import { analyze, repair } from "interjson-moonbit";
+import { analyze, repair } from "liwenjson";
 
 const plan = analyze(rawArguments, {
   profile: "agent",
@@ -420,13 +420,13 @@ if (!plan.executable) {
 This is framework-agnostic: call it in the `onToolCall`/stream handler before
 executing, whatever the SDK is. The package also exports `repair`,
 `repairResult`, `report`, `snapshot` and `live` (one frame of the streaming
-view for a UI), and its `interjson-mcp` bin starts the MCP server once the
+view for a UI), and its `liwenjson-mcp` bin starts the MCP server once the
 native engine is installed.
 
 ## HTTP
 
 ```bash
-interjson-http --port 8080
+liwenjson-http --port 8080
 ```
 
 | Route | Body |
@@ -497,7 +497,7 @@ of a guess.
 The protocol is pinned by an executable corpus:
 
 ```bash
-python3 code/tests/conformance/run_conformance.py --cli <interjson>
+python3 code/tests/conformance/run_conformance.py --cli <liwenjson>
 ```
 
 It covers `serve` and `mcp` (19 groups in total, including the MCP handshake,

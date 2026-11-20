@@ -56,7 +56,7 @@ jobs:
       - name: Rebuild the demo bundle and verify it is in sync
         run: |
           bash static/demo/build.sh
-          git diff --exit-code -- static/demo/interjson.js
+          git diff --exit-code -- static/demo/liwenjson.js
 
       # Stage the two files in one directory so the artifact has a flat,
       # predictable layout: upload-artifact keeps paths relative to the least
@@ -65,12 +65,12 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/web-assets"
           cp code/_build/wasm-gc/release/build/bench/probe/probe.wasm "$RUNNER_TEMP/web-assets/probe.wasm"
-          cp static/demo/interjson.js "$RUNNER_TEMP/web-assets/interjson-demo.js"
+          cp static/demo/liwenjson.js "$RUNNER_TEMP/web-assets/liwenjson-demo.js"
           # The installer is a release asset so that the one-command install in
-          # the README is `curl .../releases/latest/download/interjson-install.sh
+          # the README is `curl .../releases/latest/download/liwenjson-install.sh
           # | sh`, which needs no clone and no toolchain.
-          cp code/install.sh "$RUNNER_TEMP/web-assets/interjson-install.sh"
-          chmod +x "$RUNNER_TEMP/web-assets/interjson-install.sh"
+          cp code/install.sh "$RUNNER_TEMP/web-assets/liwenjson-install.sh"
+          chmod +x "$RUNNER_TEMP/web-assets/liwenjson-install.sh"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -86,13 +86,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            asset: interjson-linux-x86_64
+            asset: liwenjson-linux-x86_64
           - os: ubuntu-24.04-arm
-            asset: interjson-linux-arm64
+            asset: liwenjson-linux-arm64
           - os: macos-latest
-            asset: interjson-macos-arm64
+            asset: liwenjson-macos-arm64
           - os: windows-latest
-            asset: interjson-windows-x86_64.exe
+            asset: liwenjson-windows-x86_64.exe
         # There is no Intel macOS entry because there is no toolchain for it:
         # `cli.moonbitlang.com/install/unix.sh` resolves only
         # `Darwin arm64`, `Linux x86_64` and `Linux aarch64`, so a
@@ -122,33 +122,33 @@ jobs:
       - name: Build the CLI (Unix)
         if: runner.os != 'Windows'
         working-directory: code
-        run: moon build cmd/interjson --target native --release
+        run: moon build cmd/liwenjson --target native --release
 
       - name: Build the CLI (Windows)
         if: runner.os == 'Windows'
         working-directory: code
         shell: pwsh
-        run: moon build cmd/interjson --target native --release
+        run: moon build cmd/liwenjson --target native --release
 
       - name: Check the CLI runs (Unix)
         if: runner.os != 'Windows'
         working-directory: code
         run: |
-          printf '{"a":1,}' | ./_build/native/release/build/cmd/interjson/interjson.exe
-          ./_build/native/release/build/cmd/interjson/interjson.exe --version
+          printf '{"a":1,}' | ./_build/native/release/build/cmd/liwenjson/liwenjson.exe
+          ./_build/native/release/build/cmd/liwenjson/liwenjson.exe --version
 
       - name: Check the CLI runs (Windows)
         if: runner.os == 'Windows'
         working-directory: code
         shell: pwsh
         run: |
-          '{"a":1,}' | & .\_build\native\release\build\cmd\interjson\interjson.exe
-          & .\_build\native\release\build\cmd\interjson\interjson.exe --version
-          '{"id":1,"method":"hello"}','{"id":2,"method":"shutdown"}' | & .\_build\native\release\build\cmd\interjson\interjson.exe serve
+          '{"a":1,}' | & .\_build\native\release\build\cmd\liwenjson\liwenjson.exe
+          & .\_build\native\release\build\cmd\liwenjson\liwenjson.exe --version
+          '{"id":1,"method":"hello"}','{"id":2,"method":"shutdown"}' | & .\_build\native\release\build\cmd\liwenjson\liwenjson.exe serve
 
       - name: Stage the CLI
         shell: bash
-        run: cp code/_build/native/release/build/cmd/interjson/interjson.exe "$RUNNER_TEMP/${{ matrix.asset }}"
+        run: cp code/_build/native/release/build/cmd/liwenjson/liwenjson.exe "$RUNNER_TEMP/${{ matrix.asset }}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -171,16 +171,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp artifacts/interjson-linux-x86_64/interjson-linux-x86_64 dist/interjson-linux-x86_64
-          cp artifacts/interjson-linux-arm64/interjson-linux-arm64 dist/interjson-linux-arm64
-          cp artifacts/interjson-macos-arm64/interjson-macos-arm64 dist/interjson-macos-arm64
-          cp artifacts/interjson-windows-x86_64.exe/interjson-windows-x86_64.exe dist/interjson-windows-x86_64.exe
-          cp artifacts/web-assets/probe.wasm dist/interjson-probe.wasm
-          cp artifacts/web-assets/interjson-demo.js dist/interjson-demo.js
-          cp artifacts/web-assets/interjson-install.sh dist/interjson-install.sh
-          chmod +x dist/interjson-install.sh
-          chmod +x dist/interjson-linux-x86_64 dist/interjson-linux-arm64 dist/interjson-macos-arm64
-          (cd dist && sha256sum interjson-linux-x86_64 interjson-linux-arm64 interjson-macos-arm64 interjson-windows-x86_64.exe interjson-probe.wasm interjson-demo.js interjson-install.sh > SHA256SUMS)
+          cp artifacts/liwenjson-linux-x86_64/liwenjson-linux-x86_64 dist/liwenjson-linux-x86_64
+          cp artifacts/liwenjson-linux-arm64/liwenjson-linux-arm64 dist/liwenjson-linux-arm64
+          cp artifacts/liwenjson-macos-arm64/liwenjson-macos-arm64 dist/liwenjson-macos-arm64
+          cp artifacts/liwenjson-windows-x86_64.exe/liwenjson-windows-x86_64.exe dist/liwenjson-windows-x86_64.exe
+          cp artifacts/web-assets/probe.wasm dist/liwenjson-probe.wasm
+          cp artifacts/web-assets/liwenjson-demo.js dist/liwenjson-demo.js
+          cp artifacts/web-assets/liwenjson-install.sh dist/liwenjson-install.sh
+          chmod +x dist/liwenjson-install.sh
+          chmod +x dist/liwenjson-linux-x86_64 dist/liwenjson-linux-arm64 dist/liwenjson-macos-arm64
+          (cd dist && sha256sum liwenjson-linux-x86_64 liwenjson-linux-arm64 liwenjson-macos-arm64 liwenjson-windows-x86_64.exe liwenjson-probe.wasm liwenjson-demo.js liwenjson-install.sh > SHA256SUMS)
           cat dist/SHA256SUMS
 
       # The release body is the section of CHANGELOG.md for this tag, not the
@@ -213,7 +213,7 @@ jobs:
       - name: Check the release contents before publishing
         run: |
           set -euo pipefail
-          want="SHA256SUMS interjson-demo.js interjson-install.sh interjson-linux-arm64 interjson-linux-x86_64 interjson-macos-arm64 interjson-probe.wasm interjson-windows-x86_64.exe"
+          want="SHA256SUMS liwenjson-demo.js liwenjson-install.sh liwenjson-linux-arm64 liwenjson-linux-x86_64 liwenjson-macos-arm64 liwenjson-probe.wasm liwenjson-windows-x86_64.exe"
           actual="$(cd dist && ls -1 | sort | tr '\n' ' ' | sed 's/ $//')"
           sorted="$(printf '%s\n' $want | sort | tr '\n' ' ' | sed 's/ $//')"
           if [ "$actual" != "$sorted" ]; then
@@ -236,7 +236,7 @@ jobs:
           # already asserted what `dist/` holds, so the glob cannot pick up a
           # stray file.
           gh release create "$GITHUB_REF_NAME" \
-            --title "InterJSON $GITHUB_REF_NAME" \
+            --title "LIWENJSON $GITHUB_REF_NAME" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             dist/*
 

@@ -1,4 +1,4 @@
-# InterJSON protocol v1 (`interjson serve`)
+# LIWENJSON protocol v1 (`liwenjson serve`)
 
 This is the wire contract behind the Python client, the npm package's future
 streaming path, the HTTP facade, and any integration that cannot link the
@@ -6,19 +6,19 @@ MoonBit library directly. It is deliberately small: one request object per
 line in, one response object per line out.
 
 The one-shot CLI and the library are not replaced by this protocol; they are
-the same engine. `interjson repair` and `{"method":"repair"}` must produce the
+the same engine. `liwenjson repair` and `{"method":"repair"}` must produce the
 same text, and the conformance suite (`tests/conformance/cases.jsonl`) pins
 that.
 
 ## Relationship to MCP
 
-This document is the contract for `interjson serve`: the **host-side** transport.
-`interjson mcp` is the **model-side** transport — it speaks MCP (JSON-RPC 2.0 over
+This document is the contract for `liwenjson serve`: the **host-side** transport.
+`liwenjson mcp` is the **model-side** transport — it speaks MCP (JSON-RPC 2.0 over
 stdio, protocol `2025-06-18`, with `2025-03-26` and `2024-11-05` accepted) and
-exposes the same engine as four read-only tools: `interjson_gate` (primary,
+exposes the same engine as four read-only tools: `liwenjson_gate` (primary,
 defaults to the `agent` profile, which equals `Options::for_agent()` including
-`skip_prose`), `interjson_repair`, `interjson_validate` and
-`interjson_readiness`.
+`skip_prose`), `liwenjson_repair`, `liwenjson_validate` and
+`liwenjson_readiness`.
 
 The two are separate transports over one engine, not two implementations: a
 host that gates tool arguments itself drives `serve` from its own code, while a
@@ -72,7 +72,7 @@ Request:
 Response:
 
 ```json
-{"id":1,"ok":true,"result":{"name":"interjson","engine":"1.1.0","registry":"0.8.0","protocol":1,"capabilities":["repair","analyze","validate","readiness","watch","llm"],"streams":1}}
+{"id":1,"ok":true,"result":{"name":"liwenjson","engine":"1.1.0","registry":"0.8.0","protocol":1,"capabilities":["repair","analyze","validate","readiness","watch","llm"],"streams":1}}
 ```
 
 `id` is chosen by the client, may be a number or a string, and is echoed

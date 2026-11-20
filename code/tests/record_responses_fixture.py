@@ -39,12 +39,12 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 FIXDIR = ROOT / "code" / "llm" / "fixtures"
 # The endpoint and the key are read from the environment first and from the
 # workspace's own note file second. The key is never written anywhere.
-CONFIG = Path(os.environ.get("INTERJSON_PROVIDER_CONFIG", ROOT / "AI 后端.txt"))
+CONFIG = Path(os.environ.get("LIWENJSON_PROVIDER_CONFIG", ROOT / "AI 后端.txt"))
 NAME = "live_responses_tool_call"
 
-BASE = os.environ.get("INTERJSON_BASE_URL", "").rstrip("/")
-KEY = os.environ.get("INTERJSON_API_KEY", "")
-MODEL = os.environ.get("INTERJSON_MODEL", "")
+BASE = os.environ.get("LIWENJSON_BASE_URL", "").rstrip("/")
+KEY = os.environ.get("LIWENJSON_API_KEY", "")
+MODEL = os.environ.get("LIWENJSON_MODEL", "")
 if not (BASE and KEY and MODEL):
     config = CONFIG.read_text(encoding="utf-8")
     BASE = BASE or re.search(r"请求地址：(\S+)", config).group(1).rstrip("/")
@@ -198,7 +198,7 @@ def main() -> int:
     print(f"wrote {FIXDIR / NAME}.sse, .jsonl, .provenance.json")
 
     # And prove the adapter reads it back, which is the only reason to record it.
-    cli = ROOT / "code/_build/native/release/build/cmd/interjson/interjson.exe"
+    cli = ROOT / "code/_build/native/release/build/cmd/liwenjson/liwenjson.exe"
     proc = subprocess.run(
         [str(cli), "llm", "--provider", "openai-responses", "--sse"],
         input=text,

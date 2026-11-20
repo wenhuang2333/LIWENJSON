@@ -1,8 +1,8 @@
-// `interjson llm` — drive the provider adapters from a recorded event stream.
+// `liwenjson llm` — drive the provider adapters from a recorded event stream.
 //
-//   interjson llm --provider anthropic < events.jsonl
-//   interjson llm --provider openai --sse < response.txt
-//   interjson llm --follow ...        # one line per update instead of per call
+//   liwenjson llm --provider anthropic < events.jsonl
+//   liwenjson llm --provider openai --sse < response.txt
+//   liwenjson llm --follow ...        # one line per update instead of per call
 //
 // This is the command line face of FR-23: it makes the adapters usable on a
 // captured stream without writing any code, and it is what the demo page and
@@ -107,7 +107,7 @@ fn llm_batch_line(
   id : String,
   events : Array[String],
   provider : @llm.Provider,
-  options : @ij.Options,
+  options : @lj.Options,
 ) -> String {
   let sb = StringBuilder()
   sb.write_string("{\"id\":")
@@ -144,10 +144,10 @@ fn llm_batch_line(
 ///|
 /// Run the `llm` subcommand in `--batch` mode: one `{"id","events"}` object per
 /// input line, one result line per input.
-fn run_llm_batch(provider : @llm.Provider, options : @ij.Options) -> Unit {
+fn run_llm_batch(provider : @llm.Provider, options : @lj.Options) -> Unit {
   let stream = open_input(None)
   if stream == 0L {
-    eprintln("interjson: 无法读取 <stdin>")
+    eprintln("liwenjson: 无法读取 <stdin>")
     return quit(3)
   }
   let text = read_all(stream)
@@ -180,7 +180,7 @@ fn run_llm_batch(provider : @llm.Provider, options : @ij.Options) -> Unit {
 /// can read either with the same code.
 fn text_line(
   snapshot : Json?,
-  exactness : @ij.Exactness,
+  exactness : @lj.Exactness,
   end : @llm.CallEnd,
   stop_reason : String,
 ) -> String {
@@ -195,7 +195,7 @@ fn text_line(
   sb.write_string(Json::string(stop_reason).stringify())
   sb.write_string(",\"executable\":")
   sb.write_string(
-    (end is @llm.Complete && !(exactness is @ij.Lossy)).to_string(),
+    (end is @llm.Complete && !(exactness is @lj.Lossy)).to_string(),
   )
   sb.write_string(",\"value\":")
   match snapshot {
@@ -239,10 +239,10 @@ fn llm_batch_fields(v : Json, fallback : String) -> (String, Array[String]) {
 
 ///|
 /// Run the text path over a batch of `{"id","events"}` lines.
-fn run_llm_text_batch(provider : @llm.Provider, options : @ij.Options) -> Unit {
+fn run_llm_text_batch(provider : @llm.Provider, options : @lj.Options) -> Unit {
   let stream = open_input(None)
   if stream == 0L {
-    eprintln("interjson: 无法读取 <stdin>")
+    eprintln("liwenjson: 无法读取 <stdin>")
     return quit(3)
   }
   let body = read_all(stream)
@@ -270,7 +270,7 @@ fn run_llm_text_batch(provider : @llm.Provider, options : @ij.Options) -> Unit {
     sb.write_string(Json::string(id).stringify())
     sb.write_string(",\"rc\":")
     let mut rc = 0
-    let mut line_body = text_line(None, @ij.Exact, @llm.Interrupted, "")
+    let mut line_body = text_line(None, @lj.Exact, @llm.Interrupted, "")
     try {
       // The text path uses the command line as given. `--skip-prose` is what
       // makes it read a chat answer that introduces its JSON with a sentence;
@@ -285,7 +285,7 @@ fn run_llm_text_batch(provider : @llm.Provider, options : @ij.Options) -> Unit {
       match s.finish() {
         Some(f) =>
           line_body = text_line(Some(f.value), f.exactness, end, reason)
-        None => line_body = text_line(None, @ij.Exact, end, reason)
+        None => line_body = text_line(None, @lj.Exact, end, reason)
       }
     } catch {
       e => {
@@ -311,7 +311,7 @@ fn run_llm(o : CliOpts) -> Unit {
     Some(p) => p
     None => {
       eprintln(
-        "interjson: --provider 需要 anthropic、openai（Chat Completions）或 openai-responses（Responses API）",
+        "liwenjson: --provider 需要 anthropic、openai（Chat Completions）或 openai-responses（Responses API）",
       )
       return quit(2)
     }
@@ -320,8 +320,8 @@ fn run_llm(o : CliOpts) -> Unit {
   // below is opened: a second `fdopen` of the same descriptor fails.
   // The adapter defaults to `Options::for_llm()`; the rest of the command line
   // still applies, so the same document behaves the same way on every path.
-  let options : @ij.Options = {
-    ..@ij.Options::for_llm(),
+  let options : @lj.Options = {
+    ..@lj.Options::for_llm(),
     skip_prose: o.skip_prose,
     max_loss: o.max_loss,
     reject_ambiguous: o.reject_ambiguous,
@@ -336,7 +336,7 @@ fn run_llm(o : CliOpts) -> Unit {
     // The single stream form: the whole input is one stream of text deltas.
     let stream = open_input(o.path)
     if stream == 0L {
-      eprintln("interjson: 无法读取输入")
+      eprintln("liwenjson: 无法读取输入")
       return quit(3)
     }
     let body = read_all(stream)
@@ -355,24 +355,24 @@ fn run_llm(o : CliOpts) -> Unit {
       let reason = s.stop_reason()
       match s.finish() {
         Some(f) => println(text_line(Some(f.value), f.exactness, end, reason))
-        None => println(text_line(None, @ij.Exact, end, reason))
+        None => println(text_line(None, @lj.Exact, end, reason))
       }
       let provider_error = s.error()
       if provider_error != "" {
-        eprintln("interjson: provider error: " + provider_error)
+        eprintln("liwenjson: provider error: " + provider_error)
         quit(4)
       }
       quit(0)
     } catch {
       e => {
-        eprintln("interjson: " + e.to_string())
+        eprintln("liwenjson: " + e.to_string())
         quit(3)
       }
     }
   }
   let stream = open_input(o.path)
   if stream == 0L {
-    eprintln("interjson: 无法读取输入")
+    eprintln("liwenjson: 无法读取输入")
     return quit(3)
   }
   let text = read_all(stream)
@@ -414,7 +414,7 @@ fn run_llm(o : CliOpts) -> Unit {
       // says which ones, so "no tool calls" is a statement rather than an
       // assumption.
       eprintln(
-        "interjson: 跳过了本版本不认识的 " +
+        "liwenjson: 跳过了本版本不认识的 " +
         unknown.length().to_string() +
         " 个事件: " +
         unknown.join(", "),
@@ -422,13 +422,13 @@ fn run_llm(o : CliOpts) -> Unit {
     }
     let provider_error = s.error()
     if provider_error != "" {
-      eprintln("interjson: provider error: " + provider_error)
+      eprintln("liwenjson: provider error: " + provider_error)
       quit(4)
     }
     quit(0)
   } catch {
     e => {
-      eprintln("interjson: " + e.to_string())
+      eprintln("liwenjson: " + e.to_string())
       quit(3)
     }
   }

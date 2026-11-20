@@ -2,7 +2,7 @@
 """Conformance runner for the `serve` protocol and the MCP server.
 
     python3 code/tests/conformance/run_conformance.py \
-        --cli code/_build/native/release/build/cmd/interjson/interjson.exe
+        --cli code/_build/native/release/build/cmd/liwenjson/liwenjson.exe
 
 Every case in `cases.jsonl` is one connection; a multi-step case keeps the
 connection open so `watch`/`llm` state is exercised the way a client uses it.
@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_CLI = HERE.parents[1] / "_build/native/release/build/cmd/interjson/interjson.exe"
+DEFAULT_CLI = HERE.parents[1] / "_build/native/release/build/cmd/liwenjson/liwenjson.exe"
 
 
 def subset(actual: Any, expected: Any) -> bool:
@@ -240,12 +240,12 @@ def run_mcp(binary: str) -> list[str]:
         result = init.get("result", {})
         if result.get("protocolVersion") != "2024-11-05":
             failures.append("initialize did not echo a supported legacy protocol version")
-        if result.get("serverInfo", {}).get("name") != "interjson":
-            failures.append("initialize did not report serverInfo.name=interjson")
+        if result.get("serverInfo", {}).get("name") != "liwenjson":
+            failures.append("initialize did not report serverInfo.name=liwenjson")
         if not result.get("serverInfo", {}).get("title"):
             failures.append("initialize did not report serverInfo.title")
-        if "interjson_gate" not in result.get("instructions", ""):
-            failures.append("initialize did not tell the model to use interjson_gate")
+        if "liwenjson_gate" not in result.get("instructions", ""):
+            failures.append("initialize did not tell the model to use liwenjson_gate")
 
         # A notification must produce no response: the next line must be the
         # ping's answer, not an empty notification answer. A request without an
@@ -263,10 +263,10 @@ def run_mcp(binary: str) -> list[str]:
         declared = tools.get("result", {}).get("tools", [])
         names = [tool.get("name") for tool in declared]
         expected = [
-            "interjson_gate",
-            "interjson_repair",
-            "interjson_validate",
-            "interjson_readiness",
+            "liwenjson_gate",
+            "liwenjson_repair",
+            "liwenjson_validate",
+            "liwenjson_readiness",
         ]
         if names != expected:
             failures.append(f"tools/list: expected {expected}, got {names}")
@@ -285,7 +285,7 @@ def run_mcp(binary: str) -> list[str]:
                 "id": 4,
                 "method": "tools/call",
                 "params": {
-                    "name": "interjson_gate",
+                    "name": "liwenjson_gate",
                     "arguments": {"text": '{"path":"/tmp/x"'},
                 },
             }
@@ -323,7 +323,7 @@ def run_mcp(binary: str) -> list[str]:
                 "id": 5,
                 "method": "tools/call",
                 "params": {
-                    "name": "interjson_gate",
+                    "name": "liwenjson_gate",
                     "arguments": {
                         "text": '{"words":["a" "b"]}',
                         "profile": "execution",
@@ -345,7 +345,7 @@ def run_mcp(binary: str) -> list[str]:
                 "id": 6,
                 "method": "tools/call",
                 "params": {
-                    "name": "interjson_gate",
+                    "name": "liwenjson_gate",
                     "arguments": {"text": "{}", "schema_json": {"$ref": "#/x"}},
                 },
             }
@@ -379,7 +379,7 @@ def run_mcp(binary: str) -> list[str]:
                 "jsonrpc": "2.0",
                 "id": 11,
                 "method": "tools/call",
-                "params": {"name": "interjson_gate", "arguments": "not an object"},
+                "params": {"name": "liwenjson_gate", "arguments": "not an object"},
             }
         )
         bad_args = connection.read()
@@ -398,7 +398,7 @@ def run_mcp(binary: str) -> list[str]:
                 "id": 12,
                 "method": "tools/call",
                 "params": {
-                    "name": "interjson_gate",
+                    "name": "liwenjson_gate",
                     "arguments": {"text": 'Here are the args:\n{"a":1}'},
                 },
             }
@@ -419,7 +419,7 @@ def run_mcp(binary: str) -> list[str]:
                 "id": 13,
                 "method": "tools/call",
                 "params": {
-                    "name": "interjson_gate",
+                    "name": "liwenjson_gate",
                     "arguments": {"text": 'Here are the args:\n{"a":1}', "profile": "execution"},
                 },
             }
@@ -436,7 +436,7 @@ def run_mcp(binary: str) -> list[str]:
                 "id": 14,
                 "method": "tools/call",
                 "params": {
-                    "name": "interjson_gate",
+                    "name": "liwenjson_gate",
                     "arguments": {
                         "text": '{"a":1}',
                         "schema_json": {
@@ -472,7 +472,7 @@ def run_mcp(binary: str) -> list[str]:
             declared_props = set((schema.get("properties") or {}).keys())
             if not required <= declared_props:
                 failures.append(f"{tool.get('name')}: outputSchema requires undeclared members")
-            if tool.get("name") == "interjson_gate":
+            if tool.get("name") == "liwenjson_gate":
                 for field in ("decision", "executable", "exactness", "value", "retry"):
                     if field not in declared_props:
                         failures.append(f"gate outputSchema omits `{field}`")
@@ -493,7 +493,7 @@ def run_mcp(binary: str) -> list[str]:
         timeout=20,
     )
     if config.returncode != 0 or config.stdout.strip() != (
-        "claude mcp add interjson -- interjson mcp"
+        "claude mcp add liwenjson -- liwenjson mcp"
     ):
         failures.append(f"--print-config=claude printed {config.stdout!r}")
     cursor = subprocess.run(
@@ -506,16 +506,16 @@ def run_mcp(binary: str) -> list[str]:
         printed = json.loads(cursor.stdout)
     except json.JSONDecodeError:
         printed = {}
-    if printed.get("mcpServers", {}).get("interjson", {}).get("args") != ["mcp"]:
+    if printed.get("mcpServers", {}).get("liwenjson", {}).get("args") != ["mcp"]:
         failures.append(f"--print-config=cursor is not a usable config: {cursor.stdout!r}")
 
-    # The `interjson-mcp` alias: a copy or symlink under that name starts the
+    # The `liwenjson-mcp` alias: a copy or symlink under that name starts the
     # MCP server with no arguments. This is how package managers and client
     # configs invoke the server, so the dispatch is exercised, not assumed.
-    alias_dir = tempfile.mkdtemp(prefix="interjson-mcp-")
+    alias_dir = tempfile.mkdtemp(prefix="liwenjson-mcp-")
     try:
         alias = os.path.join(
-            alias_dir, "interjson-mcp.exe" if os.name == "nt" else "interjson-mcp"
+            alias_dir, "liwenjson-mcp.exe" if os.name == "nt" else "liwenjson-mcp"
         )
         if os.name == "nt":
             shutil.copy2(binary, alias)
@@ -552,7 +552,7 @@ def run_mcp(binary: str) -> list[str]:
             alias_tools = json.loads(alias_proc.stdout.readline())
             names = [t.get("name") for t in alias_tools.get("result", {}).get("tools", [])]
             if names != expected:
-                failures.append(f"interjson-mcp alias did not start the server: {names}")
+                failures.append(f"liwenjson-mcp alias did not start the server: {names}")
         finally:
             alias_proc.kill()
             alias_proc.wait(timeout=10)
@@ -631,7 +631,7 @@ def main() -> int:
     args = parser.parse_args()
     binary = os.path.abspath(args.cli)
     if not os.path.isfile(binary):
-        print(f"interjson not found: {binary}", file=sys.stderr)
+        print(f"liwenjson not found: {binary}", file=sys.stderr)
         return 2
 
     total = 0

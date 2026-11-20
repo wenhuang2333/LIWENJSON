@@ -58,21 +58,21 @@ done
 # --- the npm tarball --------------------------------------------------------
 echo "building the npm tarball..."
 (cd code/npm && npm pack --pack-destination "$TMP" >/dev/null 2>&1)
-TARBALL="$(ls "$TMP"/interjson-moonbit-*.tgz 2>/dev/null | head -1)"
+TARBALL="$(ls "$TMP"/liwenjson-*.tgz 2>/dev/null | head -1)"
 if [ -z "$TARBALL" ]; then
   fail "npm pack produced no tarball"
 else
   ENTRIES="$(tar tzf "$TARBALL" | sed 's|^package/||')"
-  for want in LICENSE NOTICE README.md index.cjs index.mjs index.d.ts mcp.cjs vendor/interjson.js; do
+  for want in LICENSE NOTICE README.md index.cjs index.mjs index.d.ts mcp.cjs vendor/liwenjson.js; do
     printf '%s\n' "$ENTRIES" | grep -qx "$want" || fail "the npm tarball does not contain $want"
   done
-  # The launcher is the product: without it `interjson-mcp` is not on PATH.
+  # The launcher is the product: without it `liwenjson-mcp` is not on PATH.
   printf '%s\n' "$ENTRIES" | grep -qx "mcp.cjs" || fail "the npm tarball has no MCP launcher"
 fi
 
 # --- the Python wheel -------------------------------------------------------
 # The publishable wheel is the one `build_wheel.sh` produces: it carries the
-# engine for every release platform, so `pip install interjson-moonbit` is the
+# engine for every release platform, so `pip install liwenjson` is the
 # whole install. A plain `pip wheel` on a checkout builds the client without
 # the binaries, and that artefact is *not* what gets published -- shipping it
 # would reproduce the bug this exists to prevent, a first call that fails with
@@ -83,7 +83,7 @@ echo "building the Python wheel..."
 # published release (which would make the gate depend on a previous tag), and
 # it is the same code path that produces the published wheel -- only the set
 # of platforms differs.
-EXTRA_WHEEL="$(mktemp -d "${TMPDIR:-/tmp}/interjson-wheelgate.XXXXXX")"
+EXTRA_WHEEL="$(mktemp -d "${TMPDIR:-/tmp}/liwenjson-wheelgate.XXXXXX")"
 HOST_KEY=""
 case "$(python3 -c 'import platform,sys; print(sys.platform, platform.machine().lower())')" in
   "darwin arm64")   HOST_KEY="macos-arm64" ;;
@@ -92,15 +92,15 @@ case "$(python3 -c 'import platform,sys; print(sys.platform, platform.machine().
   "linux arm64")    HOST_KEY="linux-arm64" ;;
 esac
 WHEEL=""
-if [ -n "$HOST_KEY" ] && [ -f "$ROOT/code/_build/native/release/build/cmd/interjson/interjson.exe" ]; then
+if [ -n "$HOST_KEY" ] && [ -f "$ROOT/code/_build/native/release/build/cmd/liwenjson/liwenjson.exe" ]; then
   if bash "$ROOT/code/python/build_wheel.sh" --from-local "$HOST_KEY" \
     --platforms "$HOST_KEY" --out "$EXTRA_WHEEL" >/dev/null 2>&1; then
-    WHEEL="$(ls "$EXTRA_WHEEL"/interjson_moonbit-*.whl 2>/dev/null | head -1)"
+    WHEEL="$(ls "$EXTRA_WHEEL"/liwenjson-*.whl 2>/dev/null | head -1)"
   fi
 fi
 if [ -z "$WHEEL" ]; then
   # No local build to package: fall back to a wheel someone already built.
-  WHEEL="$(ls "$ROOT"/dist/python/interjson_moonbit-*.whl 2>/dev/null | head -1)"
+  WHEEL="$(ls "$ROOT"/dist/python/liwenjson-*.whl 2>/dev/null | head -1)"
 fi
 if [ -z "$WHEEL" ]; then
   fail "no Python wheel was built; run bash code/python/build_wheel.sh first"
@@ -109,7 +109,7 @@ else
 import sys, zipfile
 print('\n'.join(zipfile.ZipFile(sys.argv[1]).namelist()))
 " "$WHEEL")"
-  printf '%s\n' "$NAMES" | grep -q 'interjson/py.typed' ||
+  printf '%s\n' "$NAMES" | grep -q 'liwenjson/py.typed' ||
     fail "the Python wheel does not contain the py.typed marker"
   printf '%s\n' "$NAMES" | grep -qE '(^|/)LICENSE$' ||
     fail "the Python wheel does not contain LICENSE"
@@ -119,13 +119,13 @@ print('\n'.join(zipfile.ZipFile(sys.argv[1]).namelist()))
   # installed on. A full release wheel carries all four; the gate's own build
   # carries the host platform, which is the one that can be executed here.
   if [ -n "$HOST_KEY" ]; then
-    if ! printf '%s\n' "$NAMES" | grep -qE "interjson/bin/$HOST_KEY/interjson(\.exe)?$"; then
+    if ! printf '%s\n' "$NAMES" | grep -qE "liwenjson/bin/$HOST_KEY/liwenjson(\.exe)?$"; then
       fail "the Python wheel does not carry the engine for $HOST_KEY"
     fi
   fi
   # A wheel built by `build_wheel.sh` must never be engine-less: that is the
   # regression this gate exists for.
-  if ! printf '%s\n' "$NAMES" | grep -q 'interjson/bin/'; then
+  if ! printf '%s\n' "$NAMES" | grep -q 'liwenjson/bin/'; then
     fail "the Python wheel carries no engine at all"
   fi
 fi
@@ -136,7 +136,7 @@ mkdir -p "$TMP/inst" && cd "$TMP/inst"
 npm init -y >/dev/null 2>&1
 npm install --no-audit --no-fund "$TARBALL" >/dev/null 2>&1
 if ! node -e "
-const ij = require('interjson-moonbit');
+const ij = require('liwenjson');
 const plan = ij.gate('{\"a\":1,\"a\":2}');
 if (ij.version !== '$NPM_VERSION') { throw new Error('version mismatch'); }
 if (plan.executable !== false) { throw new Error('the gate accepted a lossy merge'); }
@@ -148,18 +148,18 @@ fi
 
 # --- the installed Python wheel must work with nothing else installed --------
 # This is the whole point of the bundled binaries: a reader who runs
-# `pip install interjson-moonbit` on a machine with no MoonBit toolchain, no
-# `interjson` on PATH and no INTERJSON_BIN must be able to make a call. The
+# `pip install liwenjson` on a machine with no MoonBit toolchain, no
+# `liwenjson` on PATH and no LIWENJSON_BIN must be able to make a call. The
 # environment is scrubbed here so a developer's own setup cannot hide a wheel
 # that only works because an engine happened to be lying around.
 if [ -n "${WHEEL:-}" ]; then
   echo "installing the Python wheel into an empty virtualenv..."
   python3 -m venv "$TMP/pyenv" >/dev/null 2>&1
   if "$TMP/pyenv/bin/pip" install --no-index --no-deps -q "$WHEEL" >/dev/null 2>&1; then
-    if ! env -u INTERJSON_BIN PATH="$TMP/pyenv/bin:/usr/bin:/bin" \
+    if ! env -u LIWENJSON_BIN PATH="$TMP/pyenv/bin:/usr/bin:/bin" \
       "$TMP/pyenv/bin/python" - "$PY_VERSION" <<'PY' >/dev/null 2>&1
 import sys
-from interjson import Client, __version__, find_binary
+from liwenjson import Client, __version__, find_binary
 
 assert __version__ == sys.argv[1], f"version {__version__} != {sys.argv[1]}"
 binary = find_binary()
@@ -175,9 +175,9 @@ PY
       fail "the installed Python wheel does not work without an external engine"
     fi
     # The console scripts are the MCP surface; they must start too.
-    if ! env -u INTERJSON_BIN PATH="$TMP/pyenv/bin:/usr/bin:/bin" \
-      "$TMP/pyenv/bin/interjson-mcp" --version >/dev/null 2>&1; then
-      fail "interjson-mcp from the installed wheel does not start"
+    if ! env -u LIWENJSON_BIN PATH="$TMP/pyenv/bin:/usr/bin:/bin" \
+      "$TMP/pyenv/bin/liwenjson-mcp" --version >/dev/null 2>&1; then
+      fail "liwenjson-mcp from the installed wheel does not start"
     fi
   else
     fail "the Python wheel could not be installed into an empty virtualenv"

@@ -6,7 +6,7 @@
 | --- | --- |
 | 输入 | 同一份对象数组文档，13579171 B（12.95 MB） |
 | 计时工具 | `/usr/bin/time -l`（峰值 RSS） |
-| InterJSON | `_build/native/release/build/cmd/interjson/interjson.exe` |
+| LIWENJSON | `_build/native/release/build/cmd/liwenjson/liwenjson.exe` |
 | Node | v24.15.0 |
 | Python | 3.12.6 |
 
@@ -33,7 +33,7 @@
 | --- | --- | --- | --- | --- |
 | python3 json.loads + json.dumps | 185.0 MB | 14.3 × | 1.34 × | tracemalloc 峰值 66.7 MB，即 RSS 的 64% 是解释器与 GC 空闲 |
 | node JSON.parse + JSON.stringify | 137.6 MB | 10.6 × | 1.00 × |  |
-| interjson repair（本表第一行） | 171.6 MB | 13.2 × | 1.25 × | 同一份文档，同一次运行 |
+| liwenjson repair（本表第一行） | 171.6 MB | 13.2 × | 1.25 × | 同一份文档，同一次运行 |
 
 ## 三、两条声明目标：声明了，本次未达成 / 未测得
 
@@ -46,7 +46,7 @@
 
 ## 四、这张表能回答什么，不能回答什么
 
-能回答：**同一份文档、同一个「读入 + 建树 + 保留」工作负载**下，各模式的峰值差多少，以及 InterJSON 与调用方本来就会用的两个运行时相比是高还是低。
+能回答：**同一份文档、同一个「读入 + 建树 + 保留」工作负载**下，各模式的峰值差多少，以及 LIWENJSON 与调用方本来就会用的两个运行时相比是高还是低。
 
 不能回答：MoonBit **core** 的 `@json.parse` 单独占多少。core 没有文件读取入口，本库也刻意不暴露一个。能测到的最接近的两臂是 `--check`（建树、不渲染，本次 97.3 MB）与 `repair()`（建树并渲染，本次 171.6 MB）：`--check` 现在设置 `want_text=false`，所以两者之差是**渲染输出**的边际成本；剩下的 97.3 MB 是值树与字符串 parts，core 自身在这部分里占多少，从这两个数里拆不出来。要一个精确的 core 基线，需要给基准程序加一个 FFI 读文件入口（core 自身没有文件读取 API）。
 

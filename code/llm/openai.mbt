@@ -27,7 +27,7 @@
 fn ToolStream::push_openai(
   self : ToolStream,
   v : Json,
-) -> Array[ToolCall] raise @interjson.InterJSONError {
+) -> Array[ToolCall] raise @liwenjson.LIWENJSONError {
   let out : Array[ToolCall] = []
   // An error frame is `{"error": {"message", "type", "param", "code"}}`; the
   // official clients raise on it and stop reading, which is what happens here.
@@ -49,7 +49,7 @@ fn ToolStream::push_openai(
   match field_string(v, "type") {
     Some(t) =>
       if t.has_prefix("response.") || t == "error" {
-        raise @interjson.InvalidEvent(
+        raise @liwenjson.InvalidEvent(
           "this is a Responses API event (`" +
           t +
           "`); read it with the `openai-responses` provider, not the Chat Completions one",
@@ -70,7 +70,7 @@ fn ToolStream::push_openai(
       if field(v, "object") is Some(_) ||
         field(v, "id") is Some(_) ||
         field(v, "model") is Some(_) {
-        raise @interjson.InvalidEvent(
+        raise @liwenjson.InvalidEvent(
           "a Chat Completions chunk must carry `choices`",
         )
       } else {
@@ -167,7 +167,7 @@ fn ToolStream::push_openai(
 fn ToolStream::push_responses(
   self : ToolStream,
   v : Json,
-) -> Array[ToolCall] raise @interjson.InterJSONError {
+) -> Array[ToolCall] raise @liwenjson.LIWENJSONError {
   let out : Array[ToolCall] = []
   let kind = match field_string(v, "type") {
     Some(t) => t

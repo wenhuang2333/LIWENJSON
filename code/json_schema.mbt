@@ -75,7 +75,7 @@ fn json_schema_unchecked_assertion(key : String) -> Bool {
 
 ///|
 /// Refuse a keyword the skeleton cannot represent.
-fn json_schema_unsupported(key : String) -> Unit raise InterJSONError {
+fn json_schema_unsupported(key : String) -> Unit raise LIWENJSONError {
   raise SchemaError(
     "json schema: unsupported keyword `" +
     key +
@@ -85,7 +85,7 @@ fn json_schema_unsupported(key : String) -> Unit raise InterJSONError {
 
 ///|
 /// A numeric field, accepting an integer or a finite double.
-fn json_schema_number(v : Json, key : String) -> Dec raise InterJSONError {
+fn json_schema_number(v : Json, key : String) -> Dec raise LIWENJSONError {
   match v {
     Json::Number(_, ..) =>
       match number_dec(v) {
@@ -116,7 +116,7 @@ fn json_schema_number(v : Json, key : String) -> Dec raise InterJSONError {
 /// can rely on, so the bound is checked in `Double` space first: a declaration
 /// whose bound the implementation cannot represent is an `E070`, never a silent
 /// clamp.
-fn json_schema_uint(v : Json, key : String) -> Int32 raise InterJSONError {
+fn json_schema_uint(v : Json, key : String) -> Int32 raise LIWENJSONError {
   let d = json_schema_number(v, key)
   match d.length_value() {
     Some(n) => n
@@ -131,7 +131,7 @@ fn json_schema_uint(v : Json, key : String) -> Int32 raise InterJSONError {
 
 ///|
 /// A string field.
-fn json_schema_string(v : Json, key : String) -> String raise InterJSONError {
+fn json_schema_string(v : Json, key : String) -> String raise LIWENJSONError {
   match v {
     Json::String(s) => s
     _ => raise SchemaError("json schema: `" + key + "` must be a string")
@@ -140,7 +140,7 @@ fn json_schema_string(v : Json, key : String) -> String raise InterJSONError {
 
 ///|
 /// `required` as a lookup table.
-fn json_schema_required(v : Json) -> Map[String, Bool] raise InterJSONError {
+fn json_schema_required(v : Json) -> Map[String, Bool] raise LIWENJSONError {
   let out : Map[String, Bool] = Map([])
   match v {
     Json::Array(items) =>
@@ -171,7 +171,7 @@ priv struct PatternSpec {
 /// string where it actually demanded two-to-the-thirty-second characters. The
 /// bound is checked *before* the multiply-add, so no intermediate values are
 /// computed.
-fn json_schema_quantifier_int(s : StringView) -> Int32 raise InterJSONError {
+fn json_schema_quantifier_int(s : StringView) -> Int32 raise LIWENJSONError {
   if s.length() == 0 {
     raise SchemaError("json schema: empty quantifier bound")
   }
@@ -215,7 +215,7 @@ fn json_schema_quantifier_int(s : StringView) -> Int32 raise InterJSONError {
 ///
 /// Everything else — `.`, `*` inside the class, escapes, alternation, groups —
 /// is an `E070`.
-fn json_schema_pattern(s : String) -> PatternSpec raise InterJSONError {
+fn json_schema_pattern(s : String) -> PatternSpec raise LIWENJSONError {
   let n = s.length()
   if n < 4 || s.at(0).to_int() != 0x5E || s.at(n - 1).to_int() != 0x24 {
     raise SchemaError(
@@ -308,7 +308,7 @@ fn json_schema_pattern(s : String) -> PatternSpec raise InterJSONError {
 fn json_schema_constraints(
   obj : Map[String, Json],
   kind : Schema,
-) -> Constraints? raise InterJSONError {
+) -> Constraints? raise LIWENJSONError {
   let c = Constraints::none()
   let mut any = false
   let mut pattern_spec : PatternSpec? = None
@@ -520,7 +520,7 @@ fn json_schema_constraints(
 
 ///|
 /// Translate one JSON Schema node into a skeleton.
-fn json_schema_node(v : Json) -> Schema raise InterJSONError {
+fn json_schema_node(v : Json) -> Schema raise LIWENJSONError {
   json_schema_node_at(v, 0)
 }
 
@@ -530,7 +530,7 @@ fn json_schema_node(v : Json) -> Schema raise InterJSONError {
 /// A declaration is external input -- it is the tool's `inputSchema`, supplied
 /// by a host -- so it must not be able to exhaust the stack. The limit is
 /// `MAX_SCHEMA_DEPTH` and the failure is a documented `E070`, not a crash.
-fn json_schema_node_at(v : Json, depth : Int32) -> Schema raise InterJSONError {
+fn json_schema_node_at(v : Json, depth : Int32) -> Schema raise LIWENJSONError {
   if depth > MAX_SCHEMA_DEPTH {
     raise SchemaError(
       "json schema: declaration nests deeper than " +
@@ -578,7 +578,7 @@ fn json_schema_node_at(v : Json, depth : Int32) -> Schema raise InterJSONError {
           raise SchemaError(
             "json schema: `" +
             key +
-            "` is not checked by InterJSON; remove it (it would otherwise read as a guarantee) or validate it in the host",
+            "` is not checked by LIWENJSON; remove it (it would otherwise read as a guarantee) or validate it in the host",
           )
         }
         json_schema_unsupported(key)
@@ -697,13 +697,13 @@ fn json_schema_node_at(v : Json, depth : Int32) -> Schema raise InterJSONError {
 ///
 /// is the same skeleton as `{!query:string,?limit:integer(minimum:1)}`.
 /// Unsupported keywords raise `E070`; annotations are ignored.
-pub fn Schema::of_json_schema(value : Json) -> Schema raise InterJSONError {
+pub fn Schema::of_json_schema(value : Json) -> Schema raise LIWENJSONError {
   json_schema_node(value)
 }
 
 ///|
 /// Parse JSON Schema text and translate it.
-pub fn Schema::parse_json_schema(text : String) -> Schema raise InterJSONError {
+pub fn Schema::parse_json_schema(text : String) -> Schema raise LIWENJSONError {
   let value = @json.parse(text) catch {
     _ => raise SchemaError("json schema: input is not valid JSON")
   }

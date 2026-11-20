@@ -4,7 +4,7 @@
 ///|
 /// Repair `input` and return the repaired text, or `ERROR: …` on a fatal error.
 pub fn repair_text(input : String) -> String {
-  @interjson.repair(input).text catch {
+  @liwenjson.repair(input).text catch {
     e => "ERROR: " + e.to_string()
   }
 }
@@ -14,7 +14,7 @@ pub fn repair_text(input : String) -> String {
 /// line, or `-` when nothing had to be repaired.
 pub fn report_text(input : String) -> String {
   try {
-    let repairs = @interjson.repair(input).repairs
+    let repairs = @liwenjson.repair(input).repairs
     if repairs.length() == 0 {
       return "-"
     }
@@ -50,7 +50,7 @@ pub fn snapshot_text(input : String, upto : Int32) -> String {
     } else {
       upto
     }
-    let parser = @interjson.PartialParser::new()
+    let parser = @liwenjson.PartialParser::new()
     parser.feed(input[:n].to_owned())
     let snap = parser.snapshot()
     let value = match snap.value {
@@ -84,13 +84,13 @@ pub fn snapshot_text(input : String, upto : Int32) -> String {
 
 ///|
 /// The safety profile named by a string, or `None` when it is unknown/empty.
-fn web_policy(name : String) -> @interjson.SafetyPolicy? {
+fn web_policy(name : String) -> @liwenjson.SafetyPolicy? {
   match name {
-    "permissive" => Some(@interjson.SafetyPolicy::permissive())
-    "interactive" => Some(@interjson.SafetyPolicy::interactive())
-    "execution" => Some(@interjson.SafetyPolicy::for_execution())
-    "agent" => Some(@interjson.SafetyPolicy::for_agent())
-    "strict" => Some(@interjson.SafetyPolicy::strict())
+    "permissive" => Some(@liwenjson.SafetyPolicy::permissive())
+    "interactive" => Some(@liwenjson.SafetyPolicy::interactive())
+    "execution" => Some(@liwenjson.SafetyPolicy::for_execution())
+    "agent" => Some(@liwenjson.SafetyPolicy::for_agent())
+    "strict" => Some(@liwenjson.SafetyPolicy::strict())
     _ => None
   }
 }
@@ -98,17 +98,17 @@ fn web_policy(name : String) -> @interjson.SafetyPolicy? {
 ///|
 /// Options for a profile name; the default profile when the name is empty or
 /// unknown.
-fn web_options(policy : String) -> @interjson.Options {
+fn web_options(policy : String) -> @liwenjson.Options {
   match web_policy(policy) {
-    Some(p) => @interjson.Options::default().with_policy(p)
-    None => @interjson.Options::default()
+    Some(p) => @liwenjson.Options::default().with_policy(p)
+    None => @liwenjson.Options::default()
   }
 }
 
 ///|
 /// Repair under a named safety profile.
 pub fn repair_opts_text(input : String, policy : String) -> String {
-  @interjson.repair(input, options=web_options(policy)).text catch {
+  @liwenjson.repair(input, options=web_options(policy)).text catch {
     e => "ERROR: " + e.to_string()
   }
 }
@@ -124,8 +124,8 @@ pub fn repair_opts_text(input : String, policy : String) -> String {
 /// so the entry point takes the budget as an argument instead of hard-coding
 /// one: the default stays where the library puts it.
 pub fn analyze_depth_text(input : String, max_depth : Int32) -> String {
-  let opts = { ..@interjson.Options::default(), max_depth, }
-  let plan = @interjson.analyze(input, options=opts)
+  let opts = { ..@liwenjson.Options::default(), max_depth, }
+  let plan = @liwenjson.analyze(input, options=opts)
   let sb = StringBuilder()
   sb.write_string("{\"decision\":")
   sb.write_string("\"" + escape(plan.decision.name()) + "\"")
@@ -157,12 +157,12 @@ pub fn analyze_depth_text(input : String, max_depth : Int32) -> String {
 pub fn analyze_text(input : String, policy : String, schema : String) -> String {
   let opts = web_options(policy)
   if schema == "" {
-    return @interjson.analyze(input, options=opts).to_json()
+    return @liwenjson.analyze(input, options=opts).to_json()
   }
-  let s = @interjson.Schema::parse(schema) catch {
+  let s = @liwenjson.Schema::parse(schema) catch {
     e => return "{\"error\":\"" + escape(e.to_string()) + "\"}"
   }
-  @interjson.analyze(input, options=opts, schema=s).to_json()
+  @liwenjson.analyze(input, options=opts, schema=s).to_json()
 }
 
 ///|
@@ -175,7 +175,7 @@ pub fn analyze_json_schema_text(
   schema_json : String,
 ) -> String {
   let mut err = ""
-  let parsed = Some(@interjson.Schema::parse_json_schema(schema_json)) catch {
+  let parsed = Some(@liwenjson.Schema::parse_json_schema(schema_json)) catch {
     e => {
       err = e.to_string()
       None
@@ -183,7 +183,7 @@ pub fn analyze_json_schema_text(
   }
   match parsed {
     Some(s) => {
-      let plan = @interjson.analyze(
+      let plan = @liwenjson.analyze(
         input,
         options=web_options(policy),
         schema=s,
@@ -205,12 +205,12 @@ pub fn analyze_prose_text(
 ) -> String {
   let opts = { ..web_options(policy), skip_prose: true, }
   if schema == "" {
-    return @interjson.analyze(input, options=opts).to_json()
+    return @liwenjson.analyze(input, options=opts).to_json()
   }
-  let s = @interjson.Schema::parse(schema) catch {
+  let s = @liwenjson.Schema::parse(schema) catch {
     e => return "{\"error\":\"" + escape(e.to_string()) + "\"}"
   }
-  @interjson.analyze(input, options=opts, schema=s).to_json()
+  @liwenjson.analyze(input, options=opts, schema=s).to_json()
 }
 
 ///|
@@ -221,12 +221,12 @@ pub fn analyze_json_schema_prose_text(
   schema_json : String,
 ) -> String {
   let opts = { ..web_options(policy), skip_prose: true, }
-  let parsed = Some(@interjson.Schema::parse_json_schema(schema_json)) catch {
+  let parsed = Some(@liwenjson.Schema::parse_json_schema(schema_json)) catch {
     e => return "{\"error\":\"" + escape(e.to_string()) + "\"}"
   }
   match parsed {
     Some(s) => {
-      let plan = @interjson.analyze(input, options=opts, schema=s)
+      let plan = @liwenjson.analyze(input, options=opts, schema=s)
       plan.to_json()
     }
     None => "{\"error\":\"schema\"}"
@@ -238,13 +238,13 @@ pub fn analyze_json_schema_prose_text(
 /// field-ready event with the input fraction it happened at, and the final
 /// verdict. One pass of the engine; the page only draws what came back.
 pub fn readiness_text(input : String, schema : String) -> String {
-  let s = @interjson.Schema::parse(schema) catch {
+  let s = @liwenjson.Schema::parse(schema) catch {
     e => return "{\"error\":\"" + escape(e.to_string()) + "\"}"
   }
   try {
-    let full = @interjson.semantic_readiness(input, s)
-    let events = @interjson.watch_readiness(input, s)
-    let fields = @interjson.field_readiness(input)
+    let full = @liwenjson.semantic_readiness(input, s)
+    let events = @liwenjson.watch_readiness(input, s)
+    let fields = @liwenjson.field_readiness(input)
     let sb = StringBuilder()
     sb.write_string("{\"syntax_permille\":")
     sb.write_string(full.syntax_permille.to_string())
@@ -315,8 +315,8 @@ pub fn deltas_text(input : String, upto : Int32) -> String {
   let n = input.length()
   let cap = if upto < 0 { 0 } else if upto > n { n } else { upto }
   try {
-    let parser = @interjson.PartialParser::new(
-      options=@interjson.Options::for_llm(),
+    let parser = @liwenjson.PartialParser::new(
+      options=@liwenjson.Options::for_llm(),
     )
     parser.feed(input[:cap].to_owned())
     let ds = parser.drain_deltas()
@@ -369,10 +369,10 @@ pub fn live_text(input : String, upto : Int32, schema : String) -> String {
   let prefix = input[:cap].to_owned()
   // A declaration that cannot be parsed is reported before any frame is built:
   // the streaming page must not show "no skeleton" for a typo.
-  let declared : @interjson.Schema? = if schema == "" {
+  let declared : @liwenjson.Schema? = if schema == "" {
     None
   } else {
-    Some(@interjson.Schema::parse(schema)) catch {
+    Some(@liwenjson.Schema::parse(schema)) catch {
       e => return "{\"error\":\"" + escape(e.to_string()) + "\"}"
     }
   }
@@ -382,9 +382,9 @@ pub fn live_text(input : String, upto : Int32, schema : String) -> String {
     // execution channel is the gate (`for_agent`), which refuses a truncated
     // prefix because closing it would invent the rest. A page that showed only
     // one of the two would either hide the risk or block on every frame.
-    let stream_opts = @interjson.Options::for_llm()
-    let gate_opts = @interjson.Options::for_agent()
-    let parser = @interjson.PartialParser::new(options=stream_opts)
+    let stream_opts = @liwenjson.Options::for_llm()
+    let gate_opts = @liwenjson.Options::for_agent()
+    let parser = @liwenjson.PartialParser::new(options=stream_opts)
     parser.feed(prefix)
     // The members seen so far, and which of them can no longer change. This is
     // the delta protocol being used as intended: a consumer subscribes to the
@@ -400,11 +400,11 @@ pub fn live_text(input : String, upto : Int32, schema : String) -> String {
       }
       _ => []
     }
-    let tracker = @interjson.FieldTracker::new(keys)
+    let tracker = @liwenjson.FieldTracker::new(keys)
     for d in parser.drain_deltas() {
       tracker.feed(d)
     }
-    let plan = @interjson.analyze(prefix, options=gate_opts)
+    let plan = @liwenjson.analyze(prefix, options=gate_opts)
     let sb = StringBuilder()
     sb.write_string("{\"consumed\":")
     sb.write_string(cap.to_string())
@@ -448,13 +448,13 @@ pub fn live_text(input : String, upto : Int32, schema : String) -> String {
     sb.write_string(plan.to_json())
     match declared {
       Some(sk) => {
-        let plan2 = @interjson.analyze(prefix, options=gate_opts, schema=sk)
+        let plan2 = @liwenjson.analyze(prefix, options=gate_opts, schema=sk)
         sb.write_string(",\"schema\":")
         sb.write_string(plan2.to_json())
         // The document level readiness: two fractions of the *whole* stream. The
         // page uses them to answer the interesting question, which is not
         // "has the JSON ended" but "do I already have what I asked for".
-        let full = @interjson.semantic_readiness(input, sk, step=1) catch {
+        let full = @liwenjson.semantic_readiness(input, sk, step=1) catch {
           _ =>
             {
               syntax_permille: -1,
@@ -515,7 +515,7 @@ pub fn live_text(input : String, upto : Int32, schema : String) -> String {
 
 ///|
 /// `open_path` as `a/0/b`.
-fn path_text(snap : @interjson.Snapshot) -> String {
+fn path_text(snap : @liwenjson.Snapshot) -> String {
   let sb = StringBuilder()
   for i = 0; i < snap.open_path.length(); i = i + 1 {
     if i > 0 {
@@ -555,19 +555,19 @@ fn escape(s : String) -> String {
 }
 
 ///|
-extern "js" fn js_register1(name : String, f : (String) -> String) -> Unit = "globalThis.interjsonRegister1"
+extern "js" fn js_register1(name : String, f : (String) -> String) -> Unit = "globalThis.liwenjsonRegister1"
 
 ///|
 extern "js" fn js_register3(
   name : String,
   f : (String, Int32, String) -> String,
-) -> Unit = "globalThis.interjsonRegister3"
+) -> Unit = "globalThis.liwenjsonRegister3"
 
 ///|
 extern "js" fn js_register2(
   name : String,
   f : (String, Int32) -> String,
-) -> Unit = "globalThis.interjsonRegister2"
+) -> Unit = "globalThis.liwenjsonRegister2"
 
 ///|
 /// The same host hook, for a two-string entry point (`repair_opts`). The host
@@ -575,14 +575,14 @@ extern "js" fn js_register2(
 extern "js" fn js_register2s(
   name : String,
   f : (String, String) -> String,
-) -> Unit = "globalThis.interjsonRegister2"
+) -> Unit = "globalThis.liwenjsonRegister2"
 
 ///|
 /// The three-string form of the same hook (`analyze`).
 extern "js" fn js_register3s(
   name : String,
   f : (String, String, String) -> String,
-) -> Unit = "globalThis.interjsonRegister3"
+) -> Unit = "globalThis.liwenjsonRegister3"
 
 ///|
 /// Hand the entry points to the host page. No banner: the bundle is also

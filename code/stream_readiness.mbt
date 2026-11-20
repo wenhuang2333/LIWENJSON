@@ -4,7 +4,7 @@
 // re-reading the document about a thousand times: one partial parse per sample
 // point, then a path lookup and a schema walk per declared member. That is fine
 // for an audit and hopeless for a runtime. On the 0.5.0 gate corpus it costs
-// 32.7–34.3x a plain `repair` of the same bytes, and `interjson explain --schema`
+// 32.7–34.3x a plain `repair` of the same bytes, and `liwenjson explain --schema`
 // on a 100 KiB payload spends ~200 ms on the curve alone.
 //
 // The document does not have to be re-read, because the engine already emits
@@ -329,7 +329,7 @@ pub struct SemanticWatcher {
 pub fn SemanticWatcher::new(
   schema : Schema,
   options? : Options,
-) -> SemanticWatcher raise InterJSONError {
+) -> SemanticWatcher raise LIWENJSONError {
   let base = match options {
     Some(o) => o
     None => Options::default()
@@ -503,7 +503,7 @@ fn delta_final(d : Delta) -> Bool {
 pub fn SemanticWatcher::feed(
   self : SemanticWatcher,
   chunk : String,
-) -> Unit raise InterJSONError {
+) -> Unit raise LIWENJSONError {
   self.parser.feed(chunk)
   self.bytes = self.bytes + chunk.length()
   for d in self.parser.drain_deltas() {
@@ -892,7 +892,7 @@ pub fn SemanticWatcher::verdict(self : SemanticWatcher) -> SchemaVerdict {
 /// Close the document: drain what the model never got to and decide.
 pub fn SemanticWatcher::finish(
   self : SemanticWatcher,
-) -> FinalResult raise InterJSONError {
+) -> FinalResult raise LIWENJSONError {
   let fin = self.parser.finish()
   // Deltas the input never produced: they close what the model left open. Their
   // positions are still the deltas' `at` (the total length, per `api.mbt`), but
@@ -959,7 +959,7 @@ pub fn watch_readiness(
   schema : Schema,
   chunk? : Int32,
   options? : Options,
-) -> Array[ReadinessEventAt] raise InterJSONError {
+) -> Array[ReadinessEventAt] raise LIWENJSONError {
   let n = input.length()
   let size = auto_step(
     n,
@@ -1012,7 +1012,7 @@ pub fn decided_at_permille(
   schema : Schema,
   chunk? : Int32,
   options? : Options,
-) -> Int32 raise InterJSONError {
+) -> Int32 raise LIWENJSONError {
   let n = input.length()
   if n == 0 {
     return -1
