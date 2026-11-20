@@ -158,6 +158,121 @@ function report(input) {
   return engine.report(input);
 }
 
+const SNAPSHOT_STATES = ["Empty", "Partial", "Complete"];
+
+/**
+ * The index just past the JSON value that starts at `start`.
+ *
+ * The snapshot is rendered as `value | completeness | open path`. A value is
+ * JSON, so its strings (and lone string keys) may contain the separator; an
+ * open path keeps raw key names, so it may contain it too. Splitting the
+ * whole rendering on `" | "` therefore cut values in half and threw
+ * `SyntaxError: Unterminated string in JSON` for `{"x":"a | b"}`. This
+ * scanner finds where the value ends so the rest is split at a known offset.
+ */
+function jsonValueEnd(text, start) {
+  const fail = () => {
+    throw new Error("liwenjson returned an unreadable snapshot: the value is not JSON");
+  };
+  const first = text[start];
+  if (first === '"') {
+    let i = start + 1;
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === "\\") {
+        i += 2;
+      } else if (ch === '"') {
+        return i + 1;
+      } else {
+        i += 1;
+      }
+    }
+    fail();
+  }
+  if (first === "{" || first === "[") {
+    let depth = 0;
+    let i = start;
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === '"') {
+        i += 1;
+        while (i < text.length) {
+          if (text[i] === "\\") {
+            i += 2;
+          } else if (text[i] === '"') {
+            i += 1;
+            break;
+          } else {
+            i += 1;
+          }
+        }
+        if (i > text.length) {
+          fail();
+        }
+        continue;
+      }
+      if (ch === "{" || ch === "[") {
+        depth += 1;
+      } else if (ch === "}" || ch === "]") {
+        depth -= 1;
+        if (depth === 0) {
+          return i + 1;
+        }
+      }
+      i += 1;
+    }
+    fail();
+  }
+  const match = /^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(
+    text.slice(start),
+  );
+  if (!match || match[0] === "-" || match[0] === "") {
+    fail();
+  }
+  return start + match[0].length;
+}
+
+/**
+ * Split one `value | completeness | open path` rendering.
+ *
+ * Never throw on a value that contains the separator: scan the leading JSON
+ * value, then require the fixed `" | "`, one known state token and the second
+ * `" | "`. Whatever follows is the open path verbatim (it may itself contain
+ * `" | "`). The engine renders "no value yet" as `-`, which cannot collide
+ * with JSON because `-` is not a value on its own.
+ */
+function parseSnapshotText(text) {
+  const corrupt = (why) => {
+    throw new Error(`liwenjson returned an unreadable snapshot (${why}): ${JSON.stringify(text)}`);
+  };
+  let value;
+  let end;
+  if (text.startsWith("- | ")) {
+    value = null;
+    end = 1;
+  } else {
+    end = jsonValueEnd(text, 0);
+    try {
+      value = JSON.parse(text.slice(0, end));
+    } catch (error) {
+      corrupt(error.message);
+    }
+    if (text.slice(end, end + 3) !== " | ") {
+      corrupt("no separator after the value");
+    }
+  }
+  const rest = text.slice(end + 3);
+  const bar = rest.indexOf(" | ");
+  if (bar === -1) {
+    corrupt("no separator after the completeness");
+  }
+  const completeness = rest.slice(0, bar);
+  if (!SNAPSHOT_STATES.includes(completeness)) {
+    corrupt(`unknown completeness ${JSON.stringify(completeness)}`);
+  }
+  return { value, completeness, openPath: rest.slice(bar + 3) };
+}
+
 /**
  * The partial value of the first `upto` code units.
  *
@@ -167,12 +282,7 @@ function report(input) {
  * form is still available through `snapshotText`.
  */
 function snapshot(input, upto) {
-  const parts = snapshotText(input, upto).split(" | ");
-  return {
-    value: parts.length > 0 && parts[0] !== "-" ? JSON.parse(parts[0]) : null,
-    completeness: parts.length > 1 ? parts[1] : "",
-    openPath: parts.length > 2 ? parts[2] : "",
-  };
+  return parseSnapshotText(snapshotText(input, upto));
 }
 
 /** The partial value of the first `upto` code units, as `value | state | path`. */

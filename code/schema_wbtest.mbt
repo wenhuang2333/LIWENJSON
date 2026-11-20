@@ -507,8 +507,14 @@ test "members are looked up by name only in an object" {
 test "at_path walks members, indices and stops at a leaf" {
   let s = schema_or_any("{!a:{!b:[integer]},?c:string}")
   // `""` is the whole declaration.
-  assert_eq(s.at_path("").map(fn(x) { x.stringify() }), Some(s.stringify()))
-  assert_eq(s.at_path("a").map(fn(x) { x.stringify() }), Some("{!b:[integer]}"))
+  assert_eq(
+    s.at_path("").map(x => x.stringify() catch { _ => "" }),
+    Some(s.stringify() catch { _ => "" }),
+  )
+  assert_eq(
+    s.at_path("a").map(x => x.stringify() catch { _ => "" }),
+    Some("{!b:[integer]}"),
+  )
   assert_eq(s.at_path("a.b").map(fn(x) { x.name() }), Some("array"))
   // A numeric step selects the array element declaration.
   assert_eq(s.at_path("a.b.0").map(fn(x) { x.name() }), Some("integer"))
@@ -1414,4 +1420,344 @@ test "every declaration that parsed before 0.7.0 still parses the same" {
     "{!a:integer,!b:string}",
   )
   assert_eq(parse_code("{a:integer (minimum:0)}"), "E070")
+}
+
+// ---------------------------------------------------------------------------
+// 1120 P2-02 — per mille is computed without overflowing Int32.
+// ---------------------------------------------------------------------------
+
+///|
+test "permille is computed in Int64 and never leaves 0..1000" {
+  // `part * 1000` overflows Int32 past 2,147,483, so the largest inputs are the
+  // interesting ones: 2.2M and 3M of a 6M document are exactly where the old
+  // arithmetic went negative.
+  assert_eq(permille(3_000_000, 6_000_000), 500)
+  assert_eq(permille(2_200_000, 2_200_000), 1000)
+  assert_eq(permille(2_200_000, 4_400_000), 500)
+  assert_eq(permille(2_100_000, 4_200_000), 500)
+  // Ordinary values keep their ordinary answers.
+  assert_eq(permille(0, 7), 0)
+  assert_eq(permille(7, 7), 1000)
+  assert_eq(permille(1, 3), 333)
+  // A whole of zero is "nothing sampled yet", not a division.
+  assert_eq(permille(0, 0), 1000)
+  assert_eq(permille(3, 0), 1000)
+  // No successful sample can be negative or above 1000, for any large pair
+  // with `0 <= part <= whole` (the sampled fraction of the input).
+  for whole in [2_147_483_647, 2_200_000, 6_000_000, 4_294_967] {
+    for part in [whole, whole / 2, whole / 3, 0] {
+      let r = permille(part, whole)
+      assert_true(
+        r >= 0 && r <= 1000,
+        msg=part.to_string() + "/" + whole.to_string(),
+      )
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1120 P1-09 — root, the empty member name, and names that need escaping.
+// ---------------------------------------------------------------------------
+
+///|
+test "the empty member name has its own path, distinct from root" {
+  let s = schema_or_any("{\"\":integer}")
+  assert_eq(s.required_paths() catch { _ => [] }, ["/"])
+  // Root is `""`; the empty member is `/`. Both are paths to different nodes.
+  assert_eq(s.at_path("").map(fn(x) { x.name() }), Some("object"))
+  assert_eq(s.at_path("/").map(fn(x) { x.name() }), Some("integer"))
+  assert_true(
+    s.at_path("k") is None,
+    msg="the empty name is not any other name",
+  )
+  let v = parse("{\"\":1}") catch {
+    _ => return assert_true(false, msg="input did not parse")
+  }
+  assert_eq(lookup_path(v.value, "/").map(fn(x) { x.stringify() }), Some("1"))
+  assert_eq(
+    lookup_path(v.value, "").map(fn(x) { x.stringify() }),
+    Some(v.value.stringify()),
+  )
+  let empty = parse("{}") catch {
+    _ => return assert_true(false, msg="input did not parse")
+  }
+  assert_true(lookup_path(empty.value, "/") is None, msg="absent empty key")
+  // The verdict's `missing` list uses the same path space, so absence is
+  // reported as `/` and never as root.
+  assert_eq(s.evaluate(empty.value).missing, ["/"])
+  // The text form quotes the empty name, and round-trips.
+  assert_eq(s.stringify() catch { _ => "" }, "{!\"\":integer}")
+  assert_eq(parse_code(s.stringify() catch { _ => "" }), "ok")
+}
+
+///|
+test "a member name containing the separator uses the pointer form" {
+  let s = schema_or_any("{\"a.b\":integer,?c:string}")
+  assert_eq(s.required_paths() catch { _ => [] }, ["/a.b"])
+  assert_eq(s.at_path("/a.b").map(fn(x) { x.name() }), Some("integer"))
+  // `a.b` in the dotted form still means `a` then `b`, which does not exist.
+  assert_true(
+    s.at_path("a.b") is None,
+    msg="the dotted form is a different path",
+  )
+  let v = parse("{\"a.b\":1}") catch {
+    _ => return assert_true(false, msg="input did not parse")
+  }
+  assert_eq(
+    lookup_path(v.value, "/a.b").map(fn(x) { x.stringify() }),
+    Some("1"),
+  )
+  // A nested declaration below a pointer-form path is extended with `/`, and
+  // a walk's mismatch path goes through the same encoder.
+  let nested = schema_or_any("{\"a.b\":{?x:integer}}")
+  let bad = parse("{\"a.b\":{\"x\":\"s\"}}") catch {
+    _ => return assert_true(false, msg="input did not parse")
+  }
+  let verdict = nested.evaluate(bad.value)
+  assert_eq(verdict.mismatched.length(), 1)
+  assert_eq(verdict.mismatched[0].path, "/a.b/x")
+  // The two RFC 6901 escapes are applied to the name, not to the path.
+  let escaped = schema_or_any("{\"a/b\":integer,\"t~u\":integer}")
+  assert_eq(escaped.required_paths() catch { _ => [] }, ["/a~1b", "/t~0u"])
+  let ev = parse("{\"a/b\":1,\"t~u\":2}") catch {
+    _ => return assert_true(false, msg="input did not parse")
+  }
+  assert_eq(
+    lookup_path(ev.value, "/a~1b").map(fn(x) { x.stringify() }),
+    Some("1"),
+  )
+  assert_eq(
+    lookup_path(ev.value, "/t~0u").map(fn(x) { x.stringify() }),
+    Some("2"),
+  )
+}
+
+///|
+test "numeric and leading-zero key names are keys, not indices" {
+  let s = schema_or_any("{\"0\":integer,\"01\":integer,\"1x\":integer}")
+  assert_eq(s.required_paths() catch { _ => [] }, ["0", "01", "1x"])
+  let v = parse("{\"0\":10,\"01\":11,\"1x\":12}") catch {
+    _ => return assert_true(false, msg="input did not parse")
+  }
+  // A plain name looks the object up by key; it is not parsed as an index when
+  // the value is an object.
+  assert_eq(lookup_path(v.value, "0").map(fn(x) { x.stringify() }), Some("10"))
+  assert_eq(lookup_path(v.value, "01").map(fn(x) { x.stringify() }), Some("11"))
+  assert_eq(lookup_path(v.value, "1x").map(fn(x) { x.stringify() }), Some("12"))
+  // The declared `01` is not the array slot `1`: a value of the wrong shape is
+  // refused by the declaration, not silently navigated.
+  let arr = parse("[10,11]") catch {
+    _ => return assert_true(false, msg="input did not parse")
+  }
+  assert_true(
+    lookup_path(arr.value, "01") is None,
+    msg="leading zero is not an index",
+  )
+  assert_eq(
+    lookup_path(arr.value, "1").map(fn(x) { x.stringify() }),
+    Some("11"),
+  )
+}
+
+///|
+test "nested empty names compose in the pointer form" {
+  let s = schema_or_any("{\"\":{\"\":integer}}")
+  assert_eq(s.required_paths() catch { _ => [] }, ["/", "//"])
+  let v = parse("{\"\":{\"\":7}}") catch {
+    _ => return assert_true(false, msg="input did not parse")
+  }
+  assert_eq(lookup_path(v.value, "//").map(fn(x) { x.stringify() }), Some("7"))
+  assert_eq(
+    lookup_path(v.value, "/").map(fn(x) { x.stringify() }),
+    Some("{\"\":7}"),
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 1120 P2-03 — hand-built declarations: deep chains, cycles, legal sharing.
+// ---------------------------------------------------------------------------
+
+///|
+/// A `depth`-level chain of required members named `k`, innermost `any`.
+fn deep_declaration(depth : Int32) -> Schema {
+  let mut cur = Schema::Any
+  for _i = 0; _i < depth; _i = _i + 1 {
+    let members : Array[SchemaMember] = [
+      { key: "k", required: true, schema: cur, },
+    ]
+    cur = Obj(members)
+  }
+  cur
+}
+
+///|
+test "a deep hand-built declaration is traversed iteratively" {
+  let depth = 100_000
+  let s = deep_declaration(depth)
+  // `stringify` writes 5 bytes per level (`{!k:` plus a closing `}`, with the
+  // innermost `any`): a recursive walk died on the native stack far below this.
+  let text = s.stringify() catch {
+    _ => return assert_true(false, msg="deep stringify failed")
+  }
+  assert_eq(text.length(), depth * 5 + 3)
+  assert_eq(text.at(0).to_int(), 0x7B)
+  // `required_paths` is quadratic in its *output* (each level names every
+  // ancestor), so a few thousand levels are enough to prove the collector; the
+  // deep walk itself is proven by `stringify` above.
+  let paths = deep_declaration(1_000).required_paths() catch {
+    _ => return assert_true(false, msg="deep required_paths failed")
+  }
+  assert_eq(paths.length(), 1_000)
+  assert_eq(paths[0], "k")
+  assert_eq(paths[999].length(), 1_999)
+  // The budgets are a controlled error, not a crash.
+  let too_deep = deep_declaration(1_000).stringify(depth_budget=10) catch {
+    SchemaError(m) => m
+    _ => "no error"
+  }
+  assert_eq(
+    too_deep, "the schema is nested more deeply than a traversal may walk",
+  )
+  let too_large = deep_declaration(1_000).stringify(node_budget=10) catch {
+    SchemaError(m) => m
+    _ => "no error"
+  }
+  assert_eq(too_large, "the schema is larger than a traversal may walk")
+  let mut paths_budget = ""
+  ignore(deep_declaration(100_000).required_paths(node_budget=100)) catch {
+    SchemaError(m) => paths_budget = m
+    _ => paths_budget = "no error"
+  }
+  assert_eq(paths_budget, "the schema is larger than a traversal may walk")
+}
+
+///|
+test "a cyclic hand-built declaration is refused with E070, not crashed" {
+  // A self-reference: the member array is mutable, so an `Obj` can contain
+  // itself. A recursive walk spun until the stack died; the ancestor chain now
+  // reports `E070`.
+  let members : Array[SchemaMember] = []
+  let cyclic = Obj(members)
+  members.push({ key: "self", required: true, schema: cyclic, })
+  let text = cyclic.stringify() catch {
+    SchemaError(m) => m
+    _ => "no error"
+  }
+  assert_eq(text, "the schema contains a cycle")
+  let mut cycle_paths = ""
+  ignore(cyclic.required_paths()) catch {
+    SchemaError(m) => cycle_paths = m
+    _ => cycle_paths = "no error"
+  }
+  assert_eq(cycle_paths, "the schema contains a cycle")
+  // An indirect cycle through two declarations is caught the same way.
+  let a_members : Array[SchemaMember] = []
+  let b_members : Array[SchemaMember] = []
+  let a = Obj(a_members)
+  let b = Obj(b_members)
+  a_members.push({ key: "b", required: true, schema: b, })
+  b_members.push({ key: "a", required: true, schema: a, })
+  let indirect = a.stringify() catch {
+    SchemaError(m) => m
+    _ => "no error"
+  }
+  assert_eq(indirect, "the schema contains a cycle")
+  // The cycle is refused even when it sits under an optional member, because
+  // `stringify` writes every member it can reach.
+  let optional_members : Array[SchemaMember] = []
+  let optional = Obj(optional_members)
+  optional_members.push({ key: "p", required: false, schema: optional, })
+  let optional_text = optional.stringify() catch {
+    SchemaError(m) => m
+    _ => "no error"
+  }
+  assert_eq(optional_text, "the schema contains a cycle")
+}
+
+///|
+test "a legally shared sub-declaration is not a cycle" {
+  // Two members referencing the same sub-declaration is legal: the shape is a
+  // DAG, and only the *current ancestor chain* decides whether a reference is
+  // back into itself.
+  let leaf = Obj([{ key: "x", required: true, schema: Int, }])
+  let parent = Obj([
+    { key: "a", required: true, schema: leaf, },
+    { key: "b", required: true, schema: leaf, },
+  ])
+  assert_eq(
+    parent.stringify() catch {
+      _ => ""
+    },
+    "{!a:{!x:integer},!b:{!x:integer}}",
+  )
+  assert_eq(parent.required_paths() catch { _ => [] }, ["a", "a.x", "b", "b.x"])
+  // A shared leaf under an optional member is legal too.
+  let optional = Obj([
+    { key: "p", required: false, schema: leaf, },
+    { key: "q", required: true, schema: leaf, },
+  ])
+  assert_eq(optional.required_paths() catch { _ => [] }, ["q", "q.x"])
+}
+
+///|
+test "the path helpers keep the dotted and pointer forms equivalent" {
+  // A plain step on a dotted base stays dotted; a step the dotted form cannot
+  // carry switches the whole path to the pointer form.
+  assert_eq(path_append("a", "b"), "a.b")
+  assert_eq(path_append("a.b", "c.d"), "/a/b/c.d")
+  assert_eq(path_append("", "a.b"), "/a.b")
+  assert_eq(path_append("/a.b", "c"), "/a.b/c")
+  // Extending by nothing is the base itself.
+  assert_eq(path_extend("a.b", ""), "a.b")
+  assert_eq(path_extend("a", "b.c"), "a.b.c")
+  // A step that is not an index never decodes as one, and an overflowing index
+  // is refused instead of wrapping into a valid-looking slot.
+  assert_eq(path_index_step(""), -1)
+  assert_eq(path_index_step("01"), -1)
+  assert_eq(path_index_step("1x"), -1)
+  assert_eq(path_index_step("99999999999999"), -1)
+  assert_eq(path_index_step("0"), 0)
+  assert_eq(path_index_step("2147483647"), 2147483647)
+}
+
+///|
+test "member equality falls back to identity when the declaration is unprintable" {
+  // `stringify` refuses a cycle with E070 and `Eq` cannot raise, so equality
+  // falls back to physical identity for an unprintable declaration.
+  let members : Array[SchemaMember] = []
+  let cyclic = Obj(members)
+  members.push({ key: "self", required: true, schema: cyclic, })
+  let one : SchemaMember = { key: "x", required: true, schema: cyclic, }
+  let two : SchemaMember = { key: "x", required: true, schema: cyclic, }
+  let other : SchemaMember = { key: "x", required: true, schema: Obj([]), }
+  assert_true(one == two)
+  assert_true(one != other)
+}
+
+///|
+test "a constraint-free wrapper keeps the text form of what it wraps" {
+  // An empty constraint list is not written as `()`.
+  let scalar = Constrained(Int, Constraints::none())
+  assert_eq(scalar.stringify() catch { _ => "" }, "integer")
+  let object = Constrained(
+    Obj([{ key: "a", required: true, schema: Int, }]),
+    Constraints::none(),
+  )
+  assert_eq(object.stringify() catch { _ => "" }, "{!a:integer}")
+}
+
+///|
+test "required_paths respects an explicit depth budget" {
+  let deep = deep_declaration(10)
+  let msg = try {
+    ignore(deep.required_paths(depth_budget=2))
+    "no error"
+  } catch {
+    SchemaError(m) => m
+    _ => "no error"
+  }
+  assert_eq(msg, "the schema is nested more deeply than a traversal may walk")
+  // A sufficient budget is accepted and walks the whole chain.
+  let walked = deep.required_paths(depth_budget=10) catch { _ => [] }
+  assert_eq(walked.length(), 10)
 }

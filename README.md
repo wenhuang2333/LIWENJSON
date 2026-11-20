@@ -36,16 +36,16 @@
 
 | 证据 | 结果 |
 | --- | --- |
-| 四个后端（wasm-gc / native / JS / wasm） | 每个后端 `323/323` 通过 |
-| CLI 冒烟 | `146 项断言` |
+| 四个后端（wasm-gc / native / JS / wasm） | 每个后端 `351/351` 通过 |
+| CLI 冒烟 | `165 项断言` |
 | 协议 / MCP 一致性 | `19 组` |
-| npm 包 | `19 个 Node 测试` |
-| Python 包 | `32 个测试` |
-| 根包行覆盖率 | `4409/4672` |
-| `llm` 包行覆盖率 | `466/639` |
-| 覆盖率门（有未覆盖行的文件口径） | `4800/5236` |
+| npm 包 | `21 个 Node 测试` |
+| Python 包 | `66 个测试` |
+| 根包行覆盖率 | `4593/4852` |
+| `llm` 包行覆盖率 | `486/658` |
+| 覆盖率门（有未覆盖行的文件口径） | `5004/5435` |
 | wasm-gc 产物体积 | `114.3 KiB` |
-| MCP 契约（真实二进制 × 真实 `outputSchema`） | `11/11 响应通过` |
+| MCP 契约（真实二进制 × 真实 `outputSchema`） | `13/13 响应通过` |
 | 真实模型端到端（Responses API，`code/tests/live_model_audit_v2.py`） | `34/34 检查通过` |
 | 真实 Claude Code 会话：强制 `PreToolUse` 门 | 拒绝 `touch pwned.txt`（文件未创建）、放行 `echo read-only-ok` |
 | 真实 Claude Code **交互式**会话（pty，2.1.319） | 回答 `pong`；`touch pwned.txt` 被 hook 拦下、文件未创建 |
@@ -207,7 +207,7 @@ q.finish()                                             // 抛 E010
 ## 技术栈
 
 - **引擎**：纯 MoonBit，无第三方运行时依赖；工具链钉在 `moon 0.1.20261016`（CI 同样钉住）。
-- **后端**：wasm-gc / native / JS / wasm 四个后端跑同一套测试（每个后端 `323/323`）；CLI 与 MCP server 是 native 后端，浏览器里跑的是 JS 后端产物。
+- **后端**：wasm-gc / native / JS / wasm 四个后端跑同一套测试（每个后端 `351/351`）；CLI 与 MCP server 是 native 后端，浏览器里跑的是 JS 后端产物。
 - **协议**：MCP 用 stdio + JSON-RPC 2.0，协议版本 `2025-06-18`；`liwenjson serve` 用版本化 JSONL（每行一个请求、一行一个响应，stdout 只走协议）。
 - **语言包**：npm 包提供 ESM + CJS + TypeScript 类型（Node >= 20）；Python 包是同一引擎的薄客户端，无第三方依赖，wheel 内自带四个平台的 native 二进制。
 - **构建与 CI**：GitHub Actions；同一组命令在 CI 与本地执行，失败即失败。

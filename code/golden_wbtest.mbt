@@ -54,6 +54,7 @@ fn err_text(e : LIWENJSONError) -> String {
     InvalidOption(_m) => "E050"
     InvalidEvent(_m) => "E060"
     SchemaError(_m) => "E070"
+    OutputLimit(l) => "E023(" + l.to_string() + ")"
   }
 }
 

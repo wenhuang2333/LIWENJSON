@@ -27,6 +27,11 @@ pub struct TextStream {
   mut error_message : String
   mut ignored : Int32
   mut seen_text : Bool
+  // The Chat Completions choice the single parser belongs to, -1 before the
+  // first text. A stream with `n > 1` interleaves choices, and one parser
+  // cannot hold two JSON documents, so a second choice is refused rather than
+  // silently folded into the first (or losing the last one, as before).
+  mut choice : Int32
 }
 
 ///|
@@ -55,6 +60,7 @@ pub fn TextStream::new(
     error_message: "",
     ignored: 0,
     seen_text: false,
+    choice: -1,
   }
 }
 
@@ -175,7 +181,16 @@ fn TextStream::text_of_anthropic(self : TextStream, v : Json) -> String? {
 
 ///|
 /// The text fragment of one OpenAI compatible chunk, if it carries one.
-fn TextStream::text_of_openai(self : TextStream, v : Json) -> String? {
+///
+/// A chunk may carry several choices (`n > 1`). The text of each choice is a
+/// separate JSON document, and `TextStream` has one parser, so a stream that
+/// switches choices is refused with `E060` instead of merging the texts (which
+/// used to keep only the last non-empty one in a frame and silently lose the
+/// others). A single-choice stream is read exactly as before.
+fn TextStream::text_of_openai(
+  self : TextStream,
+  v : Json,
+) -> String? raise @liwenjson.LIWENJSONError {
   match field(v, "error") {
     Some(e) => {
       self.error_message = match field_string(e, "message") {
@@ -195,12 +210,27 @@ fn TextStream::text_of_openai(self : TextStream, v : Json) -> String? {
     Some(a) => a
     None => return None
   }
-  let mut found : String? = None
+  let text = StringBuilder()
   for choice in list {
+    let choice_index = match field_index(choice, "index") {
+      Some(i) => i
+      None => 0
+    }
     match field(choice, "delta") {
       Some(delta) =>
         match field_string(delta, "content") {
-          Some(s) => if s != "" { found = Some(s) }
+          Some(s) =>
+            if s != "" {
+              if self.choice >= 0 && self.choice != choice_index {
+                raise @liwenjson.InvalidEvent(
+                  "text arrived for more than one choice; a single text stream cannot represent that",
+                )
+              }
+              if self.choice < 0 {
+                self.choice = choice_index
+              }
+              text.write_string(s)
+            }
           None => ()
         }
       None => ()
@@ -214,7 +244,12 @@ fn TextStream::text_of_openai(self : TextStream, v : Json) -> String? {
       None => ()
     }
   }
-  found
+  let out = text.to_string()
+  if out == "" {
+    None
+  } else {
+    Some(out)
+  }
 }
 
 ///|

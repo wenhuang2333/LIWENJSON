@@ -5,6 +5,106 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+第三轮审计（`marks/1120优化.md`）以「让真实宿主按文档使用 CLI、serve/MCP、包装层」为问题：
+上一轮修的是执行语义与 provider 终态，这一轮发现的是**协议帧、参数显式性、资源算术与
+公开 API 边界**上的错误放行。每一条都有定向回归（`test/1120/`、`code/tests/`），且在旧
+实现上会失败。当前树：四个后端 `351/351`、CLI 冒烟 165 项、npm 21 个 Node 测试、
+Python 66 个测试、协议一致性 19 组、MCP 契约 13/13。
+
+### 协议与参数（CLI / serve / MCP）
+
+- **`--policy` 与显式安全参数同时出现时被接受。** 两者语义冲突时旧实现静默取其一。
+  现在按「参数是否在命令行上显式给出」置位（不是按取值是否非默认），与顺序无关；
+  两种顺序、显式默认值都拒绝（exit 2），非冲突正例保留。P0-04。
+- **`--batch` 在 stdin 未关闭时不输出。** 旧实现块读取等到 EOF。重写为严格 UTF-8 的
+  逐行 reader：读一行、处理一行、逐行 flush，超长行整体丢弃并报错；每一行都走
+  `--schema` 判定（`E070` / 行内 rc 5），写失败 exit 70。P0-01、P0-02、P0-08。
+- **`llm` 的 `--strict` / `--policy` / 资源上限被静默丢掉。** 三条路径现在共享同一份
+  `Options` 与错误分类；`--provider openai --strict` 的尾逗号 rc=5（`E010`）。P0-03。
+- **长驻模式接受一次性参数。** `serve`/`mcp` 拒绝 `--check` 与文件路径（exit 2，固定
+  stderr），不再启动一个「什么也没检查」的服务器。P1-01。
+- **帧错误被当成连接错误。** `mcp` 对坏 JSON / 超长行 / 非法 UTF-8 回 `-32700` 后继续
+  读下一帧；`serve` 对非法 UTF-8 回 `E040`（exit 3）且连接继续；合法 U+FFFD 照常放行，
+  不再被替换成 U+FFFD 后冒充 `exact`。P0-08、P1-02。
+- **`inputSchema` 声明了却不校验。** `liwenjson_gate.with_text`（boolean）与
+  `liwenjson_readiness.step`（integer，`0`..`8388608`，`0` = 自动）进入工具声明；服务端
+  在 walk 之前拒绝小数 / 越界 / 错类型 / 未声明字段（`E050`）。P1-03。
+- **stdout 不可写时仍返回成功。** 打开失败、短写、`fflush` 失败一律诊断并非零退出（70）；
+  POSIX 平台忽略 `SIGPIPE`，读端关闭变成写错误而不是信号。P1-04。
+
+### 引擎
+
+- **缺失成员被伪装成 `null` 并标成就绪。** 新增 `field_missing` 事件（`FieldMissing`，
+  verdict 事件）；`value_at()` 返回 `Json?`，`ready_count()` 只在成员存在且类型被接受时
+  计数：显式 `null` 是正例、缺失是负例、类型错是第三种。P0-05。
+- **根路径与空成员名共用空串。** 新路径层：根是 `""`、空键是 `/`、含 `.`/`/`/`~` 的键
+  走 RFC 6901（`/a.b`、`/a~1b`），数组下标拒绝前导零（`01` 是键不是槽位）；
+  `at_path`/`lookup_path`/`required_paths`/walk 与 watcher 事件路径统一。P1-09。
+- **输出没有预算。** 新增 `Options.max_output_len`（默认 64 MiB，单位 UTF-8 字节）与
+  `MAX_INDENT = 64`；渲染按字节增量记账（缩进用 `Int64` 相乘、转义按 JSON 形式计费），
+  越界立刻 `E023`，不会先分配 GB 级文本再检查。P2-01。
+- **permille 用 Int32 相乘。** `3_000_000/6_000_000` 现在稳定为 `500`，不钳位、不截断、
+  不靠缩小 step 掩盖。P2-02。
+- **公开 Schema 遍历会 SIGSEGV。** `stringify()` 与 `required_paths()` 改为显式工作栈，
+  加深度/节点预算与祖先链环检测（`E070`）；合法共享子结构不误判为环。P2-03。
+
+### Provider 适配
+
+- **小数 tool index 与同帧多 choice 被静默合并。** 索引必须是 Int32 范围内的整数
+  （否则 `E060`；`0.5`、`2^31`、字符串都拒绝），字段缺失仍是默认 0；`TextStream` 在同一
+  流里遇到第二个 choice 明确 `E060`，不再只留最后一个。P1-08。
+- **retry 恢复的根只喂了一半判定。** `finish()` 与 `snapshot()` 对同一 retry 输入给出
+  不同 exactness。重试现在把 exactness / ambiguous / repairs 一并采纳（只升不降），
+  retry 路径与直读在 `FinalResult`、finish 后 snapshot、delta 重放、watcher 上一致。P1-07。
+
+### 包装与安装
+
+- **npm `snapshot()` 用 `" | "` 拆分展示串。** 改为扫描 JSON 值边界 + 固定状态词
+  （`Empty`/`Partial`/`Complete`），值、键名、根字符串里的分隔符不再抛
+  `SyntaxError: Unterminated string in JSON`。P0-06。
+- **Python 客户端的超时是每步的、协议错误会退化。** 改为全程单调 deadline（锁、写、读
+  共用剩余预算）；非 JSON 行、JSON 标量、非法 UTF-8 粘性成为 `LIWENJSONProtocolError`；
+  close 有界、幂等，失败连接 terminate/kill/wait 回收；重复请求在 close 后明确拒绝。
+  P0-07、P1-05。
+- **HTTP facade 在读完 body 之后才发现长度非法。** 先校验负/非数字/重复
+  `Content-Length`、不支持的 framing：400；超上限 413（不读 body）；超时统一 408；
+  body 上限独立于 `max_input_len`。P1-06。
+- **`--from-local` 把 macOS 二进制装进 linux 路径。** 现在只允许宿主目标（复制前 exit 2），
+  每个资产检查 ELF/Mach-O/PE 与架构，打包后真启动宿主二进制。P2-06。
+- **安装器平台表与 Release 产物不一致。** `install.sh` 平台表 = `release.yml` 的 `want=`
+  = 7 个产物；Windows arm64 / Intel macOS 在下载前 exit 2 并说明原因。P1-10。
+- **README 示例照抄会 `KeyError: 'text'`。** 示例改用 `plan["value"]`；
+  `code/python/tests/test_readme.py` 原样执行 README 首个 Python 块；`pyproject.toml`
+  不再声明 `OS Independent`，README 写明四平台支持与 Alpine/musl 未测。P2-04、P2-05。
+
+### 门
+
+- **`claims.sh` 的 any-of 匹配让陈旧文档通过。** 改为「锚点行 + 值都必须命中」，逐文档
+  检查；MCP 计数从整份日志取（脚本以散文结尾，取最后一行会得到空值）。
+- **独立报告不再靠手改。** `code/tests/independent_report_check.py` 重新生成并比对
+  （归一化时间戳、二进制 sha256、oracle 列）；CI 里原来的 `git diff` 在
+  `working-directory: code` 下 pathspec 恒空。
+- **examples 只看 stdout。** 改为 exit code + stdout 双条件；缺 `.expected` 失败、空用例
+  目录 exit 2。
+- **coverage 缺豁免清单**从 warning 改为 exit 2（ratchet 不能运行时不算通过）。
+- **Windows CI** 钉 `MOONBIT_INSTALL_VERSION` 并逐条检查 `$LASTEXITCODE`。
+- **Release** 逐资产下载 + SHA256 校验（无 token exit 3，`--no-skip` exit 2）；新增
+  `release_manifest_check.sh`（release.yml `want=` ↔ 7 个产物 ↔ install.sh 平台表，假
+  curl 实跑安装器）与 `run_protocol_contract.py`（长驻模式、严格 UTF-8、inputSchema
+  执行）两组门。C-01…C-09。
+
+### 行为变化（升级前请读）
+
+- `Options` 新增字段 `max_output_len`：以结构体字面量构造 `Options` 的代码需补字段
+  （`{ ..Options::default(), … }` 写法不受影响）。
+- 库层 `indent` 上界与 CLI 对齐为 `64`（超过是 `E050`），不再接受任意非负值。
+- 新增错误变体 `OutputLimit` → `E023`；`Schema::stringify()` / `required_paths()` 现在会
+  `raise LIWENJSONError`（深层、环、超预算都是 `E070`）。
+- `TextStream` 拒绝第二个 choice；畸形 index 是 `E060` 而不是 0 号 call。
+- 长驻模式拒绝 `--check`（exit 2）；`serve` 的非法 UTF-8 是 `E040` / exit 3。
+
 ## [1.5.2] - 2026-11-08
 
 第二轮审计（`marks/迭代.md`）以「把一个真实模型的后端接到闸门上，看会错在哪」为问题。

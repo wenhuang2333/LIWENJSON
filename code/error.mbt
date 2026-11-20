@@ -443,6 +443,12 @@ pub(all) suberror LIWENJSONError {
   /// A skeleton declaration could not be read, or a value does not satisfy it
   /// (E070, FR-34). The payload is a fixed explanation.
   SchemaError(String)
+  /// The rendered text would exceed `Options::max_output_len` (E023). The
+  /// payload is that budget in UTF-8 bytes. Raised from inside the renderer,
+  /// after the first write that would cross the budget, so a document that can
+  /// only be handed on as a string the transport refuses is refused by the
+  /// engine instead of being allocated and then discarded.
+  OutputLimit(Int32)
 }
 
 ///|
@@ -461,6 +467,7 @@ pub fn LIWENJSONError::code(self : LIWENJSONError) -> String {
     InvalidOption(_) => "E050"
     InvalidEvent(_) => "E060"
     SchemaError(_) => "E070"
+    OutputLimit(_) => "E023"
   }
 }
 
@@ -540,6 +547,11 @@ pub fn LIWENJSONError::to_string(self : LIWENJSONError) -> String {
     SchemaError(msg) => {
       sb.write_string("E070 SchemaError: ")
       sb.write_string(msg)
+    }
+    OutputLimit(limit) => {
+      sb.write_string("E023 OutputLimit: rendered output exceeds ")
+      sb.write_string(limit.to_string())
+      sb.write_string(" bytes")
     }
   }
   sb.to_string()

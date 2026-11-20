@@ -39,7 +39,12 @@ enum Outcome {
 /// Run one self-healing episode: at most `max_attempts` model answers, each
 /// analysed under the agent policy against the tool's skeleton.
 fn heal(tool : Tool, script : Script, max_attempts : Int32) -> Outcome {
-  println("tool    : " + tool.name + " " + tool.schema.stringify())
+  // A hand-built skeleton can be cyclic or over the traversal budget; the
+  // example prints a marker instead of failing to build the demo.
+  let skeleton = tool.schema.stringify() catch {
+    _ => "<declaration not printable>"
+  }
+  println("tool    : " + tool.name + " " + skeleton)
   for i = 0; i < script.attempts.length(); i = i + 1 {
     if i >= max_attempts {
       break

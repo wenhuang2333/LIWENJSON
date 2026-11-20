@@ -29,6 +29,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # C-02: `tests/json_schema_diff.py` and `tests/mcp_contract_check.py`
+      # compare against an independent JSON Schema validator. The dependency
+      # used to be installed only in the `differential` job, so in this job both
+      # scripts reported "schema checks skipped" and still exited 0 -- the
+      # schema half of their work was never run. Pin the validator in every job
+      # that runs them, and run both with `--strict` (missing dependency = exit
+      # 2, not a quiet skip).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the JSON Schema validator (pinned)
+        run: python3 -m pip install "jsonschema==4.26.0"
+
       # The toolchain is pinned. `install/unix.sh` with no argument installs
       # `latest`, and on 2026-10-29 a new MoonBit release changed the JavaScript
       # backend's output: the committed demo bundle stopped matching a rebuild,
@@ -116,6 +130,27 @@ jobs:
           python3 tests/conformance/run_conformance.py \
             --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe
 
+      # §9.4: the modes themselves have contracts (a long-lived serve refuses
+      # `--check`, a frame that is not text is `E040` while a legal U+FFFD
+      # passes, an empty `watch.finish` keeps `E001`), and a tool parameter is
+      # enforced before the walk reads anything.
+      - name: Protocol contract: modes, UTF-8 frames and inputSchema enforcement
+        working-directory: code
+        run: |
+          python3 tests/conformance/run_protocol_contract.py \
+            --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe
+
+      # R-08: conformance checks the calls the server accepts; this checks the
+      # contract the server *publishes*. Every request must validate against
+      # the tool's own `inputSchema` before it is sent, and every response
+      # against its `outputSchema`. `--strict` also fails when jsonschema is
+      # missing instead of running the structural half only.
+      - name: MCP contract against the published schemas (strict)
+        working-directory: code
+        run: |
+          python3 tests/mcp_contract_check.py \
+            ./_build/native/release/build/cmd/liwenjson/liwenjson.exe --strict
+
       - name: Python client and HTTP facade tests
         working-directory: code/python
         env:
@@ -162,15 +197,16 @@ jobs:
             --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe \
             --check
 
-      # The ratios the memory documents quote are the ratios this build has.
-      # `docs/MEMORY.md` is a report that only ever gets printed, so a figure
-      # in it has drifted before without anything noticing; this measures the
-      # same shapes and fails when one grows past its recorded ceiling.
+      # C-02: this gate only means something if the validator it compares
+      # against is actually installed. Without `jsonschema` the script used to
+      # print "skipped" and exit 0. `--strict` makes that exit 2 and requires
+      # every corpus case to have been compared (`compared == len(CORPUS)`).
       - name: Schema subset against an independent JSON Schema validator (must exit 0)
         working-directory: code
         run: |
           python3 tests/json_schema_diff.py \
-            --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe
+            --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe \
+            --strict
 
       - name: Peak memory per shape (must exit 0)
         working-directory: code
@@ -230,6 +266,14 @@ jobs:
           # still quotes an older one.
           bash tests/claims.sh
 
+      # C-09 / §9.6: the release asset list (`want=` in release.yml), the
+      # platform table in `code/install.sh` and the packaged set are three
+      # statements of the same fact. Until this gate existed, each was only
+      # checked against itself, so a platform whose asset the release does not
+      # carry could ship and only fail in a user's shell.
+      - name: The release manifest, the installer and the assets agree
+        run: bash code/tests/release_manifest_check.sh
+
       - name: Public interface files are in sync
         working-directory: code
         run: |
@@ -241,6 +285,17 @@ jobs:
           git diff --exit-code -- '*.mbti'
       - name: Browser demo bundle smoke test
         run: node code/tests/demo_smoke.mjs
+
+      # C-07: the demo page's browser surface is part of the product, and a
+      # console error or a missing section is a broken demo even when the unit
+      # tests pass. The gate reads the page in headless Chromium and writes no
+      # media (the screenshot/GIF refresh scripts stay local), so it is cheap
+      # enough for CI.
+      - name: Browser console smoke test
+        run: |
+          python3 -m pip install "playwright==1.62.0"
+          python3 -m playwright install --with-deps chromium
+          python3 code/tests/media/index_console_smoke.py
 
       - name: Agent gate example (end to end)
         working-directory: code
@@ -257,29 +312,76 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install the MoonBit toolchain
+      # C-06: the Windows installer honours `MOONBIT_INSTALL_VERSION` exactly
+      # like the Unix one; without the pin this job tested whatever `latest`
+      # happened to be. A pin that silently falls back is worse than no pin, so
+      # the version is checked back below.
+      - name: Install the MoonBit toolchain (pinned)
         shell: pwsh
+        env:
+          MOONBIT_INSTALL_VERSION: ${{ vars.MOONBIT_VERSION || '0.10.16+b1a0e846e' }}
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
           "$HOME\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+      - name: Toolchain versions (the pin must have taken)
+        shell: pwsh
+        env:
+          MOONBIT_INSTALL_VERSION: ${{ vars.MOONBIT_VERSION || '0.10.16+b1a0e846e' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          moon version --all
+          $installed = (moon version --all |
+            Select-String -Pattern '^moonc v([^ ]+)' |
+            ForEach-Object { $_.Matches[0].Groups[1].Value } |
+            Select-Object -First 1)
+          Write-Host "requested $env:MOONBIT_INSTALL_VERSION, installed moonc $installed"
+          if ($installed -ne $env:MOONBIT_INSTALL_VERSION) {
+            Write-Host "::error::the toolchain pin did not take: wanted $env:MOONBIT_INSTALL_VERSION, got moonc $installed"
+            exit 1
+          }
+
+      # C-06: `pwsh` does not fail a step when a native command fails, so the
+      # old steps were green as long as the *last* command exited 0. Every step
+      # sets `$PSNativeCommandUseErrorActionPreference` and checks
+      # `$LASTEXITCODE` where the command is part of the assertion.
       - name: Build the CLI
         working-directory: code
         shell: pwsh
-        run: moon build cmd/liwenjson --target native --release
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          moon build cmd/liwenjson --target native --release
 
       - name: CLI smoke
         working-directory: code
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           $J = ".\_build\native\release\build\cmd\liwenjson\liwenjson.exe"
-          '{"a":1,}' | & $J
-          & $J --version
+          $out = '{"a":1,}' | & $J
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::the CLI exited $LASTEXITCODE on a document it must repair"
+            exit 1
+          }
+          $out | Out-Host
+          $version = & $J --version
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::--version exited $LASTEXITCODE"
+            exit 1
+          }
+          $version | Out-Host
 
       - name: Protocol and MCP conformance
         working-directory: code
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           python tests/conformance/run_conformance.py --cli .\_build\native\release\build\cmd\liwenjson\liwenjson.exe
 
   differential:
@@ -315,15 +417,24 @@ jobs:
       # be able to say it is still the copy this build produces. It used to be
       # regenerated here and thrown away -- which is how the committed file came
       # to say "n/a (library not installed)" while every CI run measured against
-      # a real `jsonrepair`. Regenerate, then diff.
+      # a real `jsonrepair`.
+      #
+      # C-01: the comparison used to be `git diff -- code/docs/EVAL_INDEPENDENT.md`
+      # with `working-directory: code`, i.e. a pathspec for
+      # `code/code/docs/EVAL_INDEPENDENT.md` -- a path that does not exist, for
+      # which `git diff` exits 0. The gate could not fail. A raw diff of the
+      # real file would be a guaranteed false red instead (the timestamp, the
+      # binary's sha256 and the external-oracle columns legitimately differ
+      # between this runner and the machine the report came from), so the
+      # comparison goes through the normalizing checker: it regenerates the
+      # report and compares everything except those three fields.
       - name: Independent corpus (nst/JSONTestSuite, vendored)
         working-directory: code
         run: |
           moon build cmd/liwenjson --target native --release
-          python3 tests/eval/run_independent.py \
+          python3 tests/independent_report_check.py \
             --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe \
             --node-dir "$RUNNER_TEMP/node-oracle/node_modules"
-          git diff --exit-code -- code/docs/EVAL_INDEPENDENT.md
 
       - name: Differential report (must exit 0)
         working-directory: code

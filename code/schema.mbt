@@ -58,7 +58,7 @@
 // **conjunctive** with the shape inside it: `{!a:integer}(enum:[{"a":1}])`
 // requires both a valid object and one of the listed values. Every traversal
 // (`evaluate`, `required_paths`, `at_path`, `member_keys`, `field`,
-// `collect_required`, the streaming watcher) goes through `Schema::structure`
+// `required_paths`, the streaming watcher) goes through `Schema::structure`
 // for that reason, and `stringify` writes the constraint back so the text form
 // stays lossless.
 //
@@ -495,9 +495,21 @@ pub impl Eq for SchemaMember with fn equal(
   self : SchemaMember,
   other : SchemaMember,
 ) -> Bool {
-  self.key == other.key &&
-  self.required == other.required &&
-  self.schema.stringify() == other.schema.stringify()
+  if self.key != other.key || self.required != other.required {
+    return false
+  }
+  // `stringify` refuses a cyclic (or over-budget) hand-built declaration with
+  // `E070` instead of crashing, and `Eq` cannot raise. An empty text form is
+  // impossible for a successful call, so it is the unambiguous "the walk gave
+  // up" marker; falling back to physical identity is conservative -- it can
+  // report two *equal but unprintable* members as different, never the reverse.
+  let a = self.schema.stringify() catch { _ => "" }
+  let b = other.schema.stringify() catch { _ => "" }
+  if a == "" || b == "" {
+    physical_equal(self.schema, other.schema)
+  } else {
+    a == b
+  }
 }
 
 ///|
@@ -530,7 +542,7 @@ pub fn Schema::name(self : Schema) -> String {
 /// `Arr` items). They are conjunctive, so every traversal that looks for
 /// members or items must see through the wrapper instead of treating it as a
 /// leaf. This one accessor exists so `evaluate`, `required_paths`, `at_path`,
-/// `member_keys`, `field`, `collect_required` and the streaming watcher all
+/// `member_keys`, `field`, `required_paths` and the streaming watcher all
 /// agree on what "inside" means.
 fn Schema::structure(self : Schema) -> Schema {
   let mut cur = self
@@ -593,50 +605,135 @@ pub fn Schema::expectation(self : Schema) -> String {
 }
 
 ///|
-/// The text form of a schema, the inverse of `Schema::parse`.
-pub fn Schema::stringify(self : Schema) -> String {
-  match self {
-    Arr(inner) => "[" + inner.stringify() + "]"
-    Obj(members) => {
-      let sb = StringBuilder()
-      sb.write_char('{')
-      for i = 0; i < members.length(); i = i + 1 {
-        if i > 0 {
-          sb.write_char(',')
-        }
-        let m = members[i]
-        sb.write_string(if m.required { "!" } else { "?" })
-        // A name containing `:`, whitespace or a quote cannot be written bare:
-        // the parser would stop at the first delimiter and read a different
-        // skeleton back. Quoting it is what makes `parse(stringify(s))` mean the
-        // same as `s` (Q-23) for names like `{"name with space":string}`.
-        if name_needs_quotes(m.key) {
-          sb.write_char('"')
-          sb.write_string(m.key)
-          sb.write_char('"')
-        } else {
-          sb.write_string(m.key)
-        }
-        sb.write_char(':')
-        sb.write_string(m.schema.stringify())
-      }
-      sb.write_char('}')
-      sb.to_string()
-    }
-    // A container carries constraints the text form can express since the
-    // schema audit fix (1.5.1 and earlier dropped them): `{...}(enum:[...])`
-    // and `[...](enum:[...])` parse, so writing them back is lossless. Before
-    // that the constraint list was silently dropped, which made
-    // `parse(stringify(s))` a weaker gate than `s` -- the one thing the text
-    // form exists to prevent.
-    Constrained(inner, c) =>
-      if c.is_empty() {
-        inner.stringify()
-      } else {
-        inner.stringify() + "(" + c.text() + ")"
-      }
-    _ => self.name()
+/// One step of `Schema::stringify`'s work list.
+priv enum StringifyStep {
+  /// Write the text form of one declaration node, at the given nesting depth.
+  StringifyNode(Schema, Int32)
+  /// Write a literal that needs no traversal (`]`, a member prefix, a suffix).
+  StringifyText(String)
+  /// Close the object opened by the matching `StringifyNode`.
+  StringifyCloseObj
+}
+
+///|
+/// The text of one member prefix, in the order a parser would read it: the
+/// required marker, the (possibly quoted) name, and the `:`.
+///
+/// A name containing `:`, whitespace or a quote cannot be written bare: the
+/// parser would stop at the first delimiter and read a different skeleton back.
+/// Quoting it is what makes `parse(stringify(s))` mean the same as `s` (Q-23)
+/// for names like `{"name with space":string}`.
+fn stringify_prefix(m : SchemaMember) -> String {
+  let marker = if m.required { "!" } else { "?" }
+  if name_needs_quotes(m.key) {
+    marker + "\"" + m.key + "\":"
+  } else {
+    marker + m.key + ":"
   }
+}
+
+///|
+/// The text form of a schema, the inverse of `Schema::parse`.
+///
+/// Iterative, for the same reason `copy_json` and `walk_schema` are: a
+/// declaration may be built by hand, and a recursive form would make the
+/// deepest writable declaration a property of the native stack. The depth and
+/// node budgets, plus the ancestor-chain cycle check, turn a hand-built
+/// self-reference into `E070` instead of a crash (`Array` is mutable, so a
+/// cycle is constructible).
+///
+/// The optional budgets exist so a test can exercise the in-budget/over-budget
+/// boundary with a small declaration; the defaults are `MAX_SCHEMA_WALK_DEPTH`
+/// and `MAX_SCHEMA_WALK_NODES`.
+pub fn Schema::stringify(
+  self : Schema,
+  depth_budget? : Int32,
+  node_budget? : Int32,
+) -> String raise LIWENJSONError {
+  let max_depth = match depth_budget {
+    Some(v) => v
+    None => MAX_SCHEMA_WALK_DEPTH
+  }
+  let max_nodes = match node_budget {
+    Some(v) => v
+    None => MAX_SCHEMA_WALK_NODES
+  }
+  let sb = StringBuilder()
+  let work : Array[StringifyStep] = [StringifyNode(self, 0)]
+  // The identity of every `Obj` member array on the current path. A cycle needs
+  // a mutable `Array`, so comparing identities catches exactly the cycles that
+  // can exist; the chain is popped on the way out, which is why a declaration
+  // that legally references the same sub-declaration twice is not a cycle.
+  let ancestors : Array[Array[SchemaMember]] = []
+  let mut nodes = 0
+  while work.length() > 0 {
+    match work.remove(work.length() - 1) {
+      StringifyCloseObj => {
+        let _ = ancestors.remove(ancestors.length() - 1)
+        sb.write_char('}')
+      }
+      StringifyText(t) => sb.write_string(t)
+      StringifyNode(schema, depth) => {
+        if depth > max_depth {
+          raise SchemaError(
+            "the schema is nested more deeply than a traversal may walk",
+          )
+        }
+        nodes = nodes + 1
+        if nodes > max_nodes {
+          raise SchemaError("the schema is larger than a traversal may walk")
+        }
+        match schema {
+          Arr(inner) => {
+            sb.write_char('[')
+            work.push(StringifyText("]"))
+            work.push(StringifyNode(inner, depth + 1))
+          }
+          Obj(members) => {
+            for anc in ancestors {
+              if physical_equal(anc, members) {
+                raise SchemaError("the schema contains a cycle")
+              }
+            }
+            ancestors.push(members)
+            sb.write_char('{')
+            // Members are separated by `,`. The whole body is built in reading
+            // order and pushed in reverse, so the pops reproduce it.
+            let body : Array[StringifyStep] = []
+            for j = 0; j < members.length(); j = j + 1 {
+              let m = members[j]
+              if j > 0 {
+                body.push(StringifyText(","))
+              }
+              body.push(StringifyText(stringify_prefix(m)))
+              body.push(StringifyNode(m.schema, depth + 1))
+            }
+            body.push(StringifyCloseObj)
+            let mut k = body.length()
+            while k > 0 {
+              k = k - 1
+              work.push(body[k])
+            }
+          }
+          // A container carries constraints the text form can express since the
+          // schema audit fix (1.5.1 and earlier dropped them): `{...}(enum:[...])`
+          // and `[...](enum:[...])` parse, so writing them back is lossless.
+          // Before that the constraint list was silently dropped, which made
+          // `parse(stringify(s))` a weaker gate than `s` -- the one thing the
+          // text form exists to prevent.
+          Constrained(inner, c) =>
+            if c.is_empty() {
+              work.push(StringifyNode(inner, depth + 1))
+            } else {
+              work.push(StringifyText("(" + c.text() + ")"))
+              work.push(StringifyNode(inner, depth + 1))
+            }
+          _ => sb.write_string(schema.name())
+        }
+      }
+    }
+  }
+  sb.to_string()
 }
 
 ///|
@@ -698,25 +795,183 @@ pub fn Schema::field(self : Schema, key : String) -> SchemaMember? {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Paths.
+// ---------------------------------------------------------------------------
+
 ///|
-/// The declaration a dotted path points at, or `None` (FR-36, FR-39).
-///
-/// A path is spelled the way `Schema::required_paths` produces it: member names
-/// joined with `.`, where a numeric step selects an array element. A member
-/// name that itself contains a `.` is therefore ambiguous; the declaration
-/// language has no way to write one, so `required_paths` cannot produce one
-/// either, and the two agree by construction.
-pub fn Schema::at_path(self : Schema, path : String) -> Schema? {
-  if path == "" {
-    return Some(self)
+/// Whether a path step can be written as a bare step in the dotted form: any
+/// non-empty name that does not contain the separator.
+fn path_plain_step(step : String) -> Bool {
+  if step.length() == 0 {
+    return false
   }
+  for i = 0; i < step.length(); i = i + 1 {
+    let c = step.at(i).to_int()
+    // `.` separates steps; `/` and `~` are the pointer form's escape
+    // characters, so a name containing any of them is written as a pointer
+    // step (and decoded with the escapes reversed).
+    if c == 0x2E || c == 0x2F || c == 0x7E {
+      return false
+    }
+  }
+  true
+}
+
+///|
+/// The array index a path step names, or `-1` when it does not name one.
+///
+/// RFC 6901 array indices are decimal without a leading zero (`0` is fine,
+/// `01` is not), so a member name such as `01` stays a member name and is never
+/// silently navigated as slot 1.
+fn path_index_step(step : String) -> Int32 {
+  if step.length() == 0 {
+    return -1
+  }
+  if step.length() > 1 && step.at(0).to_int() == 0x30 {
+    return -1
+  }
+  let mut n : Int64 = 0L
+  for i = 0; i < step.length(); i = i + 1 {
+    let c = step.at(i).to_int()
+    if c < 0x30 || c > 0x39 {
+      return -1
+    }
+    n = n * 10L + (c - 0x30).to_int64()
+    if n > 2_147_483_647L {
+      return -1
+    }
+  }
+  n.to_int()
+}
+
+///|
+/// Whether a path is written in the RFC 6901 pointer form.
+fn path_is_pointer(path : String) -> Bool {
+  path.length() > 0 && path.at(0).to_int() == 0x2F
+}
+
+///|
+/// Escape one step for the pointer form (RFC 6901).
+fn path_escape_step(step : String) -> String {
+  step.replace_all(old="~", new="~0").replace_all(old="/", new="~1")
+}
+
+///|
+/// Unescape one pointer step (RFC 6901). An escape the writer did not produce is
+/// left alone: the form only has to round-trip what the writer produces.
+fn path_unescape_step(step : String) -> String {
+  step.replace_all(old="~1", new="/").replace_all(old="~0", new="~")
+}
+
+///|
+/// Decode the steps of a pointer, whose first character is `/`.
+fn path_pointer_steps(path : String) -> Array[String] {
+  let out : Array[String] = []
+  let mut first = true
+  // A literal `/` can only appear as a step boundary; the writer escapes one
+  // inside a name to `~1`, so splitting on the raw separator is exact.
+  for part in path.split("/") {
+    if first {
+      first = false
+    } else {
+      out.push(path_unescape_step(part.to_owned()))
+    }
+  }
+  out
+}
+
+///|
+/// Decode a path into its steps. `""` is the root (`[]`); a path that starts
+/// with `/` is a pointer, anything else is the dotted form.
+///
+/// The canonical writer below picks one of the two forms, but both readers
+/// accept both, so a caller that spells a path the other way still finds the
+/// same declaration.
+fn path_texts(path : String) -> Array[String] {
+  if path == "" {
+    return []
+  }
+  if path_is_pointer(path) {
+    return path_pointer_steps(path)
+  }
+  let out : Array[String] = []
+  for part in path.split(".") {
+    out.push(part.to_owned())
+  }
+  out
+}
+
+///|
+/// Append one member name to a canonical path.
+///
+/// Root and a member named `""` must be different paths: root is `""` and the
+/// empty name is `/`, which is why the dotted form is used only when every step
+/// is a plain name. A name containing the separator switches the whole path to
+/// the pointer form (the dotted form cannot represent it), which keeps the
+/// writer and the decoder inverse to each other.
+fn path_append(base : String, step : String) -> String {
+  if base == "" {
+    if path_plain_step(step) && step.at(0).to_int() != 0x2F {
+      step
+    } else {
+      "/" + path_escape_step(step)
+    }
+  } else if path_is_pointer(base) {
+    base + "/" + path_escape_step(step)
+  } else if path_plain_step(step) {
+    base + "." + step
+  } else {
+    let segs : Array[PathSegment] = []
+    for part in base.split(".") {
+      segs.push(Key(part.to_owned()))
+    }
+    segs.push(Key(step))
+    pointer_of_path(segs)
+  }
+}
+
+///|
+/// Append a whole canonical path `rest` below `base`.
+fn path_extend(base : String, rest : String) -> String {
+  if rest == "" {
+    return base
+  }
+  let mut out = base
+  for step in path_texts(rest) {
+    out = path_append(out, step)
+  }
+  out
+}
+
+///|
+/// The steps of a canonical path as `PathSegment` values. A declaration path
+/// never names an array slot (`required_paths` does not descend arrays), so
+/// every step is a `Key`.
+fn path_key_segments(path : String) -> Array[PathSegment] {
+  let out : Array[PathSegment] = []
+  for step in path_texts(path) {
+    out.push(Key(step))
+  }
+  out
+}
+
+///|
+/// The declaration a path points at, or `None` (FR-36, FR-39).
+///
+/// A path is spelled the way `Schema::required_paths` produces it: root is
+/// `""`, steps are joined with `.` when every step is a plain name, and the RFC
+/// 6901 pointer form (`/` for the empty name, `/a.b` for a name containing the
+/// separator) is used otherwise. Both forms are accepted. A numeric step inside
+/// an array selects an element of the declared items schema.
+pub fn Schema::at_path(self : Schema, path : String) -> Schema? {
   let mut cur = self
-  for seg in path.split(".") {
+  for step in path_texts(path) {
     cur = match cur.structure() {
       Obj(members) => {
         let mut next : Schema? = None
         for m in members {
-          if m.key == seg.to_owned() {
+          if m.key == step {
             next = Some(m.schema)
           }
         }
@@ -726,8 +981,7 @@ pub fn Schema::at_path(self : Schema, path : String) -> Schema? {
         }
       }
       Arr(inner) => {
-        let idx = @string.parse_int(seg.to_owned()) catch { _ => -1 }
-        if idx < 0 {
+        if path_index_step(step) < 0 {
           return None
         }
         inner
@@ -1698,17 +1952,7 @@ fn mismatch_expected(schema : Schema, v : Json) -> String {
 }
 
 ///|
-/// Join a path with one more step.
-fn join_path(base : String, step : String) -> String {
-  if base == "" {
-    step
-  } else {
-    base + "." + step
-  }
-}
-
-///|
-/// Walk `value` against `schema` (FR-36). `path` is the dotted prefix of the
+/// Walk `value` against `schema` (FR-36). `path` is the canonical path of the
 /// node, empty at the root.
 ///
 /// `evaluate` walks *declared members*: a root that declares no members has
@@ -1775,7 +2019,7 @@ fn walk_schema_step(
         Json::Object(map) => {
           let pending : Array[(Schema, Json, String)] = []
           for m in members {
-            let here = join_path(path, m.key)
+            let here = path_append(path, m.key)
             let child = match map.get(m.key) {
               Some(v) => v
               None => {
@@ -1823,7 +2067,7 @@ fn walk_schema_step(
         Json::Array(items) => {
           let pending : Array[(Schema, Json, String)] = []
           for i = 0; i < items.length(); i = i + 1 {
-            let here = join_path(path, i.to_string())
+            let here = path_append(path, i.to_string())
             if inner.accepts(items[i]) {
               pending.push((inner, items[i], here))
             } else {
@@ -1918,63 +2162,126 @@ pub fn kind_of(v : Json) -> String {
 }
 
 ///|
-/// The dotted paths of the required members of a skeleton, in declaration
+/// One step of `Schema::required_paths`'s work list: enter a declaration node,
+/// or leave the `Obj` member array being walked.
+///
+/// The leave step is what keeps the cycle check to the *current* ancestor chain.
+/// A global "seen" set would call a legal shared sub-declaration a cycle; an
+/// ancestor chain cannot, because the entry is gone by the time a sibling
+/// references the same array.
+priv enum RequiredStep {
+  /// Enter one declaration node at its canonical path. The flag says whether
+  /// the node is a required member whose path must be recorded (the root is
+  /// not) -- recording it on entry, rather than when the parent looks at it,
+  /// is what keeps the order depth-first and matches the recursive form.
+  RequiredNode(Schema, String, Int32, Bool)
+  RequiredLeave
+}
+
+///|
+/// The canonical paths of the required members of a skeleton, in declaration
 /// order (FR-36).
 ///
 /// A required object contributes its own path and, recursively, the required
 /// members inside it. An optional member contributes nothing: a member that may
 /// be absent cannot hold up readiness. An array is one path, because the number
 /// of elements a model will emit is not declared.
-pub fn Schema::required_paths(self : Schema) -> Array[String] {
+///
+/// Iterative, and guarded: a hand-built declaration may be tens of thousands of
+/// levels deep, and its `Array` members are mutable, so a self-reference is
+/// constructible. The depth and node budgets stop a walk that would never
+/// finish and the ancestor-chain check reports a cycle as `E070`, never as a
+/// crash. Neither redeems a walk of a legal shared sub-declaration twice.
+pub fn Schema::required_paths(
+  self : Schema,
+  depth_budget? : Int32,
+  node_budget? : Int32,
+) -> Array[String] raise LIWENJSONError {
+  let max_depth = match depth_budget {
+    Some(v) => v
+    None => MAX_SCHEMA_WALK_DEPTH
+  }
+  let max_nodes = match node_budget {
+    Some(v) => v
+    None => MAX_SCHEMA_WALK_NODES
+  }
   let out : Array[String] = []
-  collect_required(self, "", out)
+  let work : Array[RequiredStep] = [RequiredNode(self, "", 0, false)]
+  let ancestors : Array[Array[SchemaMember]] = []
+  let mut nodes = 0
+  while work.length() > 0 {
+    match work.remove(work.length() - 1) {
+      RequiredLeave => {
+        let _ = ancestors.remove(ancestors.length() - 1)
+      }
+      RequiredNode(schema, base, depth, emit) => {
+        if depth > max_depth {
+          raise SchemaError(
+            "the schema is nested more deeply than a traversal may walk",
+          )
+        }
+        nodes = nodes + 1
+        if nodes > max_nodes {
+          raise SchemaError("the schema is larger than a traversal may walk")
+        }
+        if emit {
+          out.push(base)
+        }
+        // The structure is what is walked, not the wrapper: a required member
+        // inside `{...}(enum:[...])` is still required, and the watcher has to
+        // follow it.
+        match schema.structure() {
+          Obj(members) => {
+            for anc in ancestors {
+              if physical_equal(anc, members) {
+                raise SchemaError("the schema contains a cycle")
+              }
+            }
+            ancestors.push(members)
+            work.push(RequiredLeave)
+            let pending : Array[RequiredStep] = []
+            for m in members {
+              if m.required {
+                pending.push(
+                  RequiredNode(
+                    m.schema,
+                    path_append(base, m.key),
+                    depth + 1,
+                    true,
+                  ),
+                )
+              }
+            }
+            // Children are pushed in reverse so that they pop in declaration
+            // order, which is the order `out` has to be in.
+            let mut i = pending.length()
+            while i > 0 {
+              i = i - 1
+              work.push(pending[i])
+            }
+          }
+          _ => ()
+        }
+      }
+    }
+  }
   out
 }
 
 ///|
-/// Recursive half of `Schema::required_paths`.
-///
-/// The structure is what is walked, not the wrapper: a required member inside
-/// `{...}(enum:[...])` is still required, and the watcher has to follow it.
-fn collect_required(
-  schema : Schema,
-  base : String,
-  out : Array[String],
-) -> Unit {
-  match schema.structure() {
-    Obj(members) =>
-      for m in members {
-        if m.required {
-          let here = join_path(base, m.key)
-          out.push(here)
-          match m.schema.structure() {
-            Obj(_) => collect_required(m.schema, here, out)
-            _ => ()
-          }
-        }
-      }
-    _ => ()
-  }
-}
-
-///|
-/// Look up a dotted path in a value, where a numeric step is an array index
-/// (FR-36). `""` is the value itself.
+/// Look up a canonical path in a value, where a numeric step inside an array is
+/// an index (FR-36). `""` is the value itself and `/` is the member named `""`.
 pub fn lookup_path(v : Json, path : String) -> Json? {
-  if path == "" {
-    return Some(v)
-  }
   let mut cur = v
-  for seg in path.split(".") {
-    let key = seg.to_owned()
+  for step in path_texts(path) {
     cur = match cur {
       Json::Object(map) =>
-        match map.get(key) {
+        match map.get(step) {
           Some(inner) => inner
           None => return None
         }
       Json::Array(items) => {
-        let idx = @string.parse_int(key) catch { _ => return None }
+        let idx = path_index_step(step)
         if idx < 0 || idx >= items.length() {
           return None
         }
@@ -2014,11 +2321,18 @@ pub(all) struct SemanticReadiness {
 
 ///|
 /// Per mille of `whole` that `part` is, without dividing by zero.
+///
+/// The multiplication is done in `Int64`: `part * 1000` overflows `Int32` once
+/// `part` passes 2,147,483, which is a little over 2 MiB — smaller than the
+/// default `max_input_len`, so any large-but-legal document could overflow it
+/// and report a negative per-mille. Promoting before multiplying makes the
+/// result exact for every `Int32` pair; when `0 <= part <= whole` it is in
+/// 0..1000 by construction, so nothing needs to be clamped afterwards.
 fn permille(part : Int32, whole : Int32) -> Int32 {
   if whole <= 0 {
     1000
   } else {
-    part * 1000 / whole
+    (part.to_int64() * 1000L / whole.to_int64()).to_int()
   }
 }
 

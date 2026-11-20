@@ -64,7 +64,10 @@ fn error_exit_code(e : @lj.LIWENJSONError) -> Int32 {
     | @lj.NoJsonFound(_)
     | @lj.InvalidUtf8(_)
     | @lj.InvalidEvent(_) => 3
-    @lj.DepthLimit(_, _) | @lj.SizeLimit(_, _) | @lj.TokenLimit(_, _) => 4
+    @lj.DepthLimit(_, _)
+    | @lj.SizeLimit(_, _)
+    | @lj.TokenLimit(_, _)
+    | @lj.OutputLimit(_) => 4
     @lj.StrictViolation(_, _, _) | @lj.AmbiguousRepair(_, _, _) => 5
     @lj.InvalidState(_) => 70
     @lj.InvalidOption(_) => 2
@@ -149,6 +152,7 @@ fn options_of(o : CliOpts, agent_protocol? : Bool) -> @lj.Options {
     max_input_len: o.max_input_len,
     max_depth: o.max_depth,
     max_token_len: o.max_token_len,
+    max_output_len: o.max_output_len,
     max_loss: o.max_loss,
     reject_ambiguous: o.reject_ambiguous,
     // `--check` answers with the records and the exit code; rendering the
@@ -210,6 +214,10 @@ fn program_name(argv : Array[String]) -> String {
 ///|
 /// Run the command.
 fn run() -> Unit {
+  // A reader that closed the pipe must become a write error the checked writers
+  // report (exit code 70, message on stderr), not a SIGPIPE that kills the
+  // process before it can say anything.
+  ignore_sigpipe()
   let (o, usage_error) = parse_args(@env.args())
   if program_name(@env.args()) == "liwenjson-mcp" {
     match o.action {
@@ -263,7 +271,10 @@ fn run() -> Unit {
     Run => ()
   }
   if o.batch {
-    run_batch(options_of(o), o.chunk)
+    // The declaration is passed in rather than re-derived from the text: batch
+    // lines must get the same verdict a single document gets, and `--schema`
+    // used to be silently ignored here (audit P0-02).
+    run_batch(options_of(o), schema_of(o), o.chunk)
     quit(0)
   }
   let stream = open_input(o.path)
@@ -276,6 +287,15 @@ fn run() -> Unit {
     return quit(3)
   }
   let options = options_of(o)
+  // The result stream is checked before the document is read: a process whose
+  // stdout cannot be written must report that, not parse a whole file and exit
+  // 0 (audit P1-04). `--check` still opens it, which is how a closed stdout is
+  // reported on that path too.
+  let out = open_output()
+  if out == 0L {
+    eprintln("liwenjson: cannot open stdout for writing")
+    return quit(IO_ERROR_EXIT)
+  }
   // The input is streamed in fixed chunks, so the whole document is never
   // held in memory twice; the first `PREFIX_MAX` bytes are kept only to draw
   // the error snippet.
@@ -383,7 +403,10 @@ fn run() -> Unit {
         quit(1)
       }
     } else {
-      println(fin.text)
+      // `println` buffers until exit and discards write errors; the repaired
+      // document is the answer, so a write that did not reach the reader is a
+      // failure, not a success (audit P1-04).
+      write_line_or_exit(out, fin.text)
     }
     quit(0)
   } catch {

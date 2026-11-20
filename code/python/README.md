@@ -10,6 +10,7 @@ No third-party dependencies and nothing else to install: the wheel carries the
 engine for every platform the project releases — Linux x86_64 and arm64, macOS
 arm64, Windows x86_64 — and picks the right one at import time. The engine is
 the same native binary the CLI ships, reached over a versioned stdio protocol.
+See [Platforms](#platforms) for what the single wheel does and does not promise.
 
 ```bash
 pip install liwenjson
@@ -25,8 +26,17 @@ An engine that is already installed keeps priority: `LIWENJSON_BIN`, then
 at a newer CLI than the one this wheel was built with.
 
 ```python
-import json
 from liwenjson import Client
+
+model_output = '{"query":"MoonBit"}'
+tool = {
+    "name": "search",
+    "inputSchema": {
+        "type": "object",
+        "properties": {"query": {"type": "string"}},
+        "required": ["query"],
+    },
+}
 
 with Client() as jm:
     plan = jm.analyze(
@@ -35,14 +45,32 @@ with Client() as jm:
         schema_json=tool["inputSchema"],  # the declaration you already have
     )
     if plan["executable"]:
-        args = json.loads(plan["text"])
+        args = plan["value"]              # already parsed: {"query": "MoonBit"}
     else:
         print(plan["retry"]["prompt"])    # feed this back to the model
 ```
 
+`plan["value"]` is the parsed document. The repaired text is only included when
+you ask for it (`analyze(..., with_text=True)` returns it as `plan["text"]`),
+so gating on `executable` and reading `value` is the dependency-free path.
+
 `Client` keeps one `liwenjson serve` process alive, so a loop pays the spawn
 cost once. `repair`, `analyze` and `validate` are one-shot convenience
 functions that spawn a process per call.
+
+## Platforms
+
+The wheel is one `py3-none-any` file that carries the engine for the four
+platforms the release builds: Linux x86_64, Linux arm64, macOS arm64 and
+Windows x86_64. It is not a pure-Python wheel: the tag says "one file for
+several interpreters", not "runs on any operating system". On any other host
+(Intel macOS, Windows arm64, FreeBSD, Alpine/musl, ...) `find_binary()` raises
+`FileNotFoundError` **before the first call**, naming the platforms the wheel
+does carry; set `LIWENJSON_BIN` to an engine you built, or put `liwenjson` on
+`PATH`. Alpine/musl is not tested. A per-platform wheel would have a more
+precise tag, but then one PyPI file would not cover the four released
+platforms; the single wheel is the deliberate choice, and this section is the
+contract that comes with it.
 
 ## Console scripts
 
@@ -59,7 +87,7 @@ platform the release does not build for — Intel macOS, for example — needs
 `LIWENJSON_BIN`.
 
 ```bash
-liwenjson --version                  # liwenjson 1.5.1: the engine the launchers need
+liwenjson --version                  # liwenjson 1.5.2: the engine the launchers need
 liwenjson-mcp                        # MCP stdio server
 liwenjson-mcp --print-config=claude  # the client configuration snippet
 liwenjson-http --port 8080           # POST /repair /analyze /validate /readiness, GET /healthz
@@ -120,10 +148,10 @@ than being silently dropped.
 
 ## Version
 
-The Python package is `1.5.1`, the engine version, published to PyPI on
-2026-10-30. The MoonBit package on mooncakes is `0.13.0` because the registry
+The Python package is `1.5.2`, the engine version, published to PyPI on
+2026-11-20. The MoonBit package on mooncakes is `0.14.0` because the registry
 currently accepts only `0.x.y`; the bytes are the same. `Client.hello()` reports
-both. `0.13.0` was published on 2026-10-29, and `0.12.0` (the 1.5.0
-correspondence) on 2026-10-28.
+both. `0.14.0` was published on 2026-11-20, `0.13.0` (the 1.5.1 correspondence)
+on 2026-10-29, and `0.12.0` (the 1.5.0 correspondence) on 2026-10-28.
 
 License: Apache-2.0.

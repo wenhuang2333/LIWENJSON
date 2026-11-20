@@ -117,6 +117,16 @@ pub(all) enum ReadinessEvent {
   /// executable, whatever the model writes next. The payload is the number of
   /// code units consumed when that became final.
   RootInvalid(Int32)
+  /// A required path was never present in the value: the member is missing, as
+  /// opposed to present with an explicit `null` (which is a value like any
+  /// other and is judged by the declaration) or present with the wrong kind
+  /// (`FieldInvalid`). The two strings are the canonical path of the required
+  /// member and the kind it was declared with.
+  ///
+  /// This is the event that keeps "missing" and "null" apart: before it, a
+  /// member that was never written was looked up as `Json::null()` and a
+  /// `{!a:any}` skeleton reported `field_ready(a)` for a document with no `a`.
+  FieldMissing(String, String)
 }
 
 ///|
@@ -129,6 +139,7 @@ pub fn ReadinessEvent::kind(self : ReadinessEvent) -> String {
     FieldIncomplete(_, _) => "field_incomplete"
     RootReady => "root_ready"
     RootInvalid(_) => "root_invalid"
+    FieldMissing(_, _) => "field_missing"
   }
 }
 
@@ -140,6 +151,7 @@ pub fn ReadinessEvent::path(self : ReadinessEvent) -> String {
     FieldInvalid(p, _) => p
     FieldRejected(p, _, _) => p
     FieldIncomplete(p, _) => p
+    FieldMissing(p, _) => p
     RootReady => ""
     RootInvalid(_) => ""
   }
@@ -153,7 +165,8 @@ pub fn ReadinessEvent::is_verdict(self : ReadinessEvent) -> Bool {
     | FieldInvalid(_, _)
     | FieldRejected(_, _, _)
     | RootReady
-    | RootInvalid(_) => true
+    | RootInvalid(_)
+    | FieldMissing(_, _) => true
     FieldIncomplete(_, _) => false
   }
 }
@@ -183,6 +196,14 @@ pub fn ReadinessEvent::to_json(self : ReadinessEvent) -> String {
       json_escape(got) +
       "\"}"
     FieldIncomplete(p, e) =>
+      "{" +
+      k +
+      ",\"path\":\"" +
+      json_escape(p) +
+      "\",\"expected\":\"" +
+      json_escape(e) +
+      "\"}"
+    FieldMissing(p, e) =>
       "{" +
       k +
       ",\"path\":\"" +
@@ -359,7 +380,13 @@ pub fn SemanticWatcher::new(
     if decided_by_children(decl) {
       continue
     }
-    let segs = treated_segments(p)
+    // A declaration path names object members only (`required_paths` never
+    // descends an array), so every segment is a key. An empty segment list
+    // would be the root, which is not a required member.
+    let segs = path_key_segments(p)
+    if segs.length() == 0 {
+      continue
+    }
     let head = match segs[0] {
       Key(k) => k
       Index(i) => i.to_string()
@@ -425,26 +452,6 @@ fn decided_by_children(decl : Schema) -> Bool {
     Constrained(_, _) => false
     _ => false
   }
-}
-
-///|
-/// Split a dotted path into segments. A segment that names an index is an
-/// `Index`, which is what `Delta::path` carries for an array slot.
-fn treated_segments(path : String) -> Array[PathSegment] {
-  let out : Array[PathSegment] = []
-  if path == "" {
-    return out
-  }
-  for seg in path.split(".") {
-    let s = seg.to_owned()
-    let idx = @string.parse_int(s) catch { _ => -1 }
-    if idx >= 0 && s.length() > 0 && s.at(0).to_int() != 0x30 {
-      out.push(Index(idx))
-    } else {
-      out.push(Key(s))
-    }
-  }
-  out
 }
 
 ///|
@@ -654,11 +661,36 @@ fn is_prefix(prefix : Array[PathSegment], segs : Array[PathSegment]) -> Bool {
 fn SemanticWatcher::settle(self : SemanticWatcher, i : Int32) -> Unit {
   self.settled[i] = true
   self.settled_count = self.settled_count + 1
-  let v = self.value_at(i)
   let decl = self.watched[i].decl
+  let v = match self.value_at(i) {
+    Some(v) => v
+    None => {
+      // The path was never present. That is not `null`: `null` is a value the
+      // declaration may accept (`{!a:any}` and `{!a:null}` do), and treating a
+      // missing member as `null` is what made `{}` report `field_ready(a)` and
+      // fail R-05. A missing required member is its own event and its own
+      // refusal.
+      self.emit(FieldMissing(self.watched[i].path, self.watched[i].expect))
+      self.conclude_invalid()
+      return
+    }
+  }
   if decl.accepts(v) {
     match substructure_problem(decl, v) {
-      Some((p, e)) => self.emit(FieldIncomplete(p, e))
+      // The offender is named relative to the declaration that was walked; the
+      // event carries a path in the same space as `required_paths` and the
+      // `missing` list, so the watched path is prepended. `<root>` can only be
+      // produced for a value that already satisfied `accepts`, so it is
+      // unreachable here; if it ever appears, the watched path is the honest
+      // answer.
+      Some((p, e)) => {
+        let here = if p == "<root>" {
+          self.watched[i].path
+        } else {
+          path_extend(self.watched[i].path, p)
+        }
+        self.emit(FieldIncomplete(here, e))
+      }
       None => self.emit(FieldReady(self.watched[i].path))
     }
     return
@@ -719,12 +751,12 @@ fn SemanticWatcher::value_at_root(self : SemanticWatcher) -> Json {
 }
 
 ///|
-/// The current value at watched path `i`.
-fn SemanticWatcher::value_at(self : SemanticWatcher, i : Int32) -> Json {
-  match lookup_path(self.value_at_root(), self.watched[i].path) {
-    Some(x) => x
-    None => Json::null()
-  }
+/// The current value at watched path `i`, or `None` when the path is not
+/// present. Absence is deliberately not folded into `Json::null()`: a missing
+/// member and an explicit `null` are different facts, and only one of them can
+/// be accepted by `{!a:any}`.
+fn SemanticWatcher::value_at(self : SemanticWatcher, i : Int32) -> Json? {
+  lookup_path(self.value_at_root(), self.watched[i].path)
 }
 
 ///|
@@ -858,8 +890,12 @@ pub fn SemanticWatcher::all_settled(self : SemanticWatcher) -> Bool {
 pub fn SemanticWatcher::ready_count(self : SemanticWatcher) -> Int32 {
   let mut n = 0
   for i = 0; i < self.watched.length(); i = i + 1 {
-    if self.settled[i] && self.watched[i].decl.accepts(self.value_at(i)) {
-      n = n + 1
+    if !self.settled[i] {
+      continue
+    }
+    match self.value_at(i) {
+      Some(v) => if self.watched[i].decl.accepts(v) { n = n + 1 }
+      None => ()
     }
   }
   n

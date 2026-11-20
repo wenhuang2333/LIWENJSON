@@ -92,15 +92,39 @@ case "$(python3 -c 'import platform,sys; print(sys.platform, platform.machine().
   "linux arm64")    HOST_KEY="linux-arm64" ;;
 esac
 WHEEL=""
+WHEEL_ORIGIN="fresh build"
 if [ -n "$HOST_KEY" ] && [ -f "$ROOT/code/_build/native/release/build/cmd/liwenjson/liwenjson.exe" ]; then
   if bash "$ROOT/code/python/build_wheel.sh" --from-local "$HOST_KEY" \
     --platforms "$HOST_KEY" --out "$EXTRA_WHEEL" >/dev/null 2>&1; then
     WHEEL="$(ls "$EXTRA_WHEEL"/liwenjson-*.whl 2>/dev/null | head -1)"
+  else
+    WHEEL_ORIGIN="build_wheel.sh failed"
   fi
+elif [ -z "$HOST_KEY" ]; then
+  WHEEL_ORIGIN="no local wheel can be built on this host"
+else
+  WHEEL_ORIGIN="the native CLI has not been built"
 fi
 if [ -z "$WHEEL" ]; then
-  # No local build to package: fall back to a wheel someone already built.
-  WHEEL="$(ls "$ROOT"/dist/python/liwenjson-*.whl 2>/dev/null | head -1)"
+  # The old fallback silently picked up whatever was left in dist/python -- a
+  # wheel from a previous commit with a previous engine -- and then validated
+  # that stale artefact. A gate about "the artefact this checkout builds" must
+  # not be satisfied by an artefact this checkout did not build, so using one is
+  # an explicit, visible opt-in (and it is reported as such).
+  if [ "${PACKAGE_DIST_ALLOW_STALE:-0}" = "1" ]; then
+    WHEEL="$(ls "$ROOT"/dist/python/liwenjson-*.whl 2>/dev/null | head -1)"
+    if [ -n "$WHEEL" ]; then
+      WHEEL_ORIGIN="STALE (PACKAGE_DIST_ALLOW_STALE=1)"
+    fi
+  else
+    fail "the fresh wheel build produced no wheel ($WHEEL_ORIGIN). Refusing to validate a stale dist/python wheel; rebuild with 'bash code/python/build_wheel.sh', or opt in deliberately with PACKAGE_DIST_ALLOW_STALE=1."
+  fi
+fi
+if [ -n "$WHEEL" ]; then
+  WHEEL_SHA="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$WHEEL")"
+  echo "wheel: $WHEEL"
+  echo "  origin: $WHEEL_ORIGIN"
+  echo "  sha256: $WHEEL_SHA"
 fi
 if [ -z "$WHEEL" ]; then
   fail "no Python wheel was built; run bash code/python/build_wheel.sh first"

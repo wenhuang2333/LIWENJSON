@@ -29,26 +29,36 @@
 #                        byte-identical to PATH (use it to prove that what was
 #                        uploaded is what is published)
 #   --verify-hashes      download every attached asset and verify its sha256
-#                        against the value in SHA256SUMS
+#                        against the value in SHA256SUMS (default: on)
+#   --no-verify-hashes   only compare the two file sets; do not download
+#                        anything. Reported as a weaker check, never as a pass.
+#   --no-skip            fail (exit 2) when there is no token instead of
+#                        exiting 3; use it where a skip must never pass
 #   -h, --help           this text
 #
-# Token: $GH_TOKEN or $GITHUB_TOKEN. Without one the check is skipped and
-# says so: "skipped: no token", exit 0. With a token the check is strict and
-# exits non-zero on any drift.
+# Token: $GH_TOKEN or $GITHUB_TOKEN. Without one nothing is checked, so the
+# script says so and exits 3 ("not verified") instead of 0: a skip that reads
+# as success is how "the release assets match their hashes" became an
+# assumption nobody had tested. With a token the check is strict and exits
+# non-zero on any drift.
 #
 # Exit codes:
-#   0  the release matches its SHA256SUMS, or the check was skipped
+#   0  the release matches its SHA256SUMS (including the per-file hashes,
+#      when --verify-hashes or --no-skip is in effect)
 #   1  drift: a listed file is not attached, an extra file is attached, a
 #      hash does not match, or the published SHA256SUMS differs from
 #      --sums-file
 #   2  the check could not run: bad usage, missing tool, release not found
+#   3  not verified: no token (and not --no-skip), so nothing about the release
+#      was proven today
 #
 set -uo pipefail
 
 REPO="${LIWENJSON_REPO:-wenhuang2333/LIWENJSON}"
 API="${GH_API:-https://api.github.com}"
 SUMS_FILE=""
-VERIFY_HASHES=0
+VERIFY_HASHES=1
+NO_SKIP=0
 TAG=""
 
 usage() {
@@ -69,6 +79,8 @@ while [ "$#" -gt 0 ]; do
     --sums-file)   [ "$#" -ge 2 ] || die "--sums-file needs a value"; SUMS_FILE="$2"; shift 2 ;;
     --sums-file=*) SUMS_FILE="${1#*=}"; shift ;;
     --verify-hashes) VERIFY_HASHES=1; shift ;;
+    --no-verify-hashes) VERIFY_HASHES=0; shift ;;
+    --no-skip)     NO_SKIP=1; shift ;;
     -h|--help)     usage; exit 0 ;;
     -*)            die "unknown option: $1" ;;
     *)             [ -z "$TAG" ] || die "unexpected argument: $1"; TAG="$1"; shift ;;
@@ -83,8 +95,13 @@ command -v python3 >/dev/null 2>&1 || die "python3 is required"
 # degrade to: say so plainly instead of pretending the release was checked.
 TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 if [ -z "$TOKEN" ]; then
-  printf 'skipped: no token (set GH_TOKEN or GITHUB_TOKEN to check %s %s)\n' "$REPO" "$TAG"
-  exit 0
+  printf 'skipped: NOT VERIFIED — no token (set GH_TOKEN or GITHUB_TOKEN to check %s %s)\n' "$REPO" "$TAG"
+  # Exit 3, not 0: the release was not checked, and a caller that reads 0 as
+  # "the assets match" would be reading a claim nobody made. --no-skip turns
+  # the missing credential into "could not run" (2) for callers that must not
+  # accept a skip at all.
+  [ "$NO_SKIP" = "0" ] || exit 2
+  exit 3
 fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/release-assets.XXXXXX")"
@@ -118,6 +135,20 @@ fetch_asset() {
       ;;
   esac
   printf '%s' "$status"
+}
+
+# sha256 of a file, on this machine. GNU coreutils' sha256sum is not on stock
+# macOS; Perl's shasum is. The gate must run where the release is verified, so
+# it carries both and falls back to python3 (already required above) rather
+# than printing an empty digest and calling the mismatch a release defect.
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | cut -d' ' -f1
+  else
+    python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"
+  fi
 }
 
 status="$(api_get "/repos/$REPO/releases/tags/$TAG" "$WORK/release.json")"
@@ -231,7 +262,7 @@ if [ "$VERIFY_HASHES" = "1" ]; then
       status=1
       continue
     fi
-    got="$(sha256sum "$WORK/asset.bin" | cut -d' ' -f1)"
+    got="$(sha256_of "$WORK/asset.bin")"
     if [ "$got" = "$want" ]; then
       printf '    %s: ok\n' "$name"
     else

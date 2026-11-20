@@ -431,18 +431,163 @@ fn is_non_finite(lower : String) -> Bool {
 /// The output is byte-identical to `Json::stringify`; `TC-R-22` asserts that
 /// against core on the golden corpus and on generated values.
 fn render(v : Json, indent : Int32) -> String {
-  let sb = StringBuilder()
+  let (text, _overflow) = render_raw(v, indent, -1L)
+  text
+}
+
+///|
+/// Render with an output budget counted in UTF-8 bytes (P2-01), raising `E023`
+/// if the text would exceed it.
+///
+/// The budget is checked by the same walk that writes, one write at a time, so
+/// the renderer stops at the first byte past the budget. It never builds the
+/// completed text and measures it afterwards: for `indent = 64` on a 4000-deep
+/// array that would allocate about 1 GB before discovering the answer.
+fn render_checked(
+  v : Json,
+  indent : Int32,
+  limit : Int32,
+) -> String raise LIWENJSONError {
+  let (text, overflow) = render_raw(v, indent, limit.to_int64())
+  if overflow {
+    raise OutputLimit(limit)
+  }
+  text
+}
+
+///|
+/// UTF-8 byte length of `s`, without allocating the encoded bytes.
+///
+/// The budget is counted in the unit a transport charges for. `String::length`
+/// counts UTF-16 code units (the unit `Position::offset` uses), which
+/// undercounts every non-ASCII character, so a host budgeting in bytes could be
+/// handed a string larger than its budget.
+fn utf8_byte_len(s : String) -> Int32 {
+  let mut n = 0
+  for c in s {
+    let cp = c.to_int()
+    n = n +
+      (if cp <= 0x7F {
+        1
+      } else if cp <= 0x7FF {
+        2
+      } else if cp <= 0xFFFF {
+        3
+      } else {
+        4
+      })
+  }
+  n
+}
+
+///|
+/// Accumulates a rendered value while counting its UTF-8 bytes.
+///
+/// A negative `limit` means "no budget": the compact plan report renders a
+/// value that is already bounded by `max_input_len`, and the golden tests
+/// compare `render` against `Json::stringify`. `overflow` is sticky; once the
+/// next write would cross the budget nothing further is allocated, so a
+/// refusal costs at most the budgeted prefix.
+priv struct RenderBuf {
+  sb : StringBuilder
+  limit : Int64
+  mut used : Int64
+  mut overflow : Bool
+}
+
+///|
+fn RenderBuf::new(limit : Int64) -> RenderBuf {
+  { sb: StringBuilder(), limit, used: 0L, overflow: false, }
+}
+
+///|
+/// Count `n` more bytes; false when they do not fit the budget.
+fn RenderBuf::reserve(self : RenderBuf, n : Int64) -> Bool {
+  if self.overflow {
+    return false
+  }
+  if self.limit >= 0L && n > self.limit - self.used {
+    self.overflow = true
+    return false
+  }
+  self.used = self.used + n
+  true
+}
+
+///|
+fn RenderBuf::write(self : RenderBuf, s : String) -> Unit {
+  let n = utf8_byte_len(s).to_int64()
+  if self.reserve(n) {
+    self.sb.write_string(s)
+  }
+}
+
+///|
+fn RenderBuf::write_char(self : RenderBuf, c : Char) -> Unit {
+  if self.reserve(1L) {
+    self.sb.write_char(c)
+  }
+}
+
+///|
+/// Write one JSON string. The raw text is checked first: escaping never
+/// shortens a string, so a string whose raw bytes do not fit cannot fit, and
+/// the encoded allocation is skipped once the budget is exhausted.
+fn RenderBuf::write_json_string(self : RenderBuf, s : String) -> Unit {
+  if self.overflow {
+    return
+  }
+  if self.limit >= 0L && utf8_byte_len(s).to_int64() > self.limit - self.used {
+    self.overflow = true
+    return
+  }
+  self.write(Json::string(s).stringify())
+}
+
+///|
+/// Write `depth * indent` spaces. The count is computed in `Int64`: the depths
+/// a document may have and the indents an option may select must not be able
+/// to multiply into an `Int32` overflow on the way to a budget refusal.
+fn RenderBuf::pad(self : RenderBuf, depth : Int32, indent : Int32) -> Unit {
+  let total = depth.to_int64() * indent.to_int64()
+  if total <= 0L {
+    return
+  }
+  if !self.reserve(total) {
+    return
+  }
+  let chunk = "                                                                "
+  let mut left = total
+  while left >= 64L {
+    self.sb.write_string(chunk)
+    left = left - 64L
+  }
+  let mut i = 0L
+  while i < left {
+    self.sb.write_char(' ')
+    i = i + 1L
+  }
+}
+
+///|
+/// Write the whole value into a fresh buffer; returns the text and whether the
+/// budget was crossed.
+fn render_raw(v : Json, indent : Int32, limit : Int64) -> (String, Bool) {
+  let buf = RenderBuf::new(limit)
   let work : Array[RenderStep] = [Value(v, 0)]
   while work.length() > 0 {
+    if buf.overflow {
+      break
+    }
     match work.remove(work.length() - 1) {
-      Value(x, depth) => render_value(sb, x, depth, work)
+      Value(x, depth) => render_value(buf, x, depth, work)
       ArrayAt(items, i, depth) =>
-        render_array_at(sb, items, i, indent, depth, work)
+        render_array_at(buf, items, i, indent, depth, work)
       ObjectAt(entries, i, depth) =>
-        render_object_at(sb, entries, i, indent, depth, work)
+        render_object_at(buf, entries, i, indent, depth, work)
     }
   }
-  sb.to_string()
+  (buf.sb.to_string(), buf.overflow)
 }
 
 ///|
@@ -466,35 +611,35 @@ priv enum RenderStep {
 ///|
 /// Write one value, starting a cursor when it is a container.
 fn render_value(
-  sb : StringBuilder,
+  buf : RenderBuf,
   v : Json,
   depth : Int32,
   work : Array[RenderStep],
 ) -> Unit {
   match v {
-    Json::Null => sb.write_string("null")
-    Json::True => sb.write_string("true")
-    Json::False => sb.write_string("false")
+    Json::Null => buf.write("null")
+    Json::True => buf.write("true")
+    Json::False => buf.write("false")
     // A number keeps its source text when it has one, so `1.0` stays `1.0`
     // and an integer past 2^53 keeps every digit.
     Json::Number(_, repr~) =>
       match repr {
-        Some(text) => sb.write_string(text)
-        None => sb.write_string(v.stringify())
+        Some(text) => buf.write(text)
+        None => buf.write(v.stringify())
       }
-    Json::String(_) => sb.write_string(v.stringify())
+    Json::String(s) => buf.write_json_string(s)
     Json::Array(items) =>
       if items.length() == 0 {
-        sb.write_string("[]")
+        buf.write("[]")
       } else {
-        sb.write_char('[')
+        buf.write_char('[')
         work.push(ArrayAt(items, 0, depth))
       }
     Json::Object(map) =>
       if map.length() == 0 {
-        sb.write_string("{}")
+        buf.write("{}")
       } else {
-        sb.write_char('{')
+        buf.write_char('{')
         // The map iterates in insertion order, which is the order the document
         // had. Collecting the entries once per object is O(keys); the cursor
         // then walks them without holding the whole container on the stack.
@@ -510,7 +655,7 @@ fn render_value(
 ///|
 /// Write element `i` of an array and queue the rest.
 fn render_array_at(
-  sb : StringBuilder,
+  buf : RenderBuf,
   items : Array[Json],
   i : Int32,
   indent : Int32,
@@ -518,14 +663,14 @@ fn render_array_at(
   work : Array[RenderStep],
 ) -> Unit {
   if i >= items.length() {
-    sb.write_string(close_pad(depth, indent))
-    sb.write_char(']')
+    write_close_pad(buf, depth, indent)
+    buf.write_char(']')
     return
   }
   if i > 0 {
-    sb.write_string(separator(depth, indent))
+    write_separator(buf, depth, indent)
   } else {
-    sb.write_string(open_pad(depth, indent))
+    write_open_pad(buf, depth, indent)
   }
   work.push(ArrayAt(items, i + 1, depth))
   work.push(Value(items[i], depth + 1))
@@ -534,7 +679,7 @@ fn render_array_at(
 ///|
 /// Write member `i` of an object and queue the rest.
 fn render_object_at(
-  sb : StringBuilder,
+  buf : RenderBuf,
   entries : Array[(String, Json)],
   i : Int32,
   indent : Int32,
@@ -542,18 +687,18 @@ fn render_object_at(
   work : Array[RenderStep],
 ) -> Unit {
   if i >= entries.length() {
-    sb.write_string(close_pad(depth, indent))
-    sb.write_char('}')
+    write_close_pad(buf, depth, indent)
+    buf.write_char('}')
     return
   }
   if i > 0 {
-    sb.write_string(separator(depth, indent))
+    write_separator(buf, depth, indent)
   } else {
-    sb.write_string(open_pad(depth, indent))
+    write_open_pad(buf, depth, indent)
   }
   let (k, item) = entries[i]
-  sb.write_string(Json::string(k).stringify())
-  sb.write_string(if indent > 0 { ": " } else { ":" })
+  buf.write_json_string(k)
+  buf.write(if indent > 0 { ": " } else { ":" })
   work.push(ObjectAt(entries, i + 1, depth))
   work.push(Value(item, depth + 1))
 }
@@ -561,45 +706,30 @@ fn render_object_at(
 ///|
 /// What sits between two elements of a container: a comma, then the newline and
 /// indent that the next element starts with.
-fn separator(depth : Int32, indent : Int32) -> String {
+fn write_separator(buf : RenderBuf, depth : Int32, indent : Int32) -> Unit {
+  buf.write_char(',')
   if indent > 0 {
-    "," + "\n" + pad(depth + 1, indent)
-  } else {
-    ","
+    buf.write_char('\n')
+    buf.pad(depth + 1, indent)
   }
 }
 
 ///|
 /// What sits between the opening bracket and the first element.
-fn open_pad(depth : Int32, indent : Int32) -> String {
+fn write_open_pad(buf : RenderBuf, depth : Int32, indent : Int32) -> Unit {
   if indent > 0 {
-    "\n" + pad(depth + 1, indent)
-  } else {
-    ""
+    buf.write_char('\n')
+    buf.pad(depth + 1, indent)
   }
 }
 
 ///|
 /// What sits between the last element and the closing bracket.
-fn close_pad(depth : Int32, indent : Int32) -> String {
+fn write_close_pad(buf : RenderBuf, depth : Int32, indent : Int32) -> Unit {
   if indent > 0 {
-    "\n" + pad(depth, indent)
-  } else {
-    ""
+    buf.write_char('\n')
+    buf.pad(depth, indent)
   }
-}
-
-///|
-/// `depth * indent` spaces.
-fn pad(depth : Int32, indent : Int32) -> String {
-  let sb = StringBuilder()
-  let mut i = 0
-  let total = depth * indent
-  while i < total {
-    sb.write_char(' ')
-    i = i + 1
-  }
-  sb.to_string()
 }
 
 ///|

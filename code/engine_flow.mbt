@@ -1614,6 +1614,31 @@ fn Engine::retry_prelude(self : Engine) -> FinalResult? raise LIWENJSONError {
   // `RootInvalid` on a value the parse had just accepted — the bare-scalar
   // watcher contradiction (audit 5.3). One parser, one value.
   self.root = Some(result.value)
+  // The verdict is part of the value's description, and the snapshot channel
+  // reports it: the retry's repairs are the ones that produced the value, so
+  // the outer run — which repaired nothing because it parsed nothing — must
+  // not keep claiming `Exact`/not-ambiguous. Before this, `finish` returned
+  // `cosmetic` while a `snapshot()` taken right after said `exact`
+  // (P1-07). The verdict only rises, so adopting it cannot lower anything
+  // the outer run did record.
+  if result.exactness.rank() > self.exactness.rank() {
+    self.exactness = result.exactness
+  }
+  if result.ambiguous {
+    self.ambiguous = true
+  }
+  if self.opts.collect_repairs {
+    for r in result.repairs {
+      if self.reps.length() < self.opts.max_repairs {
+        self.reps.push(r)
+      } else {
+        self.repairs_truncated = true
+      }
+    }
+  }
+  if result.repairs_truncated {
+    self.repairs_truncated = true
+  }
   Some(result)
 }
 
@@ -1647,7 +1672,7 @@ fn Engine::finish_engine(self : Engine) -> FinalResult raise LIWENJSONError {
     Some(value) => {
       self.phase = PFinished
       let text = if self.opts.want_text {
-        render(value, self.opts.indent)
+        render_checked(value, self.opts.indent, self.opts.max_output_len)
       } else {
         ""
       }

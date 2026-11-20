@@ -32,6 +32,44 @@ pub const MAX_VALUE_DEPTH : Int32 = 1048576
 pub const MAX_SCHEMA_DEPTH : Int32 = 256
 
 ///|
+/// The largest `indent` the library accepts, and the only upper bound the CLI
+/// and the library share.
+///
+/// `indent` multiplies the depth of every value, so an unbounded indent turns a
+/// legal document into an impossible allocation (`indent = 64` on a 4000-deep
+/// array would render about 1 GB). The CLI already capped the flag at 0..64;
+/// the library only rejected negatives, which made the same program legal
+/// through one entry point and a crash through another. 64 is the CLI's number
+/// because it is already the number `--indent` documents; the renderer no
+/// longer trusts it, but an out-of-range option is refused with `E050` rather
+/// than silently producing a runaway string.
+pub const MAX_INDENT : Int32 = 64
+
+///|
+/// The deepest a hand-built `Schema` may nest before a public traversal gives up
+/// with `E070`.
+///
+/// The two declaration parsers are recursive and carry their own, much lower
+/// bound (`MAX_SCHEMA_DEPTH`), so this number only catches values a caller built
+/// directly as `Schema` values. The traversals that walk such a declaration
+/// (`Schema::stringify`, `Schema::required_paths`) are iterative, so this is a
+/// budget rather than a stack bound: without it, a self-referential `Array`
+/// would make them walk forever instead of failing.
+pub const MAX_SCHEMA_WALK_DEPTH : Int32 = 1048576
+
+///|
+/// How many declaration nodes a public traversal of a hand-built `Schema` may
+/// visit before it gives up with `E070`.
+///
+/// A legal shared sub-declaration (the same `Obj` array referenced twice) is
+/// expanded once per reference, exactly as a caller reading the text form back
+/// would see it, so the node count is what bounds a pathological sharing tree
+/// that has no cycle. A cycle is caught by the ancestor chain and reports a
+/// different `E070`; this budget only stops a walk that would never finish
+/// producing output.
+pub const MAX_SCHEMA_WALK_NODES : Int32 = 4194304
+
+///|
 /// Repair mode. `Strict` turns the first repair record into `E010`.
 pub(all) enum Mode {
   Lenient
@@ -292,6 +330,15 @@ pub(all) struct Options {
   /// Refuse a repair that admits a second reading (FR-27): the first ambiguous
   /// record raises `E011` instead of being recorded. Off by default.
   reject_ambiguous : Bool
+  /// Budget for the rendered text, counted in **UTF-8 bytes** (not UTF-16 code
+  /// units: the unit a transport charges for, so a host does not have to
+  /// re-measure a value the engine already produced). When `want_text` is true
+  /// and the renderer would write more than this, it stops at the first write
+  /// that would cross the budget and raises `E023 OutputLimit` instead of
+  /// finishing a string it cannot hand on. The count is incremental: the
+  /// renderer never builds the whole output to measure it. Default 64 MiB,
+  /// which is also the default `max_input_len`.
+  max_output_len : Int32
 }
 
 ///|
@@ -320,6 +367,7 @@ pub fn Options::default() -> Options {
     max_loss: Lossy,
     collect_deltas: false,
     reject_ambiguous: false,
+    max_output_len: 67108864,
   }
 }
 
@@ -440,8 +488,19 @@ pub fn Options::validate(self : Options) -> Unit raise LIWENJSONError {
   if self.max_prose_buffer <= 0 {
     raise InvalidOption("max_prose_buffer must be a positive integer")
   }
-  if self.indent < 0 {
-    raise InvalidOption("indent must not be negative")
+  // The upper bound is the CLI's: an indent is a formatting choice, and a
+  // positive-but-absurd one is a request for an allocation, not a layout. The
+  // renderer enforces the output budget independently, so this is not the
+  // memory guard; it keeps the library and `--indent` in agreement.
+  if self.indent < 0 || self.indent > MAX_INDENT {
+    raise InvalidOption(
+      "indent must be within 0.." +
+      MAX_INDENT.to_string() +
+      "; larger indents are refused rather than rendered",
+    )
+  }
+  if self.max_output_len <= 0 {
+    raise InvalidOption("max_output_len must be a positive integer")
   }
   if self.max_repairs <= 0 {
     raise InvalidOption("max_repairs must be a positive integer")

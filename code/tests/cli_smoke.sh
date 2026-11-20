@@ -53,7 +53,7 @@ check() {
   local ok=1
   [ "$rc" = "$want_rc" ] || ok=0
   if [ -n "$want_out" ] && [ "$out" != "$want_out" ]; then ok=0; fi
-  if [ -n "$want_err" ] && ! printf '%s' "$err" | grep -qF "$want_err"; then ok=0; fi
+  if [ -n "$want_err" ] && ! printf '%s' "$err" | grep -qF -- "$want_err"; then ok=0; fi
   if [ "$ok" = 1 ]; then
     pass=$((pass + 1))
     printf 'ok   %-34s rc=%s\n' "$name" "$rc"
@@ -946,6 +946,158 @@ if printf '%s' "$rpc_bad" | grep -qF '"code":-32600'; then
 else
   fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "a malformed JSON-RPC envelope is refused" "$rpc_bad"
 fi
+
+# ---------------------------------------------------------------------------
+# 2026-11-20 audit regressions (CLI: P0-01..P0-04, P0-08, P1-04).
+#
+# Each case below is a bug that shipped: batch answered nothing until stdin
+# closed, `--batch --schema` ignored the declaration, `llm --strict` waved a
+# trailing comma through as executable, `--policy` silently overrode an
+# explicit safety option, a batch line that was not UTF-8 became a document
+# full of U+FFFD, and a closed stdout was reported as success.
+# ---------------------------------------------------------------------------
+
+# P0-04: `--policy` and an explicit safety option both answer the same
+# question; the parse layer refuses the pair (exit 2) instead of letting the
+# profile silently win. Both orders, and a per-flag name in the message.
+STDIN='{"a":"x}' check "policy vs --for-execution" 2 '' "--for-execution also sets one of them" -- --for-execution --policy permissive
+STDIN='{"a":"x}' check "policy conflict in either order" 2 '' "--for-execution also sets one of them" -- --policy permissive --for-execution
+STDIN='{"a":"x}' check "policy vs --reject-ambiguous" 2 '' "--reject-ambiguous also sets one of them" -- --reject-ambiguous --policy permissive
+STDIN='{"a":"x}' check "policy vs --max-input-len" 2 '' "--max-input-len also sets one of them" -- --max-input-len 4 --policy permissive
+# The refusal must not become over-rejection: a profile alone and an explicit
+# safety knob alone are both legitimate.
+STDIN='{"a":1}' check "policy alone is accepted" 0 '{"a":1}' "" -- --policy permissive
+STDIN='{"a":1}' check "explicit knob alone is accepted" 0 '{"a":1}' "" -- --max-depth 700
+
+# P0-02: `--batch --schema` must apply the same gate as one document. The row
+# is rc 5 / E070 and carries no value; the process itself keeps running (0).
+STDIN='{"id":"schema","input":"{\"a\":\"wrong\"}"}' check_has "batch --schema row rc" 0 '"rc":5' out -- --batch --schema '{!a:integer}'
+STDIN='{"id":"schema","input":"{\"a\":\"wrong\"}"}' check_has "batch --schema row E070" 0 '"error_code":"E070"' out -- --batch --schema '{!a:integer}'
+STDIN='{"id":"ok","input":"{\"a\":1}"}' check "batch --schema accepts own value" 0 '{"id":"ok","rc":0,"exactness":"exact","ambiguous":false,"codes":[],"value":{"a":1},"text":"{\"a\":1}"}' "" -- --batch --schema '{!a:integer}'
+
+# P0-01: batch answers each line while stdin is still open. `println` buffered
+# until exit, so an interactive harness saw nothing for an entire corpus.
+if python3 - "$BIN" <<'PY'
+import json, select, subprocess, sys
+p = subprocess.Popen([sys.argv[1], "--batch"], stdin=subprocess.PIPE,
+                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+try:
+    rows = []
+    for i in range(2):
+        p.stdin.write((json.dumps({"id": "live-%d" % i, "input": "{}"}) + "\n").encode())
+        p.stdin.flush()
+        if not select.select([p.stdout], [], [], 2.0)[0]:
+            sys.exit(1)
+        rows.append(json.loads(p.stdout.readline().decode()))
+    ok = ([r["id"] for r in rows] == ["live-0", "live-1"]
+          and all(r["rc"] == 0 for r in rows))
+    sys.exit(0 if ok else 1)
+finally:
+    if p.poll() is None:
+        p.kill()
+    p.wait()
+PY
+then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "batch answers before stdin closes"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n' "batch answers before stdin closes"
+fi
+
+# P0-03: `llm --strict` must not report a repairable answer as executable.
+# The old path rebuilt the options from `for_llm()` and dropped `--strict`,
+# so `{"a":1,}` came back executable=true / exactness=cosmetic and exit 0.
+if python3 - "$BIN" <<'PY'
+import json, subprocess, sys
+events = [
+    {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "type": "function", "function": {"name": "f", "arguments": ""}, "id": "c"}]}}]},
+    {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\"a\":1,}"}}]}}]},
+    {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]},
+]
+data = "".join(json.dumps(e) + "\n" for e in events).encode()
+p = subprocess.run([sys.argv[1], "llm", "--provider", "openai", "--strict"],
+                   input=data, capture_output=True)
+ok = (p.returncode == 5 and b"E010" in p.stderr
+      and b'"executable":true' not in p.stdout)
+sys.exit(0 if ok else 1)
+PY
+then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "llm --strict refuses a repair"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n' "llm --strict refuses a repair"
+fi
+
+# P0-03: the same document with the same options must produce the same exit
+# code on the adapter path; a resource limit is 4, not the blanket 3 the old
+# catch used.
+if python3 - "$BIN" <<'PY'
+import json, subprocess, sys
+events = [
+    {"type": "content_block_start", "index": 0,
+     "content_block": {"type": "tool_use", "id": "c", "name": "f"}},
+    {"type": "content_block_delta", "index": 0,
+     "delta": {"type": "input_json_delta", "partial_json": "{\"a\":[[1]]}"}},
+    {"type": "content_block_stop", "index": 0},
+]
+data = "".join(json.dumps(e) + "\n" for e in events).encode()
+p = subprocess.run([sys.argv[1], "llm", "--provider", "anthropic", "--max-depth", "1"],
+                   input=data, capture_output=True)
+sys.exit(0 if p.returncode == 4 else 1)
+PY
+then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "llm --max-depth exits 4"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n' "llm --max-depth exits 4"
+fi
+
+# P0-08: a batch line that is not valid UTF-8 is a structured error (E040),
+# never a document whose bytes were replaced by U+FFFD.
+bad_utf8="$(printf '{"id":"bad","input":"\xff"}\n' | "$BIN" --batch 2>"$TMP/err")"
+bad_rc=$?
+if [ "$bad_rc" = 0 ] && printf '%s' "$bad_utf8" | grep -qF '"error_code":"E040"' \
+   && printf '%s' "$bad_utf8" | grep -qF '"rc":3'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "batch refuses invalid UTF-8 bytes"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s rc=%s out=%s\n' "batch refuses invalid UTF-8 bytes" "$bad_rc" "$bad_utf8"
+fi
+# A *legal* U+FFFD is a character, not a decoding failure, and must be
+# accepted: strictness is about malformed bytes, not about the replacement
+# character appearing in the text.
+if python3 - "$BIN" <<'PY'
+import json, subprocess, sys
+line = json.dumps({"id": "ok", "input": "\"\ufffd\""}) + "\n"
+p = subprocess.run([sys.argv[1], "--batch"], input=line.encode(), capture_output=True)
+row = json.loads(p.stdout.decode().splitlines()[0])
+sys.exit(0 if p.returncode == 0 and row["rc"] == 0 and row["value"] == "\ufffd" else 1)
+PY
+then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "batch accepts a legal U+FFFD"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n' "batch accepts a legal U+FFFD"
+fi
+
+# P1-04: a closed stdout is a failure with a message, not silent success, on
+# both the batch and the single document path.
+printf '{"id":"x","input":"{}"}\n' | "$BIN" --batch >&- 2>"$TMP/err"
+closed_rc=$?
+if [ "$closed_rc" != 0 ] && grep -qF "cannot open stdout for writing" "$TMP/err"; then
+  pass=$((pass + 1)); printf 'ok   %-34s rc=%s\n' "closed stdout fails (batch)" "$closed_rc"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s rc=%s err=%s\n' "closed stdout fails (batch)" "$closed_rc" "$(cat "$TMP/err")"
+fi
+printf '{"a":1}' | "$BIN" >&- 2>"$TMP/err"
+closed_rc=$?
+if [ "$closed_rc" != 0 ] && grep -qF "cannot open stdout for writing" "$TMP/err"; then
+  pass=$((pass + 1)); printf 'ok   %-34s rc=%s\n' "closed stdout fails (single)" "$closed_rc"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s rc=%s err=%s\n' "closed stdout fails (single)" "$closed_rc" "$(cat "$TMP/err")"
+fi
+
+# P2-01: the renderer's output budget is a CLI knob (positive integer, exit 2
+# when it is not) and an over-budget render is a resource-limit error (E023,
+# exit 4), not a truncated success.
+STDIN='{"a":1}' check "output budget zero is a usage error" 2 '' "--max-output-len" -- --max-output-len 0
+STDIN='{"a":1}' check "output budget rejects non-numeric" 2 '' "--max-output-len" -- --max-output-len abc
+STDIN='{"a":"abcdef"}' check "output budget refuses a render" 4 '' "E023" -- --max-output-len 4
 
 if [ "$skipped" -gt 0 ]; then
   printf '\n%d passed, %d failed, %d skipped (document not published)\n' \

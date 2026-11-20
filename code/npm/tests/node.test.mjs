@@ -287,3 +287,66 @@ test("a refusal says whether an automatic retry is safe", () => {
   assert.equal(intent.business_authorized, false);
   assert.equal(gate('{"a":1}').business_authorized, false);
 });
+
+test("snapshot splits on the value, not on every separator in it", () => {
+  // A value, a lone key and a root string may all contain ` | `; splitting the
+  // whole rendering on it used to hand a truncated slice to JSON.parse and
+  // throw `SyntaxError: Unterminated string in JSON` (R-06).
+  const value = snapshot('{"x":"a | b"}', 30);
+  assert.deepEqual(value.value, { x: "a | b" });
+  assert.equal(value.completeness, "Complete");
+  assert.equal(value.openPath, "");
+
+  const key = snapshot('{"a | b":"x"}', 30);
+  assert.deepEqual(key.value, { "a | b": "x" });
+  assert.equal(key.completeness, "Complete");
+
+  const root = snapshot('"a | b | c"', 30);
+  assert.equal(root.value, "a | b | c");
+  assert.equal(root.completeness, "Complete");
+
+  // Separators inside a value must not be mistaken for the completeness field,
+  // and a value that *is* another field's rendering must stay intact.
+  const poisoned = snapshot('{"k":" | Complete | "}', 30);
+  assert.deepEqual(poisoned.value, { k: " | Complete | " });
+  assert.equal(poisoned.completeness, "Complete");
+  assert.equal(poisoned.openPath, "");
+
+  // Escapes, including an escaped quote right before the separator.
+  const escaped = snapshot('{"x":"q\\" | \\""}', 30);
+  assert.deepEqual(escaped.value, { x: 'q" | "' });
+  assert.equal(escaped.completeness, "Complete");
+
+  // An open path keeps raw key names, so it may contain separators too.
+  const open = snapshot('{"a | b":', 30);
+  assert.deepEqual(open.value, {});
+  assert.equal(open.completeness, "Partial");
+  assert.equal(open.openPath, "a | b");
+
+  const index = snapshot('["a | b",', 30);
+  assert.deepEqual(index.value, ["a | b"]);
+  assert.equal(index.completeness, "Partial");
+  assert.equal(index.openPath, "1");
+
+  // Empty stays empty and does not pretend to carry a value.
+  assert.deepEqual(snapshot("", 0), { value: null, completeness: "Empty", openPath: "" });
+  assert.deepEqual(snapshot("nul", 3), { value: null, completeness: "Empty", openPath: "" });
+
+  // Snapshot text remains the exact engine rendering.
+  assert.equal(snapshotText('{"x":"a | b"}', 30), '{"x":"a | b"} | Complete | ');
+});
+
+test("snapshot never throws on a prefix and is exact once complete", () => {
+  const doc = '{"query":"a | b","opts":{"k | k":[" | ",1]}}';
+  for (let upto = 0; upto <= doc.length; upto += 1) {
+    // Before the fix, every prefix containing a delimiter-bearing string threw.
+    const state = snapshot(doc, upto);
+    assert.ok(["Empty", "Partial", "Complete"].includes(state.completeness));
+    assert.equal(typeof state.openPath, "string");
+    if (state.completeness === "Complete") {
+      assert.deepEqual(state.value, JSON.parse(doc));
+      assert.equal(state.openPath, "");
+    }
+  }
+  assert.deepEqual(snapshot(doc, doc.length).value, JSON.parse(doc));
+});

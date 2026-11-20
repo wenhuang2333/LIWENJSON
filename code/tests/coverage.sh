@@ -274,7 +274,15 @@ fi
 
 EXC_REPORT=""
 if [ ! -f "$EXEMPTIONS_FILE" ]; then
-  echo "coverage.sh: no $EXEMPTIONS_FILE — the per-file ratchet is skipped (floors still enforced)" >&2
+  # A missing exemption file used to print a warning and skip the ratchet,
+  # which is the only check that makes an *exemption* shrink: without it the
+  # floors still run but nothing can see an accepted line grow back. A gate
+  # that could not run must not report success, so enforcement refuses here.
+  # --report exits above, so inspecting coverage on a fresh checkout still works.
+  echo "coverage.sh: FAILED — ${EXEMPTIONS_FILE#"$ROOT"/} is missing; the per-line ratchet cannot run." >&2
+  echo "coverage.sh: bootstrap it deliberately with 'COVERAGE_FORCE_EXEMPTIONS=1 coverage.sh --update-exemptions'" >&2
+  echo "coverage.sh: (that re-baseline is reviewable in the diff; growth is refused for everyone else)." >&2
+  exit 2
 else
   # Match line by line, first come first served, so that a duplicated source
   # text reports the *actual* line that has no exemption and the actual recorded

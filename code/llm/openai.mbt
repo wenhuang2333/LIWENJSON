@@ -78,7 +78,7 @@ fn ToolStream::push_openai(
       }
   }
   for choice in list {
-    let choice_index = match field_int(choice, "index") {
+    let choice_index = match field_index(choice, "index") {
       Some(i) => i
       None => 0
     }
@@ -91,7 +91,7 @@ fn ToolStream::push_openai(
         match as_array(tc) {
           Some(calls) =>
             for call in calls {
-              let index = match field_int(call, "index") {
+              let index = match field_index(call, "index") {
                 Some(i) => i
                 None => 0
               }
@@ -440,12 +440,12 @@ fn ToolStream::responses_call(
   self : ToolStream,
   event : Json,
   item : Json,
-) -> ToolCall {
-  let mut index = match field_int(event, "output_index") {
+) -> ToolCall raise @liwenjson.LIWENJSONError {
+  let mut index = match field_index(event, "output_index") {
     Some(i) => i
     None => 0
   }
-  match field_int(item, "output_index") {
+  match field_index(item, "output_index") {
     Some(i) => index = i
     None => ()
   }

@@ -74,6 +74,7 @@ pub struct TextStream {
   mut error_message : String
   mut ignored : Int32
   mut seen_text : Bool
+  mut choice : Int32
 }
 pub fn TextStream::end(Self) -> CallEnd
 pub fn TextStream::error(Self) -> String

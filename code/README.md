@@ -457,7 +457,7 @@ python3 tests/eval/run_eval.py --cli ./_build/native/release/build/cmd/liwenjson
 moon run examples/agent_loop --target native --release
 ```
 
-Cross-backend results are identical: **323/323** tests pass on each of wasm-gc,
+Cross-backend results are identical: **351/351** tests pass on each of wasm-gc,
 native, JS and wasm. `.github/workflows/ci.yml` runs the same commands on every
 push, so the numbers are re-derived rather than trusted. The commands above are
 the reproduction path; the figures they produce are in the [repository front

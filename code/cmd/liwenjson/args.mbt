@@ -28,6 +28,8 @@ struct CliOpts {
   mut max_input_len : Int32
   mut max_depth : Int32
   mut max_token_len : Int32
+  /// Budget for the rendered text (P2-01, E023), in UTF-8 bytes.
+  mut max_output_len : Int32
   mut with_text : Bool
   mut max_loss : @lj.Exactness
   mut reject_ambiguous : Bool
@@ -43,6 +45,16 @@ struct CliOpts {
   mut path : String?
   mut schema : String
   mut policy : String
+  /// Which safety options the command line set by hand.
+  ///
+  /// `--policy` replaces the safety knobs of `Options` (`with_profile`), so a
+  /// profile together with an explicit knob is two answers to one question.
+  /// The mask records *that a flag was given*, not whether its value differs
+  /// from the default: `--max-depth 512 --policy permissive` asked for the
+  /// depth and asked for the profile, and the old check (which compared the
+  /// value against the default) silently dropped the first. Bits are listed in
+  /// `EXPLICIT_FLAGS`.
+  mut explicit_safety : Int32
   mut json_out : Bool
   mut mcp_help : Bool
   mut mcp_config : String
@@ -63,6 +75,7 @@ fn help_text() -> String {
     "  --max-input-len N   最多接受多少码元，超过报 E021 资源限制（默认 67108864）",
     "  --max-depth N       容器最大嵌套深度，超过报 E020（默认 512）",
     "  --max-token-len N   单个 token 的最大码元数，超过报 E022（默认 16777216）",
+    "  --max-output-len N  输出文本的字节预算，超过报 E023 并退出 4（默认 67108864）",
     "                      这三个上限默认与库一致；调用方可以自己收紧或放宽",
     "  --with-text         与 explain --json 同用时在计划里带上修复后的全文",
     "                      （默认不带：机器可读的计划已有 value，全文是重复的一份）",
@@ -73,6 +86,9 @@ fn help_text() -> String {
     "  --chunk N           分块喂入：每次喂 N 个码元（≤1048576），用来验证流式路径（默认一次喂完）",
     "  --explain           在标准错误上逐条解释修复，并打印精确度小结",
     "  --policy NAME       安全档位：permissive、interactive、execution、agent 或 strict",
+    "                      档位会替换安全参数（--strict、--max-loss、--reject-ambiguous、",
+    "                      --for-execution、--multi-root、--max-depth、--max-input-len），",
+    "                      因此这些参数不能与 --policy 同时给出（冲突按用法错误退出 2）",
     "  --schema DECL       骨架声明，例如 `{!query:string,!limit:integer}`；检查必需字段与类型",
     "                      与 explain 同用时打印语法就绪与骨架就绪两层数字",
     "  --json              与 explain 同用时打印机器可读的 JSON 计划，而不是文本块",
@@ -177,10 +193,28 @@ fn parse_policy_name(s : String) -> @lj.SafetyPolicy? {
 }
 
 ///|
-/// The documented default for `--max-depth`, which is what
-/// `Options::default()` uses. Named so the conflict check below does not
-/// compare against a literal that could drift from the library.
-const DEFAULT_MAX_DEPTH : Int32 = 512
+/// The names of the explicit safety flags, comma separated, for the conflict
+/// message. Each flag sets its bit in `CliOpts::explicit_safety`; a bit is set
+/// by presence, never inferred from a value being non-default. Fixed strings
+/// only: the message never embeds user input.
+fn explicit_safety_names(mask : Int32) -> String {
+  let flags : Array[(Int32, String)] = [
+    (1, "--strict"),
+    (2, "--max-loss"),
+    (4, "--reject-ambiguous"),
+    (8, "--for-execution"),
+    (16, "--multi-root"),
+    (32, "--max-depth"),
+    (64, "--max-input-len"),
+  ]
+  let names : Array[String] = []
+  for flag in flags {
+    if (mask & flag.0) != 0 {
+      names.push(flag.1)
+    }
+  }
+  names.join(", ")
+}
 
 ///|
 /// `--max-loss` payload.
@@ -240,6 +274,7 @@ fn parse_args(args : Array[String]) -> (CliOpts, String) {
     max_input_len: d.max_input_len,
     max_depth: d.max_depth,
     max_token_len: d.max_token_len,
+    max_output_len: d.max_output_len,
     with_text: false,
     max_loss: @lj.Lossy,
     reject_ambiguous: false,
@@ -255,6 +290,7 @@ fn parse_args(args : Array[String]) -> (CliOpts, String) {
     path: None,
     schema: "",
     policy: "",
+    explicit_safety: 0,
     json_out: false,
     mcp_help: false,
     mcp_config: "",
@@ -315,6 +351,7 @@ fn parse_args(args : Array[String]) -> (CliOpts, String) {
       o.action = Version
     } else if a == "--strict" {
       o.strict = true
+      o.explicit_safety = o.explicit_safety | 1
     } else if a == "--check" {
       o.check = true
     } else if a == "--report" {
@@ -326,8 +363,10 @@ fn parse_args(args : Array[String]) -> (CliOpts, String) {
     } else if a == "--for-execution" {
       o.max_loss = @lj.Cosmetic
       o.reject_ambiguous = true
+      o.explicit_safety = o.explicit_safety | 8
     } else if a == "--reject-ambiguous" {
       o.reject_ambiguous = true
+      o.explicit_safety = o.explicit_safety | 4
     } else if a == "--retry-hint" {
       o.retry_hint = true
     } else if a == "--chunk" || a.has_prefix("--chunk=") {
@@ -466,7 +505,10 @@ fn parse_args(args : Array[String]) -> (CliOpts, String) {
         slice_tail(a, 11)
       }
       match parse_max_loss(value) {
-        Some(l) => o.max_loss = l
+        Some(l) => {
+          o.max_loss = l
+          o.explicit_safety = o.explicit_safety | 2
+        }
         None =>
           err = "--max-loss 需要 exact、cosmetic 或 lossy，收到 `" +
             value +
@@ -536,7 +578,10 @@ fn parse_args(args : Array[String]) -> (CliOpts, String) {
       let (value, extra) = flag_value(a, 15, args, i)
       consumed = extra
       match limit_of(value, 2147483647) {
-        Some(n) => o.max_input_len = n
+        Some(n) => {
+          o.max_input_len = n
+          o.explicit_safety = o.explicit_safety | 64
+        }
         None =>
           err = "--max-input-len 需要正整数字面量，收到 `" +
             value +
@@ -546,7 +591,10 @@ fn parse_args(args : Array[String]) -> (CliOpts, String) {
       let (value, extra) = flag_value(a, 11, args, i)
       consumed = extra
       match limit_of(value, 1048576) {
-        Some(n) => o.max_depth = n
+        Some(n) => {
+          o.max_depth = n
+          o.explicit_safety = o.explicit_safety | 32
+        }
         None =>
           err = "--max-depth 需要 1 到 1048576 之间的整数，收到 `" +
             value +
@@ -559,6 +607,18 @@ fn parse_args(args : Array[String]) -> (CliOpts, String) {
         Some(n) => o.max_token_len = n
         None =>
           err = "--max-token-len 需要正整数字面量，收到 `" +
+            value +
+            "`"
+      }
+    } else if a == "--max-output-len" || a.has_prefix("--max-output-len=") {
+      // A zero or negative budget can never be satisfied, so it is a usage
+      // error (exit 2), not a limit that fails later with E023.
+      let (value, extra) = flag_value(a, 16, args, i)
+      consumed = extra
+      match limit_of(value, 2147483647) {
+        Some(n) => o.max_output_len = n
+        None =>
+          err = "--max-output-len 需要正整数字面量，收到 `" +
             value +
             "`"
       }
@@ -598,7 +658,10 @@ fn parse_args(args : Array[String]) -> (CliOpts, String) {
         slice_tail(a, 13)
       }
       match parse_multi_root(value) {
-        Some(m) => o.multi_root = m
+        Some(m) => {
+          o.multi_root = m
+          o.explicit_safety = o.explicit_safety | 16
+        }
         None =>
           err = "--multi-root 需要 first、array 或 error，收到 `" +
             value +
@@ -622,19 +685,22 @@ fn parse_args(args : Array[String]) -> (CliOpts, String) {
     }
     i = i + 1 + consumed
   }
-  if err == "" && o.policy != "" {
-    // Conflicting flags are refused instead of silently resolved.
-    //
-    // `--policy` replaces the safety knobs, so `--strict --policy permissive`
-    // used to drop the `--strict` without a word: the caller asked for two
-    // different risk contracts and got whichever one the flag order happened
-    // to leave in place. `--max-depth` is the same: a profile fixes a depth,
-    // so the two cannot both win.
-    if o.strict {
-      err = "--strict 与 --policy 冲突：--policy 会覆盖 --strict，请二选一"
-    } else if o.max_depth != DEFAULT_MAX_DEPTH {
-      err = "--max-depth 与 --policy 冲突：--policy 会覆盖 --max-depth，请二选一"
-    }
+  // A profile and an explicit safety knob are two answers to one question.
+  //
+  // `--policy` replaces the safety knobs (`Options::with_profile`), so
+  // `--strict --policy permissive` used to drop the `--strict` without a word:
+  // the caller asked for two different risk contracts and got whichever one the
+  // flag order happened to leave in place. The same held for every other knob a
+  // profile owns (`--max-loss`, `--reject-ambiguous`, `--for-execution`,
+  // `--multi-root`, `--max-depth`, `--max-input-len`), in either order. The
+  // check is on presence, not on the value: `--max-depth 512 --policy
+  // permissive` still asked for the depth, so it is still a conflict. Options
+  // no profile owns (`--indent`, `--max-token-len`, `--chunk`, ...) keep
+  // combining as before.
+  if err == "" && o.policy != "" && o.explicit_safety != 0 {
+    err = "conflicting options: --policy sets the safety knobs and " +
+      explicit_safety_names(o.explicit_safety) +
+      " also sets one of them; a profile and an explicit safety option cannot both win, so use --policy alone or drop it"
   }
   (o, err)
 }

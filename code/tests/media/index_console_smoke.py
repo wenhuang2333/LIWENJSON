@@ -205,6 +205,37 @@ def main() -> None:
             page.wait_for_timeout(200)
             overflow = page.evaluate("document.scrollingElement.scrollWidth - window.innerWidth")
             assert overflow <= 2, f"horizontal overflow at 390px: {overflow}px"
+
+            # 11. The other two pages get the same treatment: at 390px they must
+            # load every local resource (no 4xx/5xx), raise no console error,
+            # and not scroll sideways. This is the "three pages at both widths"
+            # half of the demo closing rule; the poster/screenshot halves live
+            # in demo_visual_smoke.py, which writes files and so stays out of CI.
+            pages = (
+                ("live.html", "() => globalThis.liwenjson && globalThis.liwenjson.live"),
+                ("mcp.html", "() => document.querySelector('#decision') !== null"),
+            )
+            for name, ready in pages:
+                other = browser.new_page(viewport={"width": 390, "height": 844})
+                other_errors: list[str] = []
+                missing: list[str] = []
+                other.on("console", lambda msg: other_errors.append(msg.text) if msg.type == "error" else None)
+                other.on("pageerror", lambda exc: other_errors.append(str(exc)))
+                other.on(
+                    "response",
+                    lambda response: missing.append(f"{response.status} {response.url}")
+                    if response.status >= 400
+                    else None,
+                )
+                other.goto(f"{base}/{name}", wait_until="networkidle")
+                other.wait_for_function(ready)
+                other.wait_for_timeout(300)
+                narrow = other.evaluate("document.scrollingElement.scrollWidth - window.innerWidth")
+                assert narrow <= 2, f"{name} overflows at 390px: {narrow}px"
+                assert not missing, f"{name} failed to load {missing}"
+                assert not other_errors, f"{name} console errors: {other_errors[:3]}"
+                errors.extend(f"{name}: {text}" for text in other_errors)
+                other.close()
             browser.close()
 
         httpd.shutdown()

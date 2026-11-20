@@ -364,6 +364,24 @@ All four accept `text` (the raw model output) and optional `schema` /
 `liwenjson_validate` and `liwenjson_readiness` do not, because they never
 repair.
 
+Two more arguments are published and enforced:
+
+- `liwenjson_gate.with_text` (boolean, default `false`) — include the rendered
+  JSON document in `text` next to the parsed `value`. The gate never reads it;
+  a host that has `value` does not need the payload twice.
+- `liwenjson_readiness.step` (integer, `0`..`8388608`, default `0`) — the
+  stream step in bytes used by the readiness walk. `0` selects the automatic
+  step (the input length divided by 1000, floored at 1); a positive value is
+  used as-is, so `step: 64` models a 64-byte chunk. The upper bound is the
+  protocol line cap (`MAX_LINE = 8388608`).
+
+Both fields are in the tool's `inputSchema` and are validated **before** the
+walk runs: a fractional, negative, oversized or non-integer `step`, a
+non-boolean `with_text`, and any field the tool does not declare are refused
+as a tool error (`E050`, `isError: true`). Truncating `step: 0.5` to `0` and
+running anyway is exactly the declaration/implementation drift the closed
+schema exists to prevent.
+
 | Tool | Title | Answers |
 | --- | --- | --- |
 | `liwenjson_gate` | Gate: may I execute this? | May this output be executed? `decision`, `executable`, `exactness`, ambiguity, schema satisfaction, `value`, `retry` |
@@ -431,7 +449,7 @@ required fields:
 
 | Tool | `outputSchema` properties | required |
 | --- | --- | --- |
-| `liwenjson_gate` | `decision`, `label`, `exactness`, `ambiguous`, `information_loss`, `valid_json`, `normalized`, `ambiguity`, `execution`, `executable`, `syntax_ready_permille`, `schema_total`, `schema_satisfied`, `schema_missing`, `error`, `repairs`, `retry`, `repairs_truncated`, `value`, `text` | all twenty |
+| `liwenjson_gate` | `decision`, `label`, `exactness`, `ambiguous`, `information_loss`, `valid_json`, `normalized`, `ambiguity`, `execution`, `executable`, `business_authorized`, `syntax_ready_permille`, `schema_total`, `schema_satisfied`, `schema_missing`, `error`, `repairs`, `retry`, `refusal`, `repairs_truncated`, `value`, and `text` (optional, only with `with_text`) | every field except `text` |
 | `liwenjson_repair` | `text`, `exactness`, `ambiguous`, `completeness`, `repairs`, `repairs_truncated` | all six |
 | `liwenjson_validate` | `valid`, `schema`, `error`, `repaired`, `exactness`, `ambiguous`, `repairs` | `valid` |
 | `liwenjson_readiness` | `syntax_permille`, `schema_permille`, `settled_permille`, `step`, `verdict` | the first four |
@@ -632,7 +650,7 @@ was never called correctly":
 | `-32602` | `tools/call` with an unknown `name`, or with `arguments` that is not an object | the *call* is malformed; no tool ran | no |
 | `-32602` | `tools/call` with no `name` at all | the call is malformed | no |
 | `-32601` | an unknown `method` | the method does not exist on this server | no |
-| `-32700` | a line that is not valid JSON, or longer than 8 MiB | framing/parse failure; the line is discarded through the next LF | no |
+| `-32700` | a line that is not valid JSON, longer than 8 MiB, or not valid UTF-8 | framing/parse failure; the line is discarded through the next LF and the connection keeps serving | no |
 | (no error) | a valid call whose document is refused | **this is a success**: the tool ran, `isError` is `false`, `executable` is `false` | yes |
 
 The last row is the one to internalise. A gate refusal is not an error — it is
@@ -642,6 +660,47 @@ refused" and hid a typo in the tool name behind a document-level failure; a
 non-object `arguments` used to be read as "no arguments" and produced a
 confusing complaint about a missing `text`. Both are protocol errors now
 (`code/cmd/liwenjson/mcp.mbt`).
+
+A `tools/call` whose arguments the declaration rejects — a fractional `step`,
+a non-boolean `with_text`, an undeclared field, a missing `text` — is **not**
+one of these protocol errors. The tool ran and refused the arguments, so it
+comes back as `isError: true` with `E050`/`E070` in the message and no
+`structuredContent`.
+
+## Long-lived modes reject one-shot flags
+
+`liwenjson serve` and `liwenjson mcp` are long-lived protocols: the process
+stays up and speaks a line stream. The one-shot options (`--check`, a file
+path) have no meaning there, so both modes refuse them as usage errors instead
+of accepting and ignoring them: exit status **2**, fixed English message on
+stderr, nothing on stdout. For example:
+
+```text
+liwenjson: serve is a long-lived protocol and does not accept --check; run `liwenjson --check` for the one-shot check
+```
+
+Historically the flag was accepted and only changed `want_text`, so a script
+that wrote `liwenjson serve --check` got a working server that checked
+nothing. The one-shot check is `liwenjson --check FILE` (exit 1 when the file
+needs repair).
+
+## Framing errors are per-frame, not per-connection
+
+A line protocol has to say what a malformed frame means. Here it always means:
+**answer that frame with an error, then read the next one**. The connection is
+not closed, and no request is half-processed.
+
+| mode | malformed UTF-8 frame | bad JSON | line over 8 MiB |
+| --- | --- | --- | --- |
+| `mcp` | `-32700 parse error: request is not valid UTF-8` | `-32700 parse error` | `-32700 message exceeds MAX_LINE` |
+| `serve` | `E040` `InvalidUtf8` (exit 3, byte offset of the first bad byte) | `E060` `InvalidEvent` (exit 3) | `E050` `InvalidOption` (exit 2) |
+
+Both modes decode strictly: bytes are never replacement-decoded, so no tool
+result can contain a U+FFFD the caller did not send. A legal U+FFFD that *is*
+in the input is passed through and the call succeeds. The test is not "stdout
+contains no replacement character" — it is "a malformed frame is refused and
+the next frame is still answered", which is what
+`code/tests/conformance/run_protocol_contract.py` asserts.
 
 ## Privacy and security model
 
@@ -756,6 +815,10 @@ The repository's own gates cover the same surface:
 ```sh
 # 19 protocol/MCP conformance groups, including the mcp group
 python3 code/tests/conformance/run_conformance.py --cli "$B"
+
+# the serve/MCP contract group: --check refusal, strict UTF-8 frames,
+# watch.finish E001, with_text/step enforcement
+python3 code/tests/conformance/run_protocol_contract.py --cli "$B"
 
 # command line assertions, including --print-config and initialize
 bash code/tests/cli_smoke.sh

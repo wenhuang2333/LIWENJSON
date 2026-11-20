@@ -90,7 +90,8 @@ to call the gate, so the host must gate the call itself (a Claude Code
 | `repairResult(input, options?)` | `{text, exactness, ambiguous, repairs, decision, executable, error, retry}` | text plus the decision |
 | `analyze(input, options?)` | the full `RepairPlan` | **the gate**; never throws on malformed JSON |
 | `report(input)` | `R005 3:14 message` lines, or `-` | diagnostics |
-| `snapshot(input, upto)` | `value \| state \| path` | partial parse of a prefix |
+| `snapshot(input, upto)` | `{value, completeness, openPath}` | partial parse of a prefix |
+| `snapshotText(input, upto)` | `value \| state \| path` | the same, as the engine renders it |
 | `live(input, upto, schema?)` | one streaming frame object | a UI that renders a model stream |
 
 `options.profile` is one of `permissive`, `interactive`, `execution`, `agent`,
@@ -118,9 +119,10 @@ the MoonBit `PartialParser`.
 ## Scope
 
 This package wraps the same bundle as `static/demo/liwenjson.js`; it does not
-reimplement the engine. The version is the engine version (`1.5.1`), published
-to npm on 2026-10-30. The MoonBit package on mooncakes is `0.13.0` because the
-registry currently accepts only `0.x.y`; the bytes are the same. `0.13.0` was
-published on 2026-10-29, and `0.12.0` (the 1.5.0 correspondence) on 2026-10-28.
+reimplement the engine. The version is the engine version (`1.5.2`), published
+to npm on 2026-11-20. The MoonBit package on mooncakes is `0.14.0` because the
+registry currently accepts only `0.x.y`; the bytes are the same. `0.14.0` was
+published on 2026-11-20, `0.13.0` (the 1.5.1 correspondence) on 2026-10-29,
+and `0.12.0` (the 1.5.0 correspondence) on 2026-10-28.
 
 License: Apache-2.0.

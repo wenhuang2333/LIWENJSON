@@ -126,9 +126,45 @@ fn mcp_boolean() -> Json {
 }
 
 ///|
+/// The `with_text` argument of `liwenjson_gate`: include the rendered document
+/// in `text` next to the parsed `value`. Off by default so a call does not
+/// carry the payload twice.
+fn mcp_with_text_schema() -> Json {
+  jobj([
+    ("type", Json::string("boolean")),
+    (
+      "description",
+      Json::string(
+        "Also return the rendered JSON text in `text`. Defaults to false: a caller that has `value` can render it, and the gate never reads `text`.",
+      ),
+    ),
+    ("default", Json::boolean(false)),
+  ])
+}
+
+///|
 /// A JSON Schema fragment for a number.
 fn mcp_number() -> Json {
   jobj([("type", Json::string("number"))])
+}
+
+///|
+/// The `step` argument of `liwenjson_readiness`: the stream step in bytes.
+/// `0` means "choose the step automatically" (input length divided by 1000,
+/// floored at 1). The cap is the protocol line cap, `MAX_LINE`.
+fn mcp_step_schema() -> Json {
+  jobj([
+    ("type", Json::string("integer")),
+    ("minimum", jnum(0)),
+    ("maximum", jnum(MAX_LINE)),
+    (
+      "description",
+      Json::string(
+        "Stream step in bytes: how much input the readiness walk consumes per step. 0 (the default) selects the automatic step. Must be a whole number in 0..8388608; fractions and other types are refused before the walk starts.",
+      ),
+    ),
+    ("default", jnum(0)),
+  ])
 }
 
 ///|
@@ -467,6 +503,7 @@ fn mcp_tools() -> Json {
         ("profile", mcp_profile_schema()),
         ("schema", mcp_schema_schema()),
         ("schema_json", mcp_schema_json_schema()),
+        ("with_text", mcp_with_text_schema()),
       ],
       ["text"],
       mcp_gate_output_schema(),
@@ -504,6 +541,7 @@ fn mcp_tools() -> Json {
         ("text", mcp_text_schema()),
         ("schema", mcp_schema_schema()),
         ("schema_json", mcp_schema_json_schema()),
+        ("step", mcp_step_schema()),
       ],
       ["text"],
       mcp_readiness_output_schema(),
@@ -764,6 +802,46 @@ fn mcp_tool_method(name : String) -> String {
 }
 
 ///|
+/// The arguments each tool publishes. `inputSchema` is closed
+/// (`additionalProperties: false`), so the server refuses the same fields. The
+/// shared `serve` handlers accept a wider set (`skip_prose`, `max_loss`, and
+/// `profile` on `validate`/`readiness`); this check keeps that width out of the
+/// MCP surface, where it would contradict the declaration.
+fn mcp_tool_fields(name : String) -> Array[String] {
+  if name == "liwenjson_gate" {
+    ["text", "profile", "schema", "schema_json", "with_text"]
+  } else if name == "liwenjson_repair" {
+    ["text", "profile", "schema", "schema_json"]
+  } else if name == "liwenjson_validate" {
+    ["text", "schema", "schema_json"]
+  } else if name == "liwenjson_readiness" {
+    ["text", "schema", "schema_json", "step"]
+  } else {
+    []
+  }
+}
+
+///|
+/// The first argument the tool does not publish, or `None`.
+fn mcp_unknown_argument(
+  accepted : Array[String],
+  args : Map[String, Json],
+) -> String? {
+  for key in args.keys() {
+    let mut known = false
+    for field in accepted {
+      if field == key {
+        known = true
+      }
+    }
+    if !known {
+      return Some(key)
+    }
+  }
+  None
+}
+
+///|
 /// Run one tool. The mapping is one-to-one with `serve` methods, so the two
 /// entry points cannot drift.
 fn mcp_call_tool(
@@ -775,6 +853,22 @@ fn mcp_call_tool(
   let meth = mcp_tool_method(name)
   if meth == "" {
     return tool_result("unknown tool `" + name + "`", true)
+  }
+  let accepted = mcp_tool_fields(name)
+  match mcp_unknown_argument(accepted, args) {
+    Some(key) =>
+      return tool_result(
+        @lj.InvalidOption(
+          "unknown argument `" +
+          key +
+          "` for `" +
+          name +
+          "`; accepted: " +
+          joined_names(accepted),
+        ).to_string(),
+        true,
+      )
+    None => ()
   }
   // The gate is safe by default: a host that calls it without a profile gets
   // the execution profile, never the permissive one. `permissive` is still one
@@ -1100,6 +1194,23 @@ fn mcp_config_text(client : String) -> String? {
 ///|
 /// Run the MCP server until EOF.
 fn run_mcp(o : CliOpts) -> Unit {
+  // `mcp` is a long-lived protocol. `--check` is a one-shot option and used to
+  // be accepted here without doing anything; it is a usage error instead.
+  if o.check {
+    eprintln(
+      "liwenjson: mcp is a long-lived protocol and does not accept --check; run `liwenjson --check` for the one-shot check",
+    )
+    return quit(2)
+  }
+  match o.path {
+    Some(_) => {
+      eprintln(
+        "liwenjson: mcp reads JSON-RPC from standard input and does not accept a file path",
+      )
+      return quit(2)
+    }
+    None => ()
+  }
   if o.mcp_config != "" {
     match mcp_config_text(o.mcp_config) {
       Some(text) => {
@@ -1125,7 +1236,9 @@ fn run_mcp(o : CliOpts) -> Unit {
     eprintln("liwenjson: 无法读取 <stdin>")
     return quit(3)
   }
-  let reader = LineReader::new(stream)
+  // Strict: a JSON-RPC frame that is not valid UTF-8 is a parse error, not a
+  // string with U+FFFD in it. The connection keeps serving afterwards.
+  let reader = LineReader::new_strict(stream)
   let base = options_of(o)
   let state = ServeState::new()
   let proto = open_output()
@@ -1134,6 +1247,18 @@ fn run_mcp(o : CliOpts) -> Unit {
     match reader.read_line() {
       None => running = false
       Some(line) => {
+        if reader.invalid_utf8 {
+          reader.invalid_utf8 = false
+          write_line(
+            proto,
+            rpc_err(
+              Json::null(),
+              -32700,
+              "parse error: request is not valid UTF-8",
+            ),
+          )
+          continue
+        }
         if reader.overflow {
           reader.overflow = false
           write_line(

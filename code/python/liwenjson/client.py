@@ -1,8 +1,9 @@
 """A thin, dependency-free client for the `liwenjson serve` protocol.
 
 The server is a child process speaking one JSON object per line on stdin and
-stdout. A reader thread turns stdout into a queue so a request can time out
-without depending on `select` and buffered pipes.
+stdout. A reader thread turns stdout into frames and a writer thread owns
+stdin, so that neither an engine that stopped answering nor one that stopped
+reading can hold a caller longer than the deadline it asked for.
 """
 
 from __future__ import annotations
@@ -17,9 +18,30 @@ import time
 from pathlib import Path
 from typing import Any, Iterable
 
-__all__ = ["Client", "LIWENJSONError", "find_binary", "repair", "analyze", "validate"]
+__all__ = [
+    "Client",
+    "LIWENJSONError",
+    "LIWENJSONProtocolError",
+    "find_binary",
+    "repair",
+    "analyze",
+    "validate",
+]
 
-_EOF = object()
+# The reader puts this on the queue when the connection ends. It carries no
+# information of its own: the reason lives in `_fatal`, which every waiter
+# reads, so the same error reaches the request in flight and the ones after.
+_TERMINATED = object()
+
+# `close()` runs on its own budget. It must not stack a request timeout on
+# top of the grace it gives the engine: a close that waits for the request
+# timeout is a close that waits for as long as the caller was willing to wait
+# for an answer, and the caller is exactly the party that is gone.
+_CLOSE_SHUTDOWN_GRACE = 2.0  # the shutdown request's own budget
+_CLOSE_EXIT_GRACE = 1.0  # the engine's exit after it answered
+_CLOSE_TERM_GRACE = 1.0  # after terminate()
+_CLOSE_KILL_GRACE = 1.0  # after kill()
+_CLOSE_JOIN_GRACE = 0.5  # per thread
 
 
 class LIWENJSONError(RuntimeError):
@@ -40,6 +62,17 @@ class LIWENJSONError(RuntimeError):
         if self.offset is not None:
             out["offset"] = self.offset
         return out
+
+
+class LIWENJSONProtocolError(RuntimeError):
+    """The engine's output is not the protocol, so the connection is over.
+
+    The error is sticky: a stream that produced a line which is not JSON, a
+    line which is not an object, invalid UTF-8, EOF or a reader exception
+    cannot be trusted again. The request that sees it and every request after
+    it fail at once, instead of waiting for a timeout that says nothing about
+    the cause and never comes.
+    """
 
 
 def _platform_key() -> str | None:
@@ -172,6 +205,37 @@ def _not_found_message(here: Path, key: str | None) -> str:
     )
 
 
+class _WriteJob:
+    """One request line on its way to stdin.
+
+    The writer thread sets `done` when the line is out and `error` when it
+    could not be written. The caller waits for `done` with the deadline it
+    already has, so an engine that stopped reading its input cannot hold the
+    caller past that deadline.
+    """
+
+    __slots__ = ("line", "done", "error")
+
+    def __init__(self, line: str) -> None:
+        self.line = line
+        self.done = threading.Event()
+        self.error: BaseException | None = None
+
+
+class _Frame:
+    """One line of stdout, already classified by the reader.
+
+    `attributed` is False for an error the engine could not attach to a
+    request id; such a frame belongs to the request that is in flight.
+    """
+
+    __slots__ = ("payload", "attributed")
+
+    def __init__(self, payload: dict[str, Any], attributed: bool) -> None:
+        self.payload = payload
+        self.attributed = attributed
+
+
 class Client:
     """A long-lived `liwenjson serve` process.
 
@@ -190,9 +254,21 @@ class Client:
     ) -> None:
         self.binary = binary or find_binary()
         self.timeout = timeout
+        # `_lock` serialises requests; `_state_lock` guards the lifecycle
+        # flags, which are read from other threads (a request that arrives
+        # while `close()` runs) and therefore cannot be plain attributes.
         self._lock = threading.Lock()
+        self._state_lock = threading.Lock()
+        self._close_lock = threading.Lock()
+        self._closing = False
+        self._closed = False
+        self._fatal: BaseException | None = None
         self._next_id = 0
         self._responses: "queue.Queue[Any]" = queue.Queue()
+        # One line in flight at a time: a stalled writer must not make the
+        # client buffer an unbounded number of requests.
+        self._writer_q: "queue.Queue[Any]" = queue.Queue(maxsize=1)
+        self._waiting = False
         self._stderr_lines: list[str] = []
         # `stderr` defaults to a pipe rather than DEVNULL. The engine writes
         # its diagnostics there, and `stderr=DEVNULL` meant that every error
@@ -211,6 +287,9 @@ class Client:
         )
         self._reader = threading.Thread(target=self._read_stdout, daemon=True)
         self._reader.start()
+        self._writer = threading.Thread(target=self._write_stdin, daemon=True)
+        self._writer.start()
+        self._err_reader: threading.Thread | None = None
         if stderr is None:
             self._err_reader = threading.Thread(target=self._read_stderr, daemon=True)
             self._err_reader.start()
@@ -218,16 +297,66 @@ class Client:
     # -- plumbing ---------------------------------------------------------
 
     def _read_stdout(self) -> None:
+        """Turn stdout into frames, and every non-protocol byte into an error.
+
+        A reader that dies quietly is the worst failure mode here: the request
+        waits for a timeout that means nothing, and the next request waits
+        again. So each abnormal ending -- a line that is not JSON, a line that
+        is not an object, a response without the fields the protocol requires,
+        invalid UTF-8, EOF, an exception -- ends the connection with one
+        sticky error that the request in flight and every request after it
+        see at once.
+        """
         assert self.proc.stdout is not None
-        for line in self.proc.stdout:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                self._responses.put(json.loads(line))
-            except json.JSONDecodeError:
-                self._responses.put({"ok": False, "error": {"code": "E030", "message": line}})
-        self._responses.put(_EOF)
+        try:
+            for line in self.proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                frame = self._classify(line)
+                if frame is None:
+                    return
+                self._responses.put(frame)
+        except Exception as exc:
+            self._terminate(f"liwenjson stopped answering: {exc}")
+            return
+        self._terminate("liwenjson closed the stream")
+
+    def _classify(self, line: str) -> _Frame | None:
+        """Check one line against the protocol, or end the connection."""
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            self._terminate(f"liwenjson wrote a line that is not JSON: {line[:120]!r}")
+            return None
+        if not isinstance(payload, dict):
+            self._terminate(
+                f"liwenjson wrote a JSON {type(payload).__name__}, not an object: {line[:120]!r}"
+            )
+            return None
+        ok = payload.get("ok")
+        if not isinstance(ok, bool):
+            self._terminate(
+                f"liwenjson wrote a response without a boolean `ok`: {line[:120]!r}"
+            )
+            return None
+        if payload.get("id") is None:
+            # The engine answers a request it could not attribute -- a line
+            # over the protocol's limit, or a line that is not JSON -- with an
+            # error that carries no id. Waiting for an answer that will never
+            # come is what turned that into a timeout, so the frame goes to
+            # the request in flight; with no request in flight the framing
+            # cannot be trusted at all.
+            if self._waiting:
+                return _Frame(payload, False)
+            self._terminate(f"liwenjson wrote a response without an id: {line[:120]!r}")
+            return None
+        if ok and "result" not in payload:
+            self._terminate(
+                f"liwenjson wrote a successful response without a result: {line[:120]!r}"
+            )
+            return None
+        return _Frame(payload, True)
 
     def _read_stderr(self) -> None:
         assert self.proc.stderr is not None
@@ -235,6 +364,43 @@ class Client:
             self._stderr_lines.append(line.rstrip())
             if len(self._stderr_lines) > 100:
                 del self._stderr_lines[:50]
+
+    def _write_stdin(self) -> None:
+        """Own stdin.
+
+        Writing to a pipe whose reader has stopped blocks forever, so the
+        write happens here and the caller waits for it with the deadline it
+        already has. When that deadline passes the caller gives up and marks
+        the connection unusable; the engine is then terminated, which is what
+        unblocks this thread.
+        """
+        assert self.proc.stdin is not None
+        while True:
+            job = self._writer_q.get()
+            if job is None:
+                return
+            try:
+                self.proc.stdin.write(job.line)
+                self.proc.stdin.flush()
+            except Exception as exc:
+                job.error = exc
+                self._terminate(f"liwenjson stopped reading its input: {exc}")
+            finally:
+                job.done.set()
+
+    def _terminate(self, message: str) -> None:
+        """End the connection: one sticky error, seen by everyone waiting."""
+        with self._state_lock:
+            if self._fatal is not None:
+                return
+            self._fatal = LIWENJSONProtocolError(message)
+        # Wake a request that is blocked on the queue: the error itself is in
+        # `_fatal`, the marker only says "stop waiting".
+        self._responses.put(_TERMINATED)
+
+    def _fatal_error(self) -> BaseException | None:
+        with self._state_lock:
+            return self._fatal
 
     def _resync(self) -> None:
         """Drop every buffered answer.
@@ -251,56 +417,163 @@ class Client:
                 break
 
     def request(self, method: str, **params: Any) -> Any:
-        """Send one request and return its `result`, or raise `LIWENJSONError`."""
-        with self._lock:
-            if self.proc.poll() is not None:
-                raise RuntimeError(
-                    f"liwenjson exited with {self.proc.returncode}; "
-                    f"stderr: {' | '.join(self._stderr_lines[-3:])}"
+        """Send one request and return its `result`, or raise `LIWENJSONError`.
+
+        The timeout covers the whole call. Waiting for the lock, writing the
+        request and reading the answer share one deadline, so a caller that
+        asked for one second is never kept waiting longer than that -- not
+        once per phase, which is what made the timeout mean nothing.
+        """
+        self._reject_if_closed()
+        deadline = time.monotonic() + self.timeout
+        if not self._take_lock(deadline):
+            raise TimeoutError(
+                f"another liwenjson request was still in progress after {self.timeout}s"
+            )
+        try:
+            self._reject_if_closed()
+            return self._exchange(method, params, deadline)
+        finally:
+            self._lock.release()
+
+    def _take_lock(self, deadline: float) -> bool:
+        """Wait for the request lock without waiting past the deadline.
+
+        The lock is polled in short slices because `close()` has to be able to
+        end the wait: a request queued behind another one must notice that
+        the client is closing instead of sitting there until its deadline.
+        """
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            if self._lock.acquire(timeout=min(remaining, 0.05)):
+                return True
+            with self._state_lock:
+                closing = self._closing or self._closed
+            if closing:
+                raise RuntimeError("liwenjson client is closed")
+
+    def _reject_if_closed(self) -> None:
+        with self._state_lock:
+            closing = self._closing or self._closed
+        if closing:
+            raise RuntimeError("liwenjson client is closed")
+
+    def _exchange(self, method: str, params: dict[str, Any], deadline: float) -> Any:
+        """Write one request and wait for its answer, on the caller's budget."""
+        if self.proc.poll() is not None:
+            raise RuntimeError(
+                f"liwenjson exited with {self.proc.returncode}; "
+                f"stderr: {' | '.join(self._stderr_lines[-3:])}"
+            )
+        self._next_id += 1
+        request_id = self._next_id
+        payload: dict[str, Any] = {"id": request_id, "method": method}
+        if params:
+            payload["params"] = params
+        line = json.dumps(payload, ensure_ascii=False) + "\n"
+
+        self._waiting = True
+        try:
+            self._send(line, method, deadline)
+            return self._await(request_id, method, deadline)
+        finally:
+            self._waiting = False
+
+    def _send(self, line: str, method: str, deadline: float) -> None:
+        """Hand the request line to the writer and wait for it to go out."""
+        job = _WriteJob(line)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(
+                f"liwenjson did not accept `{method}` within {self.timeout}s"
+            )
+        try:
+            self._writer_q.put(job, timeout=remaining)
+        except queue.Full:
+            raise TimeoutError(
+                f"liwenjson did not accept `{method}` within {self.timeout}s"
+            ) from None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            self._abandon_write(method)
+            raise TimeoutError(
+                f"liwenjson did not read `{method}` within {self.timeout}s"
+            )
+        if not job.done.wait(remaining):
+            self._abandon_write(method)
+            raise TimeoutError(
+                f"liwenjson did not read `{method}` within {self.timeout}s"
+            )
+        error = self._fatal_error()
+        if error is not None:
+            raise error
+        if job.error is not None:
+            raise job.error
+
+    def _abandon_write(self, method: str) -> None:
+        """Give up on a write that did not finish.
+
+        The request line may be half written, so the next request would be
+        appended to it. The connection is therefore marked unusable and every
+        later request fails at once, instead of being answered by a garbled
+        exchange.
+        """
+        self._terminate(
+            f"the request `{method}` could not be written: liwenjson stopped "
+            "reading its input"
+        )
+
+    def _await(self, request_id: int, method: str, deadline: float) -> Any:
+        """Wait for this request's answer, or fail at once.
+
+        A broken engine is reported as a broken engine: the reader turns
+        every abnormal ending of the stream into one sticky error, so the
+        wait ends with that error instead of with a timeout that says nothing
+        about the cause.
+        """
+        while True:
+            error = self._fatal_error()
+            if error is not None:
+                raise error
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self._resync()
+                raise TimeoutError(
+                    f"liwenjson did not answer `{method}` in {self.timeout}s"
                 )
-            self._next_id += 1
-            request_id = self._next_id
-            payload = {"id": request_id, "method": method}
-            if params:
-                payload["params"] = params
-            assert self.proc.stdin is not None
-            self.proc.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
-            self.proc.stdin.flush()
-            # Wait for *this* request's answer, discarding anything else.
-            #
-            # A timed-out request leaves its answer in flight: the reader
-            # thread delivers it after the caller has given up, and it then
-            # sits at the head of the queue. Reading it as the next request's
-            # answer either raised a confusing id mismatch or, when the ids
-            # happened to line up, returned the wrong result. Matching on the
-            # id is what makes a late answer harmless.
-            deadline = time.monotonic() + self.timeout
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    self._resync()
-                    raise TimeoutError(
-                        f"liwenjson did not answer `{method}` in {self.timeout}s"
-                    )
-                try:
-                    response = self._responses.get(timeout=remaining)
-                except queue.Empty:
-                    self._resync()
-                    raise TimeoutError(
-                        f"liwenjson did not answer `{method}` in {self.timeout}s"
-                    )
-                if response is _EOF:
-                    raise RuntimeError(
-                        f"liwenjson closed the stream; "
-                        f"stderr: {' | '.join(self._stderr_lines[-3:])}"
-                    )
-                if response.get("id") != request_id:
-                    # An answer to an abandoned request. Drop it and keep
-                    # waiting for the one this call is owed.
-                    continue
-                if response.get("ok"):
-                    return response["result"]
-                raise LIWENJSONError(response.get("error") or {})
+            try:
+                frame = self._responses.get(timeout=remaining)
+            except queue.Empty:
+                self._resync()
+                raise TimeoutError(
+                    f"liwenjson did not answer `{method}` in {self.timeout}s"
+                )
+            if frame is _TERMINATED:
+                error = self._fatal_error()
+                raise error or LIWENJSONProtocolError("liwenjson closed the stream")
+            if not frame.attributed:
+                # An error the engine could not attach to an id: it belongs
+                # to the request that is in flight.
+                raise self._frame_error(frame.payload)
+            if frame.payload.get("id") != request_id:
+                # The answer to a request that was abandoned earlier. Dropping
+                # it is what keeps a late answer from being read as the answer
+                # to this one.
+                continue
+            if frame.payload.get("ok"):
+                return frame.payload["result"]
+            raise LIWENJSONError(frame.payload.get("error") or {})
+
+    @staticmethod
+    def _frame_error(payload: dict[str, Any]) -> BaseException:
+        error = payload.get("error")
+        if isinstance(error, dict):
+            return LIWENJSONError(error)
+        return LIWENJSONProtocolError(
+            f"liwenjson wrote an error without a body: {payload!r}"[:200]
+        )
 
     # -- methods ----------------------------------------------------------
 
@@ -429,20 +702,103 @@ class Client:
     # -- lifecycle --------------------------------------------------------
 
     def close(self) -> None:
-        if self.proc.poll() is None:
+        """Stop the engine and reclaim everything it held.
+
+        The order matters. The client is marked closing first, so a request
+        that arrives from now on is refused instead of waiting for a process
+        that is going away. The shutdown request is a courtesy, not a
+        requirement: it is only attempted when the request lock is free, and
+        it gets its own short budget. An engine that does not answer, or that
+        answers and then lingers, is terminated and then killed, each with an
+        explicit deadline, so `close()` always ends.
+        """
+        with self._close_lock:
+            with self._state_lock:
+                if self._closed:
+                    return
+                self._closing = True
             try:
-                self.request("shutdown")
+                self._stop_engine()
+            finally:
+                with self._state_lock:
+                    self._closed = True
+                stuck = self._join_threads()
+                self._close_streams(stuck)
+
+    def _stop_engine(self) -> None:
+        proc = self.proc
+        if proc.poll() is not None:
+            return
+        if self._fatal_error() is None and self._lock.acquire(blocking=False):
+            try:
+                deadline = time.monotonic() + min(self.timeout, _CLOSE_SHUTDOWN_GRACE)
+                try:
+                    self._exchange("shutdown", {}, deadline)
+                except Exception:
+                    # The engine did not answer the shutdown; the deadlines
+                    # below end it anyway.
+                    pass
+            finally:
+                self._lock.release()
+        self._wait_for_exit(_CLOSE_EXIT_GRACE)
+        if proc.poll() is None:
+            try:
+                proc.terminate()
             except Exception:
                 pass
+            self._wait_for_exit(_CLOSE_TERM_GRACE)
+        if proc.poll() is None:
             try:
-                self.proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
-                self.proc.wait(timeout=5)
-        for stream in (self.proc.stdin, self.proc.stdout, self.proc.stderr):
+                proc.kill()
+            except Exception:
+                pass
+            self._wait_for_exit(_CLOSE_KILL_GRACE)
+
+    def _wait_for_exit(self, grace: float) -> None:
+        try:
+            self.proc.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            pass
+        except Exception:
+            pass
+
+    def _join_threads(self) -> set[str]:
+        """Wait for the reader and the writer to stop.
+
+        The engine is dead by now, so both are unblocked: the reader sees EOF
+        and the writer's write fails. The join has a deadline anyway, because
+        a thread that does not stop must not hold `close()` open -- and a
+        stream whose thread is still running must not be closed underneath it.
+        """
+        try:
+            self._writer_q.put_nowait(None)
+        except queue.Full:
+            pass
+        stuck: set[str] = set()
+        threads = (
+            ("stdout", self._reader),
+            ("stdin", self._writer),
+            ("stderr", self._err_reader),
+        )
+        for name, thread in threads:
+            if thread is None:
+                continue
+            thread.join(timeout=_CLOSE_JOIN_GRACE)
+            if thread.is_alive():
+                stuck.add(name)
+        return stuck
+
+    def _close_streams(self, stuck: set[str]) -> None:
+        streams = (
+            ("stdin", self.proc.stdin),
+            ("stdout", self.proc.stdout),
+            ("stderr", self.proc.stderr),
+        )
+        for name, stream in streams:
+            if stream is None or name in stuck:
+                continue
             try:
-                if stream is not None:
-                    stream.close()
+                stream.close()
             except Exception:
                 pass
 

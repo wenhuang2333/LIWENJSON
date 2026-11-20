@@ -329,3 +329,109 @@ test "sse flush dispatches a final line without a terminator" {
   assert_eq(b.flush(), ["tail"])
   assert_eq(b.flush().length(), 0)
 }
+
+// P1-08: an index must be a whole `Int32`, and a text stream belongs to one
+// choice. Both were source-confirmed: `0.5` was truncated to 0 by `to_int()`
+// and merged a malformed call into a real one, and the last non-empty
+// `choices[].delta.content` of a frame won, so the other texts were lost.
+
+///|
+test "a malformed index is E060, never a silent cast" {
+  // The JSON helper tells "absent" (None) from "present but not an integer".
+  assert_eq(as_int(Json::number(0.5)), None)
+  assert_eq(as_int(Json::number(2147483648.0)), None)
+  assert_eq(as_int(Json::number(-2147483649.0)), None)
+  assert_eq(as_int(Json::number(1000.0)), Some(1000))
+  assert_eq(as_int(Json::number(-3.0)), Some(-3))
+  let absent = field_index(Json::null(), "index") catch { _ => Some(-1) }
+  assert_eq(absent, None)
+  // Anthropic: `0.5` and `"0"` are errors; a missing index keeps the
+  // documented default of 0 and still routes the fragment.
+  let a = ToolStream::new(Anthropic)
+  for
+    bad in [
+      "{\"type\":\"content_block_delta\",\"index\":0.5,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"a\\\":1}\"}}",
+      "{\"type\":\"content_block_delta\",\"index\":\"0\",\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{}\"}}",
+      "{\"type\":\"content_block_stop\",\"index\":1.5}",
+    ] {
+    let msg = try {
+      ignore(a.push_event(bad))
+      ""
+    } catch {
+      e => e.to_string()
+    }
+    assert_true(msg.contains("E060"), msg=bad + " => " + msg)
+  }
+  let ok = a.push_event(
+    "{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"a\\\":1}\"}}",
+  )
+  assert_eq(ok.length(), 1)
+  assert_eq(ok[0].snapshot.value.unwrap().stringify(), "{\"a\":1}")
+  // OpenAI: the choice index and the tool-call index are checked the same way.
+  let o = ToolStream::new(OpenAICompat)
+  for
+    bad in [
+      "{\"choices\":[{\"index\":1.5,\"delta\":{\"content\":\"x\"}}]}", "{\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0.5,\"function\":{\"name\":\"f\"}}]}}]}",
+    ] {
+    let msg = try {
+      ignore(o.push_event(bad))
+      ""
+    } catch {
+      e => e.to_string()
+    }
+    assert_true(msg.contains("E060"), msg=bad + " => " + msg)
+  }
+}
+
+///|
+test "a text stream refuses a second choice instead of losing one" {
+  // Switching choice between frames is refused.
+  let s = TextStream::new(OpenAICompat)
+  let first = s.push_event(
+    "{\"choices\":[{\"index\":0,\"delta\":{\"content\":\"{\\\"a\\\":\"}}]}",
+  )
+  assert_true(first is Some(_))
+  let switched = try {
+    ignore(
+      s.push_event(
+        "{\"choices\":[{\"index\":1,\"delta\":{\"content\":\"1}\"}}]}",
+      ),
+    )
+    ""
+  } catch {
+    e => e.to_string()
+  }
+  assert_true(switched.contains("E060"), msg=switched)
+  // Two choices carrying text in one frame are refused as well.
+  let t = TextStream::new(OpenAICompat)
+  let both = try {
+    ignore(
+      t.push_event(
+        "{\"choices\":[{\"index\":0,\"delta\":{\"content\":\"a\"}},{\"index\":1,\"delta\":{\"content\":\"b\"}}]}",
+      ),
+    )
+    ""
+  } catch {
+    e => e.to_string()
+  }
+  assert_true(both.contains("E060"), msg=both)
+  // A one-choice stream still parses across frames, and its second choice's
+  // absence is not an error.
+  let u = TextStream::new(OpenAICompat)
+  ignore(
+    u.push_event(
+      "{\"choices\":[{\"index\":0,\"delta\":{\"content\":\"{\\\"a\\\":\"}}]}",
+    ),
+  )
+  ignore(
+    u.push_event("{\"choices\":[{\"index\":0,\"delta\":{\"content\":\"1}\"}}]}"),
+  )
+  ignore(
+    u.push_event(
+      "{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}",
+    ),
+  )
+  let r = u.finish().unwrap()
+  assert_eq(r.value.stringify(), "{\"a\":1}")
+  assert_eq(u.end() is Complete, true)
+}

@@ -142,36 +142,95 @@ fn llm_batch_line(
 }
 
 ///|
+/// One error line for a batch frame that could not be decoded.
+fn llm_frame_error(
+  id : String,
+  rc : Int32,
+  code : String,
+  reason : String,
+) -> String {
+  "{\"id\":" +
+  Json::string(id).stringify() +
+  ",\"rc\":" +
+  rc.to_string() +
+  ",\"calls\":[],\"error_code\":" +
+  Json::string(code).stringify() +
+  ",\"error\":" +
+  Json::string(reason).stringify() +
+  "}"
+}
+
+///|
 /// Run the `llm` subcommand in `--batch` mode: one `{"id","events"}` object per
 /// input line, one result line per input.
+///
+/// Lines are read and answered one at a time through the checked writers, for
+/// the same reasons as `--batch`: a harness may feed this interactively, and a
+/// line that is not valid UTF-8 is a structured error, not a document with
+/// U+FFFD substituted for bytes that were never text.
 fn run_llm_batch(provider : @llm.Provider, options : @lj.Options) -> Unit {
   let stream = open_input(None)
   if stream == 0L {
-    eprintln("liwenjson: 无法读取 <stdin>")
-    return quit(3)
+    eprintln("liwenjson: cannot read <stdin>")
+    quit(3)
   }
-  let text = read_all(stream)
-  close_input(stream)
+  let out = open_output()
+  if out == 0L {
+    eprintln("liwenjson: cannot open stdout for writing")
+    quit(IO_ERROR_EXIT)
+  }
+  let reader = BatchReader::new(stream)
   let mut n = 0
-  for line in text.split("\n") {
-    if line.length() == 0 {
-      continue
-    }
-    let fallback = "line-" + n.to_string()
-    n = n + 1
-    let v = @json.parse(line) catch {
-      _ => {
-        println(
-          "{\"id\":" +
-          Json::string(fallback).stringify() +
-          ",\"rc\":2,\"calls\":[]}",
+  while true {
+    match reader.read_line() {
+      BatchEof => break
+      BatchOverflow => {
+        write_line_or_exit(
+          out,
+          llm_frame_error(
+            "line-" + n.to_string(),
+            2,
+            "E021",
+            "input line exceeds MAX_LINE",
+          ),
         )
-        continue
+        n = n + 1
+      }
+      BatchInvalidUtf8 => {
+        write_line_or_exit(
+          out,
+          llm_frame_error(
+            "line-" + n.to_string(),
+            3,
+            "E040",
+            "input line is not valid UTF-8",
+          ),
+        )
+        n = n + 1
+      }
+      BatchText(line) => {
+        if line.length() == 0 {
+          continue
+        }
+        let fallback = "line-" + n.to_string()
+        n = n + 1
+        let v = @json.parse(line) catch {
+          _ => {
+            write_line_or_exit(
+              out,
+              llm_frame_error(
+                fallback, 2, "E060", "input line is not valid JSON",
+              ),
+            )
+            continue
+          }
+        }
+        let (id, events) = llm_batch_fields(v, fallback)
+        write_line_or_exit(out, llm_batch_line(id, events, provider, options))
       }
     }
-    let (id, events) = llm_batch_fields(v, fallback)
-    println(llm_batch_line(id, events, provider, options))
   }
+  close_input(stream)
   quit(0)
 }
 
@@ -242,65 +301,100 @@ fn llm_batch_fields(v : Json, fallback : String) -> (String, Array[String]) {
 fn run_llm_text_batch(provider : @llm.Provider, options : @lj.Options) -> Unit {
   let stream = open_input(None)
   if stream == 0L {
-    eprintln("liwenjson: 无法读取 <stdin>")
-    return quit(3)
+    eprintln("liwenjson: cannot read <stdin>")
+    quit(3)
   }
-  let body = read_all(stream)
-  close_input(stream)
+  let out = open_output()
+  if out == 0L {
+    eprintln("liwenjson: cannot open stdout for writing")
+    quit(IO_ERROR_EXIT)
+  }
+  let reader = BatchReader::new(stream)
   let mut n = 0
-  for line in body.split("\n") {
-    if line.length() == 0 {
-      continue
-    }
-    let fallback = "line-" + n.to_string()
-    n = n + 1
-    let v = @json.parse(line) catch {
-      _ => {
-        println(
-          "{\"id\":" +
-          Json::string(fallback).stringify() +
-          ",\"rc\":2,\"calls\":[]}",
+  while true {
+    match reader.read_line() {
+      BatchEof => break
+      BatchOverflow => {
+        write_line_or_exit(
+          out,
+          llm_frame_error(
+            "line-" + n.to_string(),
+            2,
+            "E021",
+            "input line exceeds MAX_LINE",
+          ),
         )
-        continue
+        n = n + 1
+      }
+      BatchInvalidUtf8 => {
+        write_line_or_exit(
+          out,
+          llm_frame_error(
+            "line-" + n.to_string(),
+            3,
+            "E040",
+            "input line is not valid UTF-8",
+          ),
+        )
+        n = n + 1
+      }
+      BatchText(line) => {
+        if line.length() == 0 {
+          continue
+        }
+        let fallback = "line-" + n.to_string()
+        n = n + 1
+        let v = @json.parse(line) catch {
+          _ => {
+            write_line_or_exit(
+              out,
+              llm_frame_error(
+                fallback, 2, "E060", "input line is not valid JSON",
+              ),
+            )
+            continue
+          }
+        }
+        let (id, events) = llm_batch_fields(v, fallback)
+        let sb = StringBuilder()
+        sb.write_string("{\"id\":")
+        sb.write_string(Json::string(id).stringify())
+        sb.write_string(",\"rc\":")
+        let mut rc = 0
+        let mut line_body = text_line(None, @lj.Exact, @llm.Interrupted, "")
+        try {
+          // The text path uses the command line as given. `--skip-prose` is what
+          // makes it read a chat answer that introduces its JSON with a
+          // sentence; it is not the default because a scalar root (`0`, `"x"`)
+          // would then be mistaken for prose and skipped.
+          let s = @llm.TextStream::new(provider, options~)
+          for e in events {
+            ignore(s.push_event(e))
+          }
+          let end = s.end()
+          let reason = s.stop_reason()
+          match s.finish() {
+            Some(f) =>
+              line_body = text_line(Some(f.value), f.exactness, end, reason)
+            None => line_body = text_line(None, @lj.Exact, end, reason)
+          }
+        } catch {
+          e => {
+            rc = error_exit_code(e)
+            line_body = "{\"error\":" +
+              Json::string(e.to_string()).stringify() +
+              "}"
+          }
+        }
+        sb.write_string(rc.to_string())
+        sb.write_string(",\"calls\":[")
+        sb.write_string(line_body)
+        sb.write_string("]}")
+        write_line_or_exit(out, sb.to_string())
       }
     }
-    let (id, events) = llm_batch_fields(v, fallback)
-    let sb = StringBuilder()
-    sb.write_string("{\"id\":")
-    sb.write_string(Json::string(id).stringify())
-    sb.write_string(",\"rc\":")
-    let mut rc = 0
-    let mut line_body = text_line(None, @lj.Exact, @llm.Interrupted, "")
-    try {
-      // The text path uses the command line as given. `--skip-prose` is what
-      // makes it read a chat answer that introduces its JSON with a sentence;
-      // it is not the default because a scalar root (`0`, `"x"`) would then be
-      // mistaken for prose and skipped.
-      let s = @llm.TextStream::new(provider, options~)
-      for e in events {
-        ignore(s.push_event(e))
-      }
-      let end = s.end()
-      let reason = s.stop_reason()
-      match s.finish() {
-        Some(f) =>
-          line_body = text_line(Some(f.value), f.exactness, end, reason)
-        None => line_body = text_line(None, @lj.Exact, end, reason)
-      }
-    } catch {
-      e => {
-        rc = error_exit_code(e)
-        line_body = "{\"error\":" +
-          Json::string(e.to_string()).stringify() +
-          "}"
-      }
-    }
-    sb.write_string(rc.to_string())
-    sb.write_string(",\"calls\":[")
-    sb.write_string(line_body)
-    sb.write_string("]}")
-    println(sb.to_string())
   }
+  close_input(stream)
   quit(0)
 }
 
@@ -316,21 +410,26 @@ fn run_llm(o : CliOpts) -> Unit {
       return quit(2)
     }
   }
-  // `--batch` reads standard input itself, so it must run before the stream
-  // below is opened: a second `fdopen` of the same descriptor fails.
-  // The adapter defaults to `Options::for_llm()`; the rest of the command line
-  // still applies, so the same document behaves the same way on every path.
-  let options : @lj.Options = {
-    ..@lj.Options::for_llm(),
-    skip_prose: o.skip_prose,
-    max_loss: o.max_loss,
-    reject_ambiguous: o.reject_ambiguous,
-  }
+  // One options source for every path. The command line is parsed once by
+  // `options_of` (which is also where `--policy` and `--strict` are applied),
+  // and the adapter only adds what belongs to the adapter — delta tracking.
+  // The old code rebuilt the options from `for_llm()` and copied three fields
+  // by hand, so `--strict`, `--policy` and every resource limit were silently
+  // dropped on this path: `llm --strict` on `{"a":1,}` answered
+  // executable=true / exactness=cosmetic and exit 0 (audit P0-03).
+  let options : @lj.Options = { ..options_of(o), collect_deltas: true, }
   if o.batch {
     if o.text {
       run_llm_text_batch(provider, options)
     }
     run_llm_batch(provider, options)
+  }
+  // The result stream is checked before the input is read: stdout that cannot
+  // be written is reported, not discovered after a whole document was parsed.
+  let out = open_output()
+  if out == 0L {
+    eprintln("liwenjson: cannot open stdout for writing")
+    return quit(IO_ERROR_EXIT)
   }
   if o.text {
     // The single stream form: the whole input is one stream of text deltas.
@@ -354,8 +453,12 @@ fn run_llm(o : CliOpts) -> Unit {
       let end = s.end()
       let reason = s.stop_reason()
       match s.finish() {
-        Some(f) => println(text_line(Some(f.value), f.exactness, end, reason))
-        None => println(text_line(None, @lj.Exact, end, reason))
+        Some(f) =>
+          write_line_or_exit(
+            out,
+            text_line(Some(f.value), f.exactness, end, reason),
+          )
+        None => write_line_or_exit(out, text_line(None, @lj.Exact, end, reason))
       }
       let provider_error = s.error()
       if provider_error != "" {
@@ -365,8 +468,12 @@ fn run_llm(o : CliOpts) -> Unit {
       quit(0)
     } catch {
       e => {
+        // The documentation already gives each failure its own exit code
+        // (strict violation 5, resource limit 4, ...); mapping every exception
+        // to 3 hid the difference between "the input is invalid" and "the
+        // caller asked for something that cannot be granted" (audit P0-03).
         eprintln("liwenjson: " + e.to_string())
-        quit(3)
+        quit(error_exit_code(e))
       }
     }
   }
@@ -388,7 +495,7 @@ fn run_llm(o : CliOpts) -> Unit {
     for p in payloads {
       for v in s.push_event(p) {
         if o.follow {
-          println(llm_line(v))
+          write_line_or_exit(out, llm_line(v))
         }
       }
     }
@@ -400,12 +507,12 @@ fn run_llm(o : CliOpts) -> Unit {
       // `done` flag: only calls that ended during `finish()` are re-printed.
       for v in finals {
         if v.end is @llm.Interrupted || v.end is @llm.MaxTokens {
-          println(llm_line(v))
+          write_line_or_exit(out, llm_line(v))
         }
       }
     } else {
       for v in finals {
-        println(llm_line(v))
+        write_line_or_exit(out, llm_line(v))
       }
     }
     let unknown = s.unsupported_events()
@@ -429,7 +536,7 @@ fn run_llm(o : CliOpts) -> Unit {
   } catch {
     e => {
       eprintln("liwenjson: " + e.to_string())
-      quit(3)
+      quit(error_exit_code(e))
     }
   }
 }

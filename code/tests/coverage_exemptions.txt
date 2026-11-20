@@ -55,18 +55,16 @@ schema.mbt	266	0x72 => if u == 0x0D { hit = true } // \r
 schema.mbt	267	0x5C | 0x5D | 0x2D | 0x5E => if u == e { hit = true } // \\ \] \- \^
 schema.mbt	268	_ => ()
 schema.mbt	584	inner.name()
-schema.mbt	631	inner.stringify()
-schema.mbt	648	return true
 schema.mbt	941	raise SchemaError(" `(` of the constraint list is never closed")
 schema.mbt	944	p.i = p.i + 1
 schema.mbt	963	raise SchemaError(" `(` of the constraint list is never closed")
 stream_readiness.mbt	365	Index(i) => i.to_string()
-stream_readiness.mbt	436	return out
-stream_readiness.mbt	441	if idx >= 0 && s.length() > 0 && s.at(0).to_int() != 0x30 {
-stream_readiness.mbt	442	out.push(Index(idx))
 stream_readiness.mbt	455	(Index(x), Index(y)) => x == y
 stream_readiness.mbt	456	_ => false
 stream_readiness.mbt	485	None => false
 stream_readiness.mbt	557	Index(i) => i.to_string()
 stream_readiness.mbt	685	return Some((p, "missing"))
 stream_readiness.mbt	913	self.syntax_at = self.bytes
+stream_readiness.mbt	378	None => Any
+stream_readiness.mbt	388	continue
+stream_readiness.mbt	688	self.watched[i].path

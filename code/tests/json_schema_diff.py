@@ -29,9 +29,22 @@ A declaration the gate refuses with `E070` is skipped: refusing a declaration is
 the documented answer for a subset that cannot express it, and there is nothing
 to compare.
 
-Exit codes: 0 all good (including the "reference validator not installed"
-skip), 1 a value the gate allowed was rejected by the reference, 2 the harness
-could not run.
+Exit codes: 0 all good, 1 a value the gate allowed was rejected by the reference
+or a case was not compared at all, 2 the harness could not run (or, with
+`--strict`, the reference validator is not installed).
+
+Strict mode
+-----------
+    python3 tests/json_schema_diff.py --strict --cli <binary>
+
+Without `--strict` a missing `jsonschema` is a skip: the script prints that it
+is skipping and exits 0. That is how the gate could be green while it had
+checked nothing at all -- "the reference validator is not installed" reads
+like a pass in a CI log, and the step it guards (the gate's own Schema subset)
+was never exercised. `--strict` turns the missing dependency into exit 2 and
+additionally requires that *every* case was compared against the reference
+(compared == cases): a case the gate refused to model (E070) is a case the
+reference never saw, and in strict mode that is a failure rather than a skip.
 """
 
 from __future__ import annotations
@@ -203,14 +216,32 @@ def gate_verdict(cli: str, declaration: str, value: object) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cli", required=True, help="the built liwenjson binary")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 2 when the reference validator is missing, and fail when a "
+        "case was not compared against it",
+    )
     args = parser.parse_args()
 
     jsonschema = load_reference()
     if jsonschema is None:
+        if args.strict:
+            # A gate that could not run must not report success. The CI job
+            # that runs this script installs the reference validator itself,
+            # because a dependency installed in another job is not installed
+            # here: the step used to be green on a runner without jsonschema.
+            print(
+                "jsonschema is not installed; the strict differential check "
+                "cannot run. Install it (pip install jsonschema==4.26.0) and "
+                "run again.",
+                file=sys.stderr,
+            )
+            return 2
         print("jsonschema is not installed; skipping the differential check")
         return 0
 
-    allowed = refused_declaration = stricter = 0
+    allowed = refused_declaration = stricter = rejected = 0
     mismatches: list[str] = []
     stricter_cases: list[str] = []
 
@@ -242,13 +273,21 @@ def main() -> int:
                     f"ok    {declaration}  {json.dumps(value)}  gate=reject reference=allow (stricter)"
                 )
             else:
-                print(f"ok    {declaration}  {json.dumps(value)}  gate=reject")
+                # Both sides reject: the reference validator *was* consulted, so
+                # this case is compared. It used to be left out of `compared`,
+                # which made strict mode demand a positive agreement for every
+                # negative case too and turned a healthy run red.
+                rejected += 1
+                print(f"ok    {declaration}  {json.dumps(value)}  gate=reject reference=reject")
 
     print()
     print(f"cases: {len(CORPUS)}")
     print(f"allowed by the gate and confirmed by the reference: {allowed}")
     print(f"stricter than the reference (fails closed): {stricter}")
+    print(f"rejected by the gate and confirmed by the reference: {rejected}")
     print(f"declarations refused with E070: {refused_declaration}")
+    compared = allowed + stricter + rejected
+    print(f"compared against the reference: {compared}/{len(CORPUS)}")
     if stricter_cases:
         print("\nthe stricter cases, for the record:")
         for case in stricter_cases:
@@ -264,6 +303,22 @@ def main() -> int:
             "may be stricter, never looser."
         )
         return 1
+
+    if args.strict and compared != len(CORPUS):
+        # Strict mode: every case must have been decided by the reference
+        # validator. A declaration the gate refused to model is a case the
+        # reference never saw, so the differential claim does not cover it.
+        print()
+        print(
+            f"FAIL  {len(CORPUS) - compared} of {len(CORPUS)} case(s) were not "
+            "compared against the reference validator"
+        )
+        print(
+            "The strict differential check requires every case to be compared; "
+            "a refused declaration (E070) is a gap, not a skip."
+        )
+        return 1
+
     print("\njson_schema_diff: OK — no value the gate allows is rejected by the reference")
     return 0
 

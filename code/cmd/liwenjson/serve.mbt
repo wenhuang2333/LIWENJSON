@@ -48,18 +48,50 @@ struct LineReader {
   one : Bytes
   mut acc : Array[Byte]
   mut overflow : Bool
+  /// Refuse malformed UTF-8 frames instead of replacement-decoding them.
+  /// Opt-in: `batch` keeps the lossy reader it has always used.
+  strict : Bool
+  mut invalid_utf8 : Bool
+  mut utf8_offset : Int32
 }
 
 ///|
 /// A reader over `stream`.
 fn LineReader::new(stream : Int64) -> LineReader {
-  { stream, one: Bytes::make(1, b'\x00'), acc: [], overflow: false, }
+  {
+    stream,
+    one: Bytes::make(1, b'\x00'),
+    acc: [],
+    overflow: false,
+    strict: false,
+    invalid_utf8: false,
+    utf8_offset: 0,
+  }
 }
 
 ///|
-/// Decode a byte range as UTF-8, replacing malformed sequences.
-fn line_text(bytes : ArrayView[Byte]) -> String {
-  @utf8.decode_lossy(Bytes::from_array(bytes))
+/// A reader over `stream` that refuses frames which are not valid UTF-8.
+fn LineReader::new_strict(stream : Int64) -> LineReader {
+  { ..LineReader::new(stream), strict: true, }
+}
+
+///|
+/// Decode a frame. The strict reader answers `None` for malformed UTF-8 and
+/// records the byte offset of the first bad byte; the caller turns that into a
+/// controlled protocol error and keeps serving the connection.
+fn LineReader::decode_frame(self : LineReader) -> String? {
+  let raw = Bytes::from_array(self.acc[:])
+  if !self.strict {
+    return Some(@utf8.decode_lossy(raw))
+  }
+  let decoded : String? = Some(@utf8.decode(raw)) catch {
+    @utf8.Malformed(suffix) => {
+      self.invalid_utf8 = true
+      self.utf8_offset = raw.length() - suffix.length()
+      None
+    }
+  }
+  decoded
 }
 
 ///|
@@ -79,16 +111,26 @@ fn LineReader::next_byte(self : LineReader) -> Int32 {
 /// caller answers with an error instead of trying to parse half a request.
 fn LineReader::read_line(self : LineReader) -> String? {
   self.acc = []
+  self.invalid_utf8 = false
   while true {
     let c = self.next_byte()
     if c < 0 {
       if self.acc.length() == 0 {
         return None
       }
-      return Some(line_text(self.acc[:]))
+      // `None` from the decoder means "malformed frame", not end of input:
+      // the caller must answer with an error and keep reading, so it is
+      // reported as an empty line with `invalid_utf8` set.
+      match self.decode_frame() {
+        Some(text) => return Some(text)
+        None => return Some("")
+      }
     }
     if c == 0x0A {
-      return Some(line_text(self.acc[:]))
+      match self.decode_frame() {
+        Some(text) => return Some(text)
+        None => return Some("")
+      }
     }
     if self.acc.length() >= MAX_LINE {
       self.overflow = true
@@ -333,18 +375,100 @@ fn text_param(params : Map[String, Json]) -> String raise @lj.LIWENJSONError {
 }
 
 ///|
-/// Read an integer parameter, or `fallback` when absent.
-fn int_param(
+/// Read a boolean parameter, or `fallback` when absent. A string, number or
+/// null is refused: the published `inputSchema` says `boolean`, so the server
+/// must not accept what the declaration rejects.
+fn bool_param(
   params : Map[String, Json],
   key : String,
-  fallback : Int32,
-) -> Int32 raise @lj.LIWENJSONError {
+  fallback : Bool,
+) -> Bool raise @lj.LIWENJSONError {
   match params.get(key) {
-    Some(Json::Number(d, ..)) => d.to_int()
-    Some(Json::Null) => fallback
-    Some(_) => raise @lj.InvalidOption("`" + key + "` must be a number")
+    Some(Json::True) => true
+    Some(Json::False) => false
+    Some(_) => raise @lj.InvalidOption("`" + key + "` must be a boolean")
     None => fallback
   }
+}
+
+///|
+/// Read the `step` parameter of `readiness`: a whole number of bytes in
+/// `0..=MAX_LINE`. `0` (the default and the only meaning the engine gives it)
+/// selects the automatic step. Fractions, negatives, oversized values and
+/// wrong types are refused *before* the walk sees them — truncating `0.5` to
+/// `0` and running anyway is how a declaration stops matching its server.
+fn step_param(params : Map[String, Json]) -> Int32 raise @lj.LIWENJSONError {
+  let message = "`step` must be an integer in 0.." +
+    MAX_LINE.to_string() +
+    " (0 selects the automatic step)"
+  match params.get("step") {
+    None => 0
+    Some(Json::Number(d, ..)) => {
+      let limit = MAX_LINE.to_double()
+      if d < 0.0 || d > limit || d != d.to_int().to_double() {
+        raise @lj.InvalidOption(message)
+      }
+      d.to_int()
+    }
+    Some(_) => raise @lj.InvalidOption(message)
+  }
+}
+
+///|
+/// Join names for an error message.
+fn joined_names(names : Array[String]) -> String {
+  let mut out = ""
+  for i, name in names {
+    if i > 0 {
+      out = out + ", "
+    }
+    out = out + name
+  }
+  out
+}
+
+///|
+/// Refuse request fields the method does not implement. The tools publish
+/// `additionalProperties: false`, so the shared `serve` handlers must reject
+/// the same fields instead of silently ignoring them.
+fn check_params(
+  meth : String,
+  params : Map[String, Json],
+  allowed : Array[String],
+) -> Unit raise @lj.LIWENJSONError {
+  for key in params.keys() {
+    let mut known = false
+    for name in allowed {
+      if name == key {
+        known = true
+      }
+    }
+    if !known {
+      raise @lj.InvalidOption(
+        "unknown `" +
+        key +
+        "` for `" +
+        meth +
+        "`; accepted: " +
+        joined_names(allowed),
+      )
+    }
+  }
+}
+
+///|
+/// The fields `repair` implements. Kept next to the handler rather than in the
+/// MCP layer so `serve` and MCP reject the same shapes.
+fn repair_fields() -> Array[String] {
+  ["text", "profile", "schema", "schema_json", "skip_prose", "max_loss"]
+}
+
+///|
+/// The fields `analyze` implements: `repair` plus the opt-in rendered text.
+fn analyze_fields() -> Array[String] {
+  [
+    "text", "profile", "schema", "schema_json", "skip_prose", "max_loss", "with_text",
+  ]
 }
 
 ///|
@@ -456,6 +580,7 @@ fn handle_repair(
   params : Map[String, Json],
   base : @lj.Options,
 ) -> Json raise @lj.LIWENJSONError {
+  check_params("repair", params, repair_fields())
   let text = text_param(params)
   let opts = options_from_params(base, params)
   let schema = schema_param(params)
@@ -484,6 +609,7 @@ fn handle_analyze(
   params : Map[String, Json],
   base : @lj.Options,
 ) -> Json raise @lj.LIWENJSONError {
+  check_params("analyze", params, analyze_fields())
   let text = text_param(params)
   let opts = options_from_params(base, params)
   let schema = schema_param(params)
@@ -496,10 +622,7 @@ fn handle_analyze(
   // `structuredContent` -- the payload, the rendered text, and the text channel.
   // `text` is now opt-in (`with_text`), because a caller that has `value` can
   // render it and the MCP gate never reads `text`.
-  let with_text = match params.get("with_text") {
-    Some(Json::True) => true
-    _ => false
-  }
+  let with_text = bool_param(params, "with_text", false)
   @json.parse(plan.to_json_with_text(with_text)) catch {
     _ => raise @lj.InvalidState("the plan could not be serialised")
   }
@@ -513,6 +636,9 @@ fn handle_validate(
   params : Map[String, Json],
   base : @lj.Options,
 ) -> Json raise @lj.LIWENJSONError {
+  check_params("validate", params, [
+    "text", "profile", "schema", "schema_json", "skip_prose", "max_loss",
+  ])
   let text = text_param(params)
   let schema = schema_param(params)
   if @lj.is_valid_json(text) {
@@ -565,8 +691,11 @@ fn handle_readiness(
   params : Map[String, Json],
   base : @lj.Options,
 ) -> Json raise @lj.LIWENJSONError {
+  check_params("readiness", params, [
+    "text", "profile", "schema", "schema_json", "skip_prose", "max_loss", "step",
+  ])
   let text = text_param(params)
-  let step = int_param(params, "step", 0)
+  let step = step_param(params)
   match schema_param(params) {
     Some(s) => {
       let opts = options_from_params(base, params)
@@ -674,14 +803,26 @@ fn handle_watch_feed(
 fn handle_watch_finish(state : ServeState) -> Json raise @lj.LIWENJSONError {
   match (state.watch_parser, state.watch_watcher) {
     (Some(parser), Some(watcher)) => {
-      let mut err = ""
+      // Finish both halves before answering: a failing parser must not leave
+      // the watcher un-run, and a failing watcher must not vanish. The first
+      // error is re-raised as the original error object, so an empty stream
+      // still reports `E001` rather than `E030 InvalidState: E001 ...`; and the
+      // state is cleared either way, so the next `watch.start` works.
+      let mut failure : @lj.LIWENJSONError? = None
       let fin = Some(parser.finish()) catch {
         e => {
-          err = e.to_string()
+          failure = Some(e)
           None
         }
       }
-      let wfin = Some(watcher.finish()) catch { _ => None }
+      let wfin = Some(watcher.finish()) catch {
+        e => {
+          if failure is None {
+            failure = Some(e)
+          }
+          None
+        }
+      }
       let events : Array[Json] = []
       let fed = watcher.bytes()
       for pair in watcher.drain_events_at() {
@@ -689,6 +830,10 @@ fn handle_watch_finish(state : ServeState) -> Json raise @lj.LIWENJSONError {
       }
       state.watch_parser = None
       state.watch_watcher = None
+      match failure {
+        Some(e) => raise e
+        None => ()
+      }
       match fin {
         Some(f) =>
           jobj([
@@ -702,7 +847,10 @@ fn handle_watch_finish(state : ServeState) -> Json raise @lj.LIWENJSONError {
               },
             ),
           ])
-        None => raise @lj.InvalidState(err)
+        // Both finishes ran, so `fin` is `None` only when one of them failed,
+        // and that error was re-raised above.
+        None =>
+          raise @lj.InvalidState("the watch stream produced no final parse")
       }
     }
     _ => raise @lj.InvalidState("no active watch stream")
@@ -912,14 +1060,49 @@ fn request_params(v : Json) -> Map[String, Json] {
 }
 
 ///|
+/// Why the request's `params` cannot be read, or `None`. A present-but-not-an-
+/// object `params` used to be read as "no arguments" and surfaced as a
+/// complaint about a missing `text`; it is a malformed request instead.
+fn request_params_problem(v : Json) -> String? {
+  match v {
+    Json::Object(m) =>
+      match m.get("params") {
+        Some(Json::Object(_)) | Some(Json::Null) | None => None
+        Some(_) => Some("`params` must be an object")
+      }
+    _ => None
+  }
+}
+
+///|
 /// Run the stdio protocol until EOF or `shutdown`.
 fn run_serve(o : CliOpts) -> Unit {
+  // `serve` is a long-lived protocol: one-shot options are usage errors here,
+  // not flags to ignore. `--check` used to be accepted and silently did
+  // nothing (`want_text` was the only thing it changed).
+  if o.check {
+    eprintln(
+      "liwenjson: serve is a long-lived protocol and does not accept --check; run `liwenjson --check` for the one-shot check",
+    )
+    return quit(2)
+  }
+  match o.path {
+    Some(_) => {
+      eprintln(
+        "liwenjson: serve reads standard input and does not accept a file path",
+      )
+      return quit(2)
+    }
+    None => ()
+  }
   let stream = open_input(None)
   if stream == 0L {
     eprintln("liwenjson: 无法读取 <stdin>")
     return quit(3)
   }
-  let reader = LineReader::new(stream)
+  // Strict: a request frame that is not valid UTF-8 is refused as `E040`
+  // before it can reach the JSON parser, and the connection keeps serving.
+  let reader = LineReader::new_strict(stream)
   let base = options_of(o)
   let state = ServeState::new()
   let proto = open_output()
@@ -928,6 +1111,14 @@ fn run_serve(o : CliOpts) -> Unit {
     match reader.read_line() {
       None => running = false
       Some(line) => {
+        if reader.invalid_utf8 {
+          reader.invalid_utf8 = false
+          write_line(
+            proto,
+            response_err(Json::null(), @lj.InvalidUtf8(reader.utf8_offset)),
+          )
+          continue
+        }
         if reader.overflow {
           reader.overflow = false
           write_line(
@@ -980,6 +1171,13 @@ fn run_serve(o : CliOpts) -> Unit {
         }
         let id = request_id(request)
         let meth = request_method(request)
+        match request_params_problem(request) {
+          Some(why) => {
+            write_line(proto, response_err(id, @lj.InvalidOption(why)))
+            continue
+          }
+          None => ()
+        }
         let params = request_params(request)
         if meth == "shutdown" {
           write_line(

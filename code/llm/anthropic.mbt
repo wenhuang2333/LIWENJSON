@@ -36,7 +36,7 @@ fn ToolStream::push_anthropic(
     if block_type != "tool_use" {
       return out
     }
-    let index = match field_int(v, "index") {
+    let index = match field_index(v, "index") {
       Some(i) => i
       None => 0
     }
@@ -75,7 +75,7 @@ fn ToolStream::push_anthropic(
     if delta_type != "input_json_delta" {
       return out
     }
-    let index = match field_int(v, "index") {
+    let index = match field_index(v, "index") {
       Some(i) => i
       None => 0
     }
@@ -89,7 +89,7 @@ fn ToolStream::push_anthropic(
     return out
   }
   if kind == "content_block_stop" {
-    let index = match field_int(v, "index") {
+    let index = match field_index(v, "index") {
       Some(i) => i
       None => 0
     }

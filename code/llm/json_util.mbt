@@ -30,11 +30,18 @@ pub fn as_string(v : Json) -> String? {
 }
 
 ///|
-/// Integer value of `v`, if it is a number that fits an `Int32`.
+/// Integer value of `v`, if it is a whole number that fits an `Int32`.
+///
+/// A JSON number such as `0.5` or `2147483648` is not an integer. Truncating it
+/// made a malformed tool-call index (`"index": 0.5`) merge into the call at
+/// index 0, and a wrapped index move a fragment into an unrelated call, so
+/// non-integral and out-of-range numbers are `None` here, never a cast.
 pub fn as_int(v : Json) -> Int32? {
   match v {
     Json::Number(n, ..) =>
-      if n.is_nan() || n.is_inf() {
+      if n.is_nan() || n.is_inf() || n != n.floor() {
+        None
+      } else if n > 2147483647.0 || n < -2147483648.0 {
         None
       } else {
         Some(n.to_int())
@@ -67,5 +74,26 @@ pub fn field_int(v : Json, k : String) -> Int32? {
   match field(v, k) {
     Some(x) => as_int(x)
     None => None
+  }
+}
+
+///|
+/// An event index field: absent is `None`, present but not a whole `Int32` is
+/// `E060`.
+///
+/// The distinction matters: a missing index has a documented default (0), but a
+/// malformed one must not silently become that default — that is how a fragment
+/// of call `0.5` was appended to call 0 and a wrapped index merged two calls.
+fn field_index(v : Json, k : String) -> Int32? raise @liwenjson.LIWENJSONError {
+  match field(v, k) {
+    None => None
+    Some(x) =>
+      match as_int(x) {
+        Some(i) => Some(i)
+        None =>
+          raise @liwenjson.InvalidEvent(
+            "an event index field must be a whole number in Int32 range",
+          )
+      }
   }
 }

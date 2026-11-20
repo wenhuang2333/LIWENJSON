@@ -2,7 +2,13 @@
 package "zhanshishan/liwenjson"
 
 // Values
+pub const MAX_INDENT : Int32 = 64
+
 pub const MAX_SCHEMA_DEPTH : Int32 = 256
+
+pub const MAX_SCHEMA_WALK_DEPTH : Int32 = 1048576
+
+pub const MAX_SCHEMA_WALK_NODES : Int32 = 4194304
 
 pub const MAX_VALUE_DEPTH : Int32 = 1048576
 
@@ -82,6 +88,7 @@ pub(all) suberror LIWENJSONError {
   InvalidOption(String)
   InvalidEvent(String)
   SchemaError(String)
+  OutputLimit(Int32)
 }
 pub fn LIWENJSONError::code(Self) -> String
 pub fn LIWENJSONError::retry_hint(Self, input? : String, radius? : Int32) -> RetryHint?
@@ -288,6 +295,7 @@ pub(all) struct Options {
   max_loss : Exactness
   collect_deltas : Bool
   reject_ambiguous : Bool
+  max_output_len : Int32
 }
 pub fn Options::default() -> Self
 pub fn Options::for_agent() -> Self
@@ -391,6 +399,7 @@ pub(all) enum ReadinessEvent {
   FieldIncomplete(String, String)
   RootReady
   RootInvalid(Int32)
+  FieldMissing(String, String)
 }
 pub fn ReadinessEvent::is_verdict(Self) -> Bool
 pub fn ReadinessEvent::kind(Self) -> String
@@ -566,8 +575,8 @@ pub fn Schema::name(Self) -> String
 pub fn Schema::of_json_schema(Json) -> Self raise LIWENJSONError
 pub fn Schema::parse(String) -> Self raise LIWENJSONError
 pub fn Schema::parse_json_schema(String) -> Self raise LIWENJSONError
-pub fn Schema::required_paths(Self) -> Array[String]
-pub fn Schema::stringify(Self) -> String
+pub fn Schema::required_paths(Self, depth_budget? : Int32, node_budget? : Int32) -> Array[String] raise LIWENJSONError
+pub fn Schema::stringify(Self, depth_budget? : Int32, node_budget? : Int32) -> String raise LIWENJSONError
 
 pub(all) struct SchemaMember {
   key : String

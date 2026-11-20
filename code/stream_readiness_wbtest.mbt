@@ -391,12 +391,12 @@ test "an absent member is settled by the closer of the object that holds it" {
     Some(e) => e
     None => return assert_true(false, msg="byte-wise stream failed")
   }
-  assert_eq(sr_names(evs), "field_ready:a.b,field_invalid:a.c,root_invalid:")
+  assert_eq(sr_names(evs), "field_ready:a.b,field_missing:a.c,root_invalid:")
   // The closer of `a` is the 12th code unit of a 224 code unit document.
   assert_eq(evs[1].bytes, 12)
   assert_true(
-    evs[1].event is FieldInvalid(_, _),
-    msg="the absent member is a field_invalid",
+    evs[1].event is FieldMissing(_, _),
+    msg="the absent member is a field_missing, not a field_invalid",
   )
   assert_eq(evs[1].event.path(), "a.c")
   assert_eq(evs[1].event.is_verdict(), true)
@@ -438,7 +438,11 @@ test "an absent member at the root is settled by the root's closer" {
     Some(e) => e
     None => return assert_true(false, msg="byte-wise stream failed")
   }
-  assert_eq(sr_names(evs), "field_ready:a,field_invalid:b,root_invalid:")
+  assert_eq(sr_names(evs), "field_ready:a,field_missing:b,root_invalid:")
+  assert_true(
+    evs[1].event is FieldMissing(_, _),
+    msg="the absent member is a field_missing",
+  )
   // `b` never arrives, and the closer of the root is the last code unit here,
   // so the decision is at the end of this document: `1000`.
   assert_eq(evs[1].bytes, text.length())
@@ -506,18 +510,19 @@ test "finish completes a truncated document and still decides" {
 ///|
 test "a container that is final but not valid names the member that is wrong" {
   // The message is about the member that is wrong, not about the container that
-  // holds it. The path is relative to the container that was declared.
+  // holds it. The path is the canonical path of that member, in the same space
+  // as `required_paths` and the verdict's `missing` list.
   let obj = sr_schema("{!a:{?x:integer}}")
   let evs = match sr_feed_one_by_one("{\"a\":{\"x\":\"s\"}}", obj) {
     Some(e) => e
     None => return assert_true(false, msg="byte-wise stream failed")
   }
-  assert_eq(sr_names(evs), "field_incomplete:x,root_invalid:")
+  assert_eq(sr_names(evs), "field_incomplete:a.x,root_invalid:")
   assert_true(
     evs[0].event is FieldIncomplete(_, _),
     msg="a final container with a wrong member is field_incomplete",
   )
-  assert_eq(evs[0].event.path(), "x")
+  assert_eq(evs[0].event.path(), "a.x")
   // A `field_incomplete` is a progress note, not a verdict: the container's
   // value is final, the payload the caller asked for is not.
   assert_eq(evs[0].event.is_verdict(), false)
@@ -527,7 +532,7 @@ test "a container that is final but not valid names the member that is wrong" {
     Some(e) => e
     None => return assert_true(false, msg="byte-wise stream failed")
   }
-  assert_eq(sr_names(evs2), "field_incomplete:1,root_invalid:")
+  assert_eq(sr_names(evs2), "field_incomplete:a.1,root_invalid:")
   assert_true(evs2[0].event is FieldIncomplete(_, _), msg="array element")
 }
 
@@ -600,22 +605,19 @@ test "a fresh watcher judges the empty value, not a missing one" {
 }
 
 ///|
-test "a dotted member name is split into path segments" {
-  // The declaration language cannot write a member whose name contains a dot,
-  // and this is why: the path language splits it. A declaration with both `a`
-  // and `a.b` puts two watched paths under the same first segment, which is the
-  // case the watcher's index exists for.
-  let s = sr_schema("{!a:any,!a.b:integer}")
-  assert_eq(s.required_paths(), ["a", "a.b"])
+test "a dotted member name goes through the pointer form" {
+  // A member whose name contains the dotted separator cannot be written in the
+  // dotted form, so the canonical path switches to the RFC 6901 pointer form:
+  // `a` stays `a`, the member literally named `a.b` becomes `/a.b`. That keeps
+  // the two watched paths distinct and the path language unambiguous.
+  let s = sr_schema("{!a:any,!\"a.b\":integer}")
+  assert_eq(s.required_paths(), ["a", "/a.b"])
   let w = SemanticWatcher::new(s) catch {
     _ => return assert_true(false, msg="watcher did not build")
   }
-  assert_eq(w.watched_paths(), ["a", "a.b"])
+  assert_eq(w.watched_paths(), ["a", "/a.b"])
   assert_eq(w.total_required(), 2)
-  // `Schema::at_path` splits the path the same way, and the step `a` resolves
-  // to the declaration `any` and stops: a member literally named `a.b` is
-  // unreachable. The path language is the flattened one and a member name may
-  // not contain a dot, which is what `required_paths` documents.
+  assert_eq(s.at_path("/a.b").map(fn(x) { x.name() }), Some("integer"))
   assert_eq(s.at_path("a.b").map(fn(x) { x.name() }), None)
   assert_eq(s.at_path("a").map(fn(x) { x.name() }), Some("any"))
 }
@@ -932,7 +934,7 @@ test "the one-shot helpers pick their own step and decide at the end" {
   for e in evs {
     raw.push(e.event)
   }
-  assert_eq(sr_names_of(raw), "field_ready:a,field_invalid:b,root_invalid:")
+  assert_eq(sr_names_of(raw), "field_ready:a,field_missing:b,root_invalid:")
   // Even `a`, whose value is complete in the text, is not *final* until a
   // delimiter or the end: a trailing digit could still grow. So every event
   // here is produced by `finish()`.
@@ -1245,4 +1247,212 @@ test "TC-GATE-23 root_ready waits for the container to close when it is constrai
     None => return assert_true(false, msg="the stream failed")
   }
   assert_false(refused.contains("root_ready"), msg=refused)
+}
+
+// ---------------------------------------------------------------------------
+// 1120 P0-05 — "absent" and "null" are different answers.
+// ---------------------------------------------------------------------------
+
+///|
+/// Raw events of a one-shot watch, for `sr_names_of`.
+fn sr_raw_events(input : String, schema : Schema) -> Array[ReadinessEvent] {
+  let out : Array[ReadinessEvent] = []
+  let evs = watch_readiness(input, schema) catch { _ => return out }
+  for e in evs {
+    out.push(e.event)
+  }
+  out
+}
+
+///|
+test "a missing member is never ready, whatever its declaration accepts" {
+  // R-05: `{}` against `{!a:any}` / `{!a:null}` used to report `field_ready:a`
+  // because the absent member was looked up as `Json::null()`. Absent is now
+  // its own event and its own refusal.
+  for decl in ["{!a:any}", "{!a:null}"] {
+    let s = sr_schema(decl)
+    assert_eq(
+      sr_names_of(sr_raw_events("{}", s)),
+      "field_missing:a,root_invalid:",
+      msg=decl,
+    )
+    let w = SemanticWatcher::new(s) catch {
+      _ => return assert_true(false, msg="watcher did not build")
+    }
+    w.feed("{}") catch {
+      _ => return assert_true(false)
+    }
+    let _ = w.finish() catch { _ => return assert_true(false) }
+    assert_eq(w.ready_count(), 0)
+    assert_eq(w.watched_paths(), ["a"])
+    let verdict = w.verdict()
+    assert_eq(verdict.ok, false)
+    assert_eq(verdict.missing, ["a"])
+  }
+}
+
+///|
+test "an explicit null is a value, so the declaration decides it" {
+  // `null` satisfies `null` and `any`; it does not satisfy `integer`.
+  assert_eq(
+    sr_names_of(sr_raw_events("{\"a\":null}", sr_schema("{!a:null}"))),
+    "field_ready:a,root_ready:",
+  )
+  assert_eq(
+    sr_names_of(sr_raw_events("{\"a\":null}", sr_schema("{!a:any}"))),
+    "field_ready:a,root_ready:",
+  )
+  assert_eq(
+    sr_names_of(sr_raw_events("{\"a\":null}", sr_schema("{!a:integer}"))),
+    "field_invalid:a,root_invalid:",
+  )
+  // The other direction: a present member is ready even when it holds `null`,
+  // so the fix did not simply delete every `field_ready` for `any`/`null`.
+  assert_eq(
+    sr_names_of(
+      sr_raw_events("{\"a\":null,\"b\":1}", sr_schema("{!a:any,!b:any}")),
+    ),
+    "field_ready:a,field_ready:b,root_ready:",
+  )
+}
+
+///|
+test "missing members are reported per field, together with present ones" {
+  assert_eq(
+    sr_names_of(sr_raw_events("{\"a\":1}", sr_schema("{!a:any,!b:any}"))),
+    "field_ready:a,field_missing:b,root_invalid:",
+  )
+  let w = SemanticWatcher::new(sr_schema("{!a:any,!b:any}")) catch {
+    _ => return assert_true(false, msg="watcher did not build")
+  }
+  w.feed("{\"a\":1,") catch {
+    _ => return assert_true(false)
+  }
+  // Before the end, `a` alone is ready; `b` is still undecided, so no verdict.
+  assert_eq(w.ready_count(), 1)
+  assert_eq(w.concluded(), false)
+  let _ = w.finish() catch { _ => return assert_true(false) }
+  assert_eq(w.ready_count(), 1)
+  assert_eq(w.verdict().ok, false)
+}
+
+///|
+test "a missing member inside a container is named by its full path" {
+  // The event names the same path the verdict's `missing` list uses, and the
+  // path is absolute rather than relative to the container that was walked.
+  assert_eq(
+    sr_names_of(
+      sr_raw_events("{\"a\":{\"b\":1}}", sr_schema("{!a:{!b:any,!c:any}}")),
+    ),
+    "field_ready:a.b,field_missing:a.c,root_invalid:",
+  )
+}
+
+///|
+test "a missing array member is missing, and an empty array is ready" {
+  let s = sr_schema("{!a:[integer]}")
+  assert_eq(
+    sr_names_of(sr_raw_events("{}", s)),
+    "field_missing:a,root_invalid:",
+  )
+  assert_eq(
+    sr_names_of(sr_raw_events("{\"a\":[]}", s)),
+    "field_ready:a,root_ready:",
+  )
+  assert_eq(
+    sr_names_of(sr_raw_events("{\"a\":[1]}", s)),
+    "field_ready:a,root_ready:",
+  )
+}
+
+///|
+test "a field_missing event has the fixed JSON form" {
+  assert_eq(
+    readiness_events_json([FieldMissing("/", "integer")]),
+    "[{\"kind\":\"field_missing\",\"path\":\"/\",\"expected\":\"integer\"}]",
+  )
+  assert_eq(FieldMissing("a.b", "string").is_verdict(), true)
+  assert_eq(FieldMissing("/", "any").kind(), "field_missing")
+}
+
+// ---------------------------------------------------------------------------
+// 1120 P1-09 — the empty member name is a path of its own.
+// ---------------------------------------------------------------------------
+
+///|
+test "a required empty-name member gets its own event, not just root_ready" {
+  let s = sr_schema("{\"\":integer}")
+  assert_eq(s.required_paths() catch { _ => [] }, ["/"])
+  assert_eq(
+    sr_names_of(sr_raw_events("{\"\":1}", s)),
+    "field_ready:/,root_ready:",
+  )
+  // Absent: the empty-name member is missing, and that is not the root.
+  assert_eq(
+    sr_names_of(sr_raw_events("{}", s)),
+    "field_missing:/,root_invalid:",
+  )
+  // A document with an unrelated member does not satisfy it either.
+  assert_eq(
+    sr_names_of(sr_raw_events("{\"a\":1}", s)),
+    "field_missing:/,root_invalid:",
+  )
+  let w = SemanticWatcher::new(s) catch {
+    _ => return assert_true(false, msg="watcher did not build")
+  }
+  assert_eq(w.watched_paths(), ["/"])
+  assert_eq(w.total_required(), 1)
+}
+
+///|
+test "names with separators use the pointer form in events" {
+  assert_eq(
+    sr_names_of(sr_raw_events("{\"a.b\":1}", sr_schema("{\"a.b\":integer}"))),
+    "field_ready:/a.b,root_ready:",
+  )
+  assert_eq(
+    sr_names_of(sr_raw_events("{\"a/b\":1}", sr_schema("{\"a/b\":integer}"))),
+    "field_ready:/a~1b,root_ready:",
+  )
+  // A numeric-name key is a key, so its event path is the plain name.
+  assert_eq(
+    sr_names_of(sr_raw_events("{\"0\":1}", sr_schema("{\"0\":integer}"))),
+    "field_ready:0,root_ready:",
+  )
+  assert_eq(
+    sr_names_of(sr_raw_events("{\"01\":1}", sr_schema("{\"01\":any}"))),
+    "field_ready:01,root_ready:",
+  )
+  // Absence is reported in the same path form.
+  assert_eq(
+    sr_names_of(sr_raw_events("{}", sr_schema("{\"a.b\":integer}"))),
+    "field_missing:/a.b,root_invalid:",
+  )
+}
+
+///|
+test "root and the empty member name never share a path" {
+  // The root event path is `""`, the empty member's is `/`; they are different
+  // strings for different nodes, which is what the old flattened form lacked.
+  let root_only = sr_raw_events("{\"\":1}", sr_schema("{}"))
+  assert_eq(sr_names_of(root_only), "root_ready:")
+  assert_eq(RootReady.path(), "")
+  assert_eq(FieldReady("/").path(), "/")
+  assert_eq(
+    readiness_events_json([RootReady, FieldReady("/")]),
+    "[{\"kind\":\"root_ready\",\"path\":\"\"},{\"kind\":\"field_ready\",\"path\":\"/\"}]",
+  )
+}
+
+///|
+test "a proper prefix needs every shared segment to agree" {
+  // Too long a prefix is not a proper prefix.
+  assert_false(is_prefix([Key("x")], [Key("x")]))
+  // A different first segment means the watched path is not inside the
+  // container that is closing.
+  assert_false(is_prefix([Key("x")], [Key("a"), Key("b")]))
+  assert_false(is_prefix([Key("a"), Key("z")], [Key("a"), Key("b")]))
+  // An empty prefix is a proper prefix of any non-empty path.
+  assert_true(is_prefix([], [Key("a")]))
+  assert_true(is_prefix([Key("a")], [Key("a"), Key("b")]))
 }

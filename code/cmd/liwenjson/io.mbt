@@ -99,14 +99,67 @@ fn open_output() -> Int64 {
 }
 
 ///|
-/// Write one protocol line and flush it.
-fn write_line(f : Int64, line : String) -> Unit {
+/// Exit code of a failed standard output stream.
+///
+/// The output stream is part of the interface: a line that never reached the
+/// reader is not a success, whatever the exit code used to be. 70 is the
+/// documented "internal error" code and no engine error is involved, so it is
+/// the one that says "the program, not the document, failed".
+const IO_ERROR_EXIT : Int32 = 70
+
+///|
+/// Checked bulk write: true only when every byte was accepted by `fwrite` and
+/// the stream was flushed. `fwrite` is allowed to return a short count when the
+/// reader went away, and `fflush` reports the write error of the buffer, so
+/// both have to be looked at; the old code discarded both return values.
+fn write_bytes_checked(f : Int64, bytes : Bytes) -> Bool {
   if f == 0L {
+    return false
+  }
+  let n = ffi_fwrite(bytes, 1, bytes.length(), f)
+  if n < 0L || n.to_int() != bytes.length() {
+    return false
+  }
+  ffi_fflush(f) == 0
+}
+
+///|
+/// Write one line (the trailing LF included) and flush it, reporting whether
+/// the reader actually received it.
+fn write_line_checked(f : Int64, line : String) -> Bool {
+  write_bytes_checked(f, @utf8.encode(line + "\n"))
+}
+
+///|
+/// Write one line or leave with a diagnostic and a non-zero status. Used by the
+/// one-shot and batch paths, which must not report success when stdout is gone.
+fn write_line_or_exit(f : Int64, line : String) -> Unit {
+  if write_line_checked(f, line) {
     return
   }
-  let bytes = @utf8.encode(line + "\n")
-  ignore(ffi_fwrite(bytes, 1, bytes.length(), f))
-  ignore(ffi_fflush(f))
+  eprintln("liwenjson: cannot write to stdout")
+  quit(IO_ERROR_EXIT)
+}
+
+///|
+/// Write one protocol line and flush it. Kept as the fire-and-forget form the
+/// long-lived protocol loops use; the one-shot paths call the checked variant.
+fn write_line(f : Int64, line : String) -> Unit {
+  ignore(write_line_checked(f, line))
+}
+
+///|
+/// Read one byte from `f` into the one-byte buffer `buf`; `-1` at end of stream
+/// or on error. Reading a byte at a time is what makes a line protocol answer
+/// before the producer closes its end: a block read would wait for a full
+/// buffer.
+fn read_byte(f : Int64, buf : Bytes) -> Int32 {
+  let n = ffi_fread(buf, 1, 1, f)
+  if n <= 0L {
+    -1
+  } else {
+    buf[0].to_char().to_int()
+  }
 }
 
 ///|
@@ -120,4 +173,20 @@ fn close_input(f : Int64) -> Unit {
 fn quit(code : Int32) -> Unit {
   ignore(ffi_fflush(0L))
   ffi_exit(code)
+}
+
+///|
+/// `signal` from libc. `SIG_IGN` is the value 1 on every POSIX target; the
+/// declared signature is looser than the C one on purpose, because the toolchain
+/// runtime has no signal binding and the ABI (an int and a pointer-width word)
+/// is the same.
+extern "C" fn ffi_signal(sig : Int32, handler : Int64) -> Int64 = "signal"
+
+///|
+/// Ignore `SIGPIPE` (13 on every POSIX target) so that a reader which closed
+/// the pipe becomes a write error the checked writers report, instead of a
+/// signal that kills the process before it can say anything. On platforms
+/// without `SIGPIPE` the call fails harmlessly.
+fn ignore_sigpipe() -> Unit {
+  ignore(ffi_signal(13, 1L))
 }

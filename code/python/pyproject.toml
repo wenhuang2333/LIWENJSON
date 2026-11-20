@@ -31,7 +31,15 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "License :: OSI Approved :: Apache Software License",
-  "Operating System :: OS Independent",
+  # The wheel is tagged `py3-none-any` because it bundles the engine for
+  # several platforms in one artefact, but it does not run OS-independently:
+  # the binary must exist for the host. The classifiers name the platforms the
+  # release actually builds (MoonBit toolchain: darwin-aarch64, linux-x86_64,
+  # linux-aarch64, windows-x86_64), and `find_binary()` refuses anything else
+  # with the carried-platform list before a call is made.
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS :: MacOS X",
+  "Operating System :: Microsoft :: Windows",
   "Intended Audience :: Developers",
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Topic :: Text Processing :: Markup",
