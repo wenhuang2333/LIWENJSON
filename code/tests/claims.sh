@@ -312,13 +312,16 @@ size_kib() { awk -v b="$1" 'BEGIN { printf "%.1f", b / 1024 }'; }
 # against the probe) was being checked against something the release does not
 # ship. `tests/bench.sh size` measures the same file.
 WASM_B="$CODE/_build/wasm-gc/release/build/bench/probe/probe.wasm"
-if [ ! -f "$WASM_B" ]; then
- (cd "$CODE" && moon build bench/probe --target wasm-gc --release) >/dev/null 2>&1 || true
-fi
-if [ ! -f "$WASM_B" ]; then
- WASM_B="$(find "$CODE/_build/wasm-gc/release/build" -name '*.wasm' -type f 2>/dev/null | head -1)"
-fi
-if [ -n "$WASM_B" ]; then
+# Always build this artifact: a stale wasm left in `_build` made the gate
+# derive the previous release's size and pass against a document that no
+# longer described this source (the `find` fallback was worse still, since it
+# could measure `bench/bench.wasm`, a different file from the one the release
+# ships). The build is a few seconds and the measurement must be this tree's.
+if ! (cd "$CODE" && moon build bench/probe --target wasm-gc --release) >/dev/null 2>&1; then
+ fail "the wasm-gc probe (bench/probe) does not build; its size cannot be derived"
+elif [ ! -f "$WASM_B" ]; then
+ fail "the wasm-gc probe built but $WASM_B is missing"
+else
  WASM_KIB="$(size_kib "$(wc -c <"$WASM_B" | tr -d ' ')")"
  derive "wasm_gc_kib" "$WASM_KIB" "wc -c < wasm-gc artifact"
  require_line "$ROOT/README.md" "wasm-gc 产物体积" "$WASM_KIB KiB"

@@ -44,7 +44,7 @@
 | 根包行覆盖率 | `4593/4852` |
 | `llm` 包行覆盖率 | `486/658` |
 | 覆盖率门（有未覆盖行的文件口径） | `5004/5435` |
-| wasm-gc 产物体积 | `114.3 KiB` |
+| wasm-gc 产物体积 | `115.7 KiB` |
 | MCP 契约（真实二进制 × 真实 `outputSchema`） | `13/13 响应通过` |
 | 真实模型端到端（Responses API，`code/tests/live_model_audit_v2.py`） | `34/34 检查通过` |
 | 真实 Claude Code 会话：强制 `PreToolUse` 门 | 拒绝 `touch pwned.txt`（文件未创建）、放行 `echo read-only-ok` |
