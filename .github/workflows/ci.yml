@@ -158,9 +158,10 @@ jobs:
         run: |
           set -o pipefail
           if ! python3 -m unittest discover -s tests 2>&1 | tee /tmp/py-tests.log; then
-            tail -n 40 /tmp/py-tests.log | while IFS= read -r line; do
-              echo "::error::python: $line"
-            done
+            # One annotation carries the whole unittest failure block, so a red
+            # run is diagnosable from the check-run API without the raw log.
+            block=$(sed -n '/^====*$/,$p' /tmp/py-tests.log | grep -v '^\.liwenjson http:' | tr '\n' ' ' | head -c 1200)
+            echo "::error::python failure: $block"
             exit 1
           fi
 
@@ -440,9 +441,12 @@ jobs:
         run: |
           moon build cmd/liwenjson --target native --release
           set -o pipefail
+          # Compare like with like: the committed report is the oracle-free
+          # variant (REPRODUCE.md says a missing oracle is written as `n/a`),
+          # so the gate must not hand this check an oracle the document does
+          # not have. `run_diff.py` below is what uses the Node oracle.
           if ! python3 tests/independent_report_check.py \
-            --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe \
-            --node-dir "$RUNNER_TEMP/node-oracle/node_modules" 2>&1 | tee /tmp/independent.log; then
+            --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe 2>&1 | tee /tmp/independent.log; then
             tail -n 40 /tmp/independent.log | while IFS= read -r line; do
               echo "::error::independent: $line"
             done
