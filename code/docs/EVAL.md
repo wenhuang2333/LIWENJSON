@@ -8,9 +8,9 @@
 | 生成器 | `code/tests/eval/corpus.py` eval-2，种子 20261015 |
 | 语料 | `code/tests/eval/corpus.jsonl`，1200 条，sha256 `c528375a0d996a78` |
 | 生成跳过 | 1203 次尝试因算子不适用而丢弃（登记 §5） |
-| 被测二进制 | `./_build/native/release/build/cmd/liwenjson/liwenjson.exe`（sha256:8f9b59bb006424da, 885344 bytes） |
+| 被测二进制 | `./_build/native/release/build/cmd/liwenjson/liwenjson.exe`（sha256:0f704a950e8c5737, 885344 bytes） |
 | 工具链 | `moon 0.1.20261016 (1af328f 2026-10-16)` |
-| 运行时刻 | 2026-11-21T07:49:44Z |
+| 运行时刻 | 2026-11-21T16:59:56Z |
 | 退出码 | 0（0 = 全部验收判据通过） |
 
 ## 1. 总体

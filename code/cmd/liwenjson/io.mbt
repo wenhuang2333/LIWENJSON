@@ -23,6 +23,111 @@ extern "C" fn ffi_fdopen(fd : Int32, mode : Bytes) -> Int64 = "fdopen"
 extern "C" fn ffi_fopen(path : Bytes, mode : Bytes) -> Int64 = "moonbit_fopen_ffi"
 
 ///|
+/// Windows: the CRT hands out stdio streams in *text* mode. Text mode rewrites
+/// every `\n` the CLI writes into `\r\n`, and makes `0x1A` in the input an
+/// end-of-file marker, which silently truncates a document that contains it.
+/// Both are wrong for a byte-oriented tool, so both standard streams are
+/// switched to binary before they are opened. `0x8000` is `_O_BINARY`; the
+/// call is idempotent and harmless when it fails.
+#cfg(all(target="native", platform="windows"))
+extern "C" fn ffi_setmode(fd : Int32, mode : Int32) -> Int32 = "_setmode"
+
+///|
+/// Windows: open by UTF-16 path. Narrow `fopen` reads the path bytes in the
+/// ANSI code page, so every file name outside ASCII (Chinese, for one) fails
+/// with ENOENT; `_wopen` takes the UTF-16 path the runtime already holds.
+/// `0x8000` is `_O_BINARY`, `0` the unused `pmode` of `_O_RDONLY`.
+#cfg(all(target="native", platform="windows"))
+#borrow(path)
+extern "C" fn ffi_wopen(path : String, oflag : Int32, pmode : Int32) -> Int32 = "_wopen"
+
+///|
+/// Windows: whether `fd` is a console. The output code page below only means
+/// anything for a console; a pipe carries bytes and is left alone.
+#cfg(all(target="native", platform="windows"))
+extern "C" fn ffi_isatty(fd : Int32) -> Int32 = "_isatty"
+
+///|
+/// Windows: the code page the console decodes bytes written to it by. It
+/// defaults to the ANSI code page (936 on a Chinese system), while everything
+/// the CLI prints is UTF-8, so `--help` arrives as mojibake until the console
+/// is told what the bytes are. `65001` is `CP_UTF8`.
+#cfg(all(target="native", platform="windows"))
+extern "C" fn ffi_set_console_cp(cp : Int32) -> Int32 = "SetConsoleOutputCP"
+
+///|
+/// Put both standard streams into binary mode, and tell the console that the
+/// bytes it is about to receive are UTF-8. Called once from `main`, before any
+/// stream is opened, so no code path can miss it.
+#cfg(all(target="native", platform="windows"))
+fn binary_std_streams() -> Unit {
+  ignore(ffi_setmode(0, 0x8000))
+  ignore(ffi_setmode(1, 0x8000))
+  if ffi_isatty(1) != 0 {
+    ignore(ffi_set_console_cp(65001))
+  }
+}
+
+///|
+/// Nothing to do where stdio is already byte-oriented.
+#cfg(not(all(target="native", platform="windows")))
+fn binary_std_streams() -> Unit {
+
+}
+
+///|
+/// Windows: the path `_wopen` should receive. Forward slashes are accepted by
+/// `_wopen` only in short paths, so they are normalized; past 260 characters
+/// the ANSI APIs refuse the path unless it carries the `\\?\` prefix, which
+/// turns off every Win32 path rule (hence only absolute, already normalized
+/// paths are prefixed — a relative one has no meaning under that prefix).
+#cfg(all(target="native", platform="windows"))
+fn wide_path(path : String) -> String {
+  let back = path.replace_all(old="/", new="\\")
+  let prefixed = back.has_prefix("\\\\?\\")
+  let drive = match back.get_char(1) {
+    Some(c) => c == ':' && back.get_char(0) is Some(_)
+    None => false
+  }
+  if (prefixed || drive) && back.length() >= 248 {
+    "\\\\?\\" + back
+  } else {
+    back
+  }
+}
+
+///|
+/// The named file on Windows: opened by wide path, then wrapped in a stdio
+/// stream so the rest of the CLI keeps seeing a `FILE*`. A `_wfopen` would be
+/// the shorter way there, but `fdopen` is the call the other platforms already
+/// use and the fd is in binary mode as soon as `_wopen` returns.
+#cfg(all(target="native", platform="windows"))
+fn open_path(path : String) -> Int64 {
+  let fd = ffi_wopen(wide_path(path), 0x8000, 0)
+  if fd < 0 {
+    return 0L
+  }
+  let f = ffi_fdopen(fd, b"rb")
+  if ffi_is_null(f) != 0 {
+    0L
+  } else {
+    f
+  }
+}
+
+///|
+/// The named file elsewhere: `moonbit_fopen_ffi` is the runtime's `fopen`.
+#cfg(not(all(target="native", platform="windows")))
+fn open_path(path : String) -> Int64 {
+  let f = ffi_fopen(@utf8.encode(path), b"rb")
+  if ffi_is_null(f) != 0 {
+    0L
+  } else {
+    f
+  }
+}
+
+///|
 /// Bulk read into a `Bytes` buffer. `moonbit_fread_ffi` is provided by the
 /// toolchain runtime, so no C header of our own is needed.
 #borrow(buf)
@@ -38,14 +143,7 @@ extern "C" fn ffi_fread(
 /// stream. `0L` means the input could not be opened.
 fn open_input(path : String?) -> Int64 {
   match path {
-    Some(p) => {
-      let f = ffi_fopen(@utf8.encode(p), b"rb")
-      if ffi_is_null(f) != 0 {
-        0L
-      } else {
-        f
-      }
-    }
+    Some(p) => open_path(p)
     None => {
       let f = ffi_fdopen(0, b"rb")
       if ffi_is_null(f) != 0 {

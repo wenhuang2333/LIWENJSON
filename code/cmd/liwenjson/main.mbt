@@ -502,5 +502,10 @@ fn run_readiness(o : CliOpts) -> Unit {
 ///|
 /// Entry point.
 fn main {
+  // Every path below writes bytes to a stdio stream. On Windows the CRT opens
+  // those streams in text mode, which would turn every `\n` into `\r\n` and
+  // would treat `0x1A` in the input as end of file, so the streams are made
+  // binary once, before anything else runs.
+  binary_std_streams()
   run()
 }
