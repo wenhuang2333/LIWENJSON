@@ -432,3 +432,81 @@ test "TC-GATE-27 schema_violation names a violation and is empty when satisfied"
   let missing = schema_violation(s, jv("{}"))
   assert_true(missing.contains("missing mode"), msg=missing)
 }
+
+///|
+test "TC-GATE-28 a repeated constraint keyword is refused" {
+  // The text form used to accept a repeated keyword and keep the last value,
+  // so `minimum:5,minimum:1` allowed `1` while the reverse order refused it.
+  // That is the same last-write-wins defect as the original const/enum bug,
+  // one layer below the JSON Schema bridge. A repeat is now E070 in either
+  // order; the gate never sees an ambiguous declaration.
+  for
+    decl in [
+      "string(enum:[\"read\"],enum:[\"read\",\"write\"])", "string(enum:[\"read\",\"write\"],enum:[\"read\"])",
+      "number(minimum:5,minimum:1)", "number(minimum:1,minimum:5)", "string(minLength:4,minLength:1)",
+      "string(maxLength:1,maxLength:4)", "{}(additionalProperties:false,additionalProperties:true)",
+      "{}(additionalProperties:true,additionalProperties:false)",
+    ] {
+    let code = try {
+      ignore(Schema::parse(decl))
+      "ok"
+    } catch {
+      e => e.code()
+    }
+    assert_eq(code, "E070", msg=decl)
+  }
+  // Distinct keywords on the same node still combine.
+  let ok = try {
+    ignore(Schema::parse("string(enum:[\"read\"],minLength:1)"))
+    true
+  } catch {
+    _ => false
+  }
+  assert_true(ok)
+}
+
+///|
+test "TC-GATE-29 a contradiction is refused on both declaration surfaces" {
+  // A pair of bounds with an empty intersection never admits a value. The text
+  // form used to accept it and reject every value at run time, while the JSON
+  // bridge refused it as E070: the same declaration was a typo in one surface
+  // and a rule that never fires in the other. Both surfaces now ask
+  // `Constraints::bound_problem`, so the answer is the same and keyword order
+  // does not matter.
+  for
+    decl in [
+      "string(minLength:4,maxLength:1)", "string(maxLength:1,minLength:4)", "number(minimum:5,maximum:1)",
+      "number(maximum:1,minimum:5)", "number(minimum:5,exclusiveMaximum:5)", "number(exclusiveMaximum:5,minimum:5)",
+      "number(exclusiveMinimum:5,maximum:5)", "number(maximum:5,exclusiveMinimum:5)",
+      "number(exclusiveMinimum:5,exclusiveMaximum:5)",
+    ] {
+    let code = try {
+      ignore(Schema::parse(decl))
+      "ok"
+    } catch {
+      e => e.code()
+    }
+    assert_eq(code, "E070", msg=decl)
+  }
+  // Boundaries that touch still admit a value, so they must parse.
+  let ok = try {
+    ignore(Schema::parse("string(minLength:2,maxLength:2)"))
+    ignore(Schema::parse("number(minimum:1,maximum:1)"))
+    true
+  } catch {
+    _ => false
+  }
+  assert_true(ok)
+  // The JSON bridge still names its own surface in the message.
+  let decl = @json.parse(
+    "{\"type\":\"string\",\"minLength\":4,\"maxLength\":1}",
+  )
+  let code = try {
+    ignore(Schema::of_json_schema(decl))
+    "ok"
+  } catch {
+    e => e.code() + " " + e.to_string()
+  }
+  assert_true(code.contains("E070"), msg=code)
+  assert_true(code.contains("json schema:"), msg=code)
+}

@@ -1291,17 +1291,22 @@ const _M0MP211zhanshishan9liwenjson6Engine16emit__bare__wordN6constrS2663 = 1;
 const _M0MP211zhanshishan9liwenjson6Engine16emit__bare__wordN6constrS2664 = 1;
 const _M0MP211zhanshishan9liwenjson8DeltaLog8segmentsN6constrS2364 = new _M0DTP211zhanshishan9liwenjson11PathSegment5Index(0);
 const _M0MP211zhanshishan9liwenjson9RenderBuf3padN5chunkS3299 = "                                                                ";
-const _M0MP211zhanshishan9liwenjson9RetryHint9of__errorN5tupleS3889 = { _0: "", _1: 0 };
-const _M0FP211zhanshishan9liwenjson21json__schema__patternN6recordS4065 = new _M0TPC16string10StringView("\\", 0, 1);
-const _M0FP211zhanshishan9liwenjson21json__schema__patternN6recordS4066 = new _M0TPC16string10StringView("[", 0, 1);
-const _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4067 = 1;
-const _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4068 = 1;
-const _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4069 = 0;
-const _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4070 = 1;
-const _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4071 = 0;
-const _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4072 = 1;
-const _M0FP211zhanshishan9liwenjson21json__schema__patternN6recordS4073 = new _M0TPC16string10StringView(",", 0, 1);
-const _M0FP411zhanshishan9liwenjson8examples3web10live__textN6constrS4393 = 1;
+const _M0MP211zhanshishan9liwenjson11Constraints14bound__problemN6constrS3507 = "`minLength` exceeds `maxLength`; the declaration can never be satisfied";
+const _M0MP211zhanshishan9liwenjson11Constraints14bound__problemN6constrS3508 = "`minimum` exceeds `maximum`; the declaration can never be satisfied";
+const _M0MP211zhanshishan9liwenjson11Constraints14bound__problemN6constrS3509 = "`minimum` is not below `exclusiveMaximum`; the declaration can never be satisfied";
+const _M0MP211zhanshishan9liwenjson11Constraints14bound__problemN6constrS3510 = "`exclusiveMinimum` is not below `maximum`; the declaration can never be satisfied";
+const _M0MP211zhanshishan9liwenjson11Constraints14bound__problemN6constrS3511 = "`exclusiveMinimum` is not below `exclusiveMaximum`; the declaration can never be satisfied";
+const _M0MP211zhanshishan9liwenjson9RetryHint9of__errorN5tupleS3933 = { _0: "", _1: 0 };
+const _M0FP211zhanshishan9liwenjson21json__schema__patternN6recordS4109 = new _M0TPC16string10StringView("\\", 0, 1);
+const _M0FP211zhanshishan9liwenjson21json__schema__patternN6recordS4110 = new _M0TPC16string10StringView("[", 0, 1);
+const _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4111 = 1;
+const _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4112 = 1;
+const _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4113 = 0;
+const _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4114 = 1;
+const _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4115 = 0;
+const _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4116 = 1;
+const _M0FP211zhanshishan9liwenjson21json__schema__patternN6recordS4117 = new _M0TPC16string10StringView(",", 0, 1);
+const _M0FP411zhanshishan9liwenjson8examples3web10live__textN6constrS4410 = 1;
 function _M0FPB13consume4__acc(acc, input) {
   const _p = (acc >>> 0) + ((Math.imul(input, -1028477379) | 0) >>> 0) | 0;
   const _p$2 = 17;
@@ -14092,6 +14097,84 @@ function _M0FP211zhanshishan9liwenjson16watch__readiness(input, schema, chunk, o
 function _M0MP211zhanshishan9liwenjson11Constraints4none() {
   return new _M0TP211zhanshishan9liwenjson11Constraints(undefined, undefined, undefined, undefined, undefined, undefined, _M0DTPC16option6OptionGRPB5ArrayGRPB4JsonEE4None__, undefined, false);
 }
+function _M0MP211zhanshishan9liwenjson11Constraints14bound__problem(self) {
+  const _bind = self.min_length;
+  const _bind$2 = self.max_length;
+  if (_bind === undefined) {
+  } else {
+    const _Some = _bind;
+    const _lo = _Some;
+    if (_bind$2 === undefined) {
+    } else {
+      const _Some$2 = _bind$2;
+      const _hi = _Some$2;
+      if (_lo > _hi) {
+        return _M0MP211zhanshishan9liwenjson11Constraints14bound__problemN6constrS3507;
+      }
+    }
+  }
+  const _bind$3 = self.minimum;
+  const _bind$4 = self.maximum;
+  if (_bind$3 === undefined) {
+  } else {
+    const _Some = _bind$3;
+    const _lo = _Some;
+    if (_bind$4 === undefined) {
+    } else {
+      const _Some$2 = _bind$4;
+      const _hi = _Some$2;
+      if (_M0MP211zhanshishan9liwenjson3Dec7compare(_lo, _hi) > 0) {
+        return _M0MP211zhanshishan9liwenjson11Constraints14bound__problemN6constrS3508;
+      }
+    }
+  }
+  const _bind$5 = self.minimum;
+  const _bind$6 = self.exclusive_maximum;
+  if (_bind$5 === undefined) {
+  } else {
+    const _Some = _bind$5;
+    const _lo = _Some;
+    if (_bind$6 === undefined) {
+    } else {
+      const _Some$2 = _bind$6;
+      const _hi = _Some$2;
+      if (_M0MP211zhanshishan9liwenjson3Dec7compare(_lo, _hi) >= 0) {
+        return _M0MP211zhanshishan9liwenjson11Constraints14bound__problemN6constrS3509;
+      }
+    }
+  }
+  const _bind$7 = self.exclusive_minimum;
+  const _bind$8 = self.maximum;
+  if (_bind$7 === undefined) {
+  } else {
+    const _Some = _bind$7;
+    const _lo = _Some;
+    if (_bind$8 === undefined) {
+    } else {
+      const _Some$2 = _bind$8;
+      const _hi = _Some$2;
+      if (_M0MP211zhanshishan9liwenjson3Dec7compare(_lo, _hi) >= 0) {
+        return _M0MP211zhanshishan9liwenjson11Constraints14bound__problemN6constrS3510;
+      }
+    }
+  }
+  const _bind$9 = self.exclusive_minimum;
+  const _bind$10 = self.exclusive_maximum;
+  if (_bind$9 === undefined) {
+  } else {
+    const _Some = _bind$9;
+    const _lo = _Some;
+    if (_bind$10 === undefined) {
+    } else {
+      const _Some$2 = _bind$10;
+      const _hi = _Some$2;
+      if (_M0MP211zhanshishan9liwenjson3Dec7compare(_lo, _hi) >= 0) {
+        return _M0MP211zhanshishan9liwenjson11Constraints14bound__problemN6constrS3511;
+      }
+    }
+  }
+  return undefined;
+}
 function _M0FP211zhanshishan9liwenjson12sp__skip__ws(p) {
   while (true) {
     if (p.i < p.text.length) {
@@ -14221,6 +14304,29 @@ function _M0FP211zhanshishan9liwenjson7sp__key(p) {
   }
   return new _M0DTPC16result6ResultGsRP211zhanshishan9liwenjson14LIWENJSONErrorE2Ok(sb.val);
 }
+function _M0FP211zhanshishan9liwenjson12name__eq__ci(a, b) {
+  if (a.length !== b.length) {
+    return false;
+  }
+  let _tmp = 0;
+  while (true) {
+    const i = _tmp;
+    if (i < a.length) {
+      const x = i >>> 0 < a.length ? a.charCodeAt(i) : $oob();
+      const y = i >>> 0 < b.length ? b.charCodeAt(i) : $oob();
+      const fx = x >= 65 && x <= 90 ? x | 32 : x;
+      const fy = y >= 65 && y <= 90 ? y | 32 : y;
+      if (fx !== fy) {
+        return false;
+      }
+      _tmp = i + 1 | 0;
+      continue;
+    } else {
+      break;
+    }
+  }
+  return true;
+}
 function _M0FP211zhanshishan9liwenjson14sp__char__text(u) {
   const _bind = u;
   switch (_bind) {
@@ -14262,29 +14368,6 @@ function _M0FP211zhanshishan9liwenjson20sp__constraint__name(p) {
     return new _M0DTPC16result6ResultGsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError(` schema: expected a constraint name at offset ${_M0MPC13int3Int18to__string_2einner(p.i, 10)}`));
   }
   return new _M0DTPC16result6ResultGsRP211zhanshishan9liwenjson14LIWENJSONErrorE2Ok(name);
-}
-function _M0FP211zhanshishan9liwenjson12name__eq__ci(a, b) {
-  if (a.length !== b.length) {
-    return false;
-  }
-  let _tmp = 0;
-  while (true) {
-    const i = _tmp;
-    if (i < a.length) {
-      const x = i >>> 0 < a.length ? a.charCodeAt(i) : $oob();
-      const y = i >>> 0 < b.length ? b.charCodeAt(i) : $oob();
-      const fx = x >= 65 && x <= 90 ? x | 32 : x;
-      const fy = y >= 65 && y <= 90 ? y | 32 : y;
-      if (fx !== fy) {
-        return false;
-      }
-      _tmp = i + 1 | 0;
-      continue;
-    } else {
-      break;
-    }
-  }
-  return true;
 }
 function _M0FP211zhanshishan9liwenjson26sp__constraint__bare__word(p) {
   const n = p.text.length;
@@ -14799,12 +14882,13 @@ function _M0FP211zhanshishan9liwenjson21sp__constraint__value(p, name, base, nam
     out.pattern = _tmp;
     return new _M0DTPC16result6ResultGuRP211zhanshishan9liwenjson14LIWENJSONErrorE2Ok(undefined);
   }
-  return new _M0DTPC16result6ResultGuRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError(` schema: unknown constraint \`${name}\` at offset ${_M0MPC13int3Int18to__string_2einner(name_at, 10)}; the language has minimum, exclusiveMinimum, maximum, exclusiveMaximum, minLength, maxLength, enum and pattern`));
+  return new _M0DTPC16result6ResultGuRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError(` schema: unknown constraint \`${name}\` at offset ${_M0MPC13int3Int18to__string_2einner(name_at, 10)}; the language has minimum, exclusiveMinimum, maximum, exclusiveMaximum, minLength, maxLength, enum, pattern and additionalProperties`));
 }
 function _M0FP211zhanshishan9liwenjson15sp__constraints(p, base) {
   const n = p.text.length;
   p.i = p.i + 1 | 0;
   const out = _M0MP211zhanshishan9liwenjson11Constraints4none();
+  const seen = [];
   while (true) {
     _M0FP211zhanshishan9liwenjson12sp__skip__ws(p);
     if (p.i >= n) {
@@ -14825,34 +14909,50 @@ function _M0FP211zhanshishan9liwenjson15sp__constraints(p, base) {
     } else {
       return _bind;
     }
-    _M0FP211zhanshishan9liwenjson12sp__skip__ws(p);
-    let _tmp$3;
-    if (p.i >= n) {
-      _tmp$3 = true;
-    } else {
-      const _tmp$4 = p.text;
-      const _tmp$5 = p.i;
-      _tmp$3 = (_tmp$5 >>> 0 < _tmp$4.length ? _tmp$4.charCodeAt(_tmp$5) : $oob()) !== 58;
+    const _bind$2 = seen.length;
+    let _tmp$3 = 0;
+    while (true) {
+      const _ = _tmp$3;
+      if (_ < _bind$2) {
+        const previous = seen[_];
+        if (_M0FP211zhanshishan9liwenjson12name__eq__ci(previous, name)) {
+          return new _M0DTPC16result6ResultGRP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError(` schema: duplicate constraint \`${name}\` at offset ${_M0MPC13int3Int18to__string_2einner(name_at, 10)}; write each constraint once`));
+        }
+        _tmp$3 = _ + 1 | 0;
+        continue;
+      } else {
+        break;
+      }
     }
-    if (_tmp$3) {
+    _M0MPC15array5Array4pushGsE(seen, name);
+    _M0FP211zhanshishan9liwenjson12sp__skip__ws(p);
+    let _tmp$4;
+    if (p.i >= n) {
+      _tmp$4 = true;
+    } else {
+      const _tmp$5 = p.text;
+      const _tmp$6 = p.i;
+      _tmp$4 = (_tmp$6 >>> 0 < _tmp$5.length ? _tmp$5.charCodeAt(_tmp$6) : $oob()) !== 58;
+    }
+    if (_tmp$4) {
       return new _M0DTPC16result6ResultGRP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError(` schema: constraint \`${name}\` has no \`:\` at offset ${_M0MPC13int3Int18to__string_2einner(name_at, 10)}`));
     }
     p.i = p.i + 1 | 0;
     _M0FP211zhanshishan9liwenjson12sp__skip__ws(p);
-    const _bind$2 = _M0FP211zhanshishan9liwenjson21sp__constraint__value(p, name, base, name_at, out);
-    if (_bind$2.$tag === 1) {
-      const _ok = _bind$2;
+    const _bind$3 = _M0FP211zhanshishan9liwenjson21sp__constraint__value(p, name, base, name_at, out);
+    if (_bind$3.$tag === 1) {
+      const _ok = _bind$3;
       _ok._0;
     } else {
-      return _bind$2;
+      return _bind$3;
     }
     _M0FP211zhanshishan9liwenjson12sp__skip__ws(p);
     if (p.i >= n) {
       return new _M0DTPC16result6ResultGRP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError(" `(` of the constraint list is never closed"));
     }
-    const _tmp$4 = p.text;
-    const _tmp$5 = p.i;
-    const d = _tmp$5 >>> 0 < _tmp$4.length ? _tmp$4.charCodeAt(_tmp$5) : $oob();
+    const _tmp$5 = p.text;
+    const _tmp$6 = p.i;
+    const d = _tmp$6 >>> 0 < _tmp$5.length ? _tmp$5.charCodeAt(_tmp$6) : $oob();
     if (d === 44 || d === 59) {
       p.i = p.i + 1 | 0;
     } else {
@@ -14860,12 +14960,19 @@ function _M0FP211zhanshishan9liwenjson15sp__constraints(p, base) {
         p.i = p.i + 1 | 0;
         break;
       } else {
-        const _tmp$6 = p.text;
-        const _tmp$7 = p.i;
-        return new _M0DTPC16result6ResultGRP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError(` schema: unexpected \`${_M0FP211zhanshishan9liwenjson14sp__char__text(_tmp$7 >>> 0 < _tmp$6.length ? _tmp$6.charCodeAt(_tmp$7) : $oob())}\` in a constraint list at offset ${_M0MPC13int3Int18to__string_2einner(p.i, 10)}; expected \`,\`, \`;\` or \`)\``));
+        const _tmp$7 = p.text;
+        const _tmp$8 = p.i;
+        return new _M0DTPC16result6ResultGRP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError(` schema: unexpected \`${_M0FP211zhanshishan9liwenjson14sp__char__text(_tmp$8 >>> 0 < _tmp$7.length ? _tmp$7.charCodeAt(_tmp$8) : $oob())}\` in a constraint list at offset ${_M0MPC13int3Int18to__string_2einner(p.i, 10)}; expected \`,\`, \`;\` or \`)\``));
       }
     }
     continue;
+  }
+  const _bind = _M0MP211zhanshishan9liwenjson11Constraints14bound__problem(out);
+  if (_bind === undefined) {
+  } else {
+    const _Some = _bind;
+    const _message = _Some;
+    return new _M0DTPC16result6ResultGRP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError(` schema: ${_message}`));
   }
   return new _M0DTPC16result6ResultGRP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE2Ok(out);
 }
@@ -16399,7 +16506,7 @@ function _M0MP211zhanshishan9liwenjson9RetryHint9of__error(e, input, radius) {
   }
   let _bind;
   if (input === undefined) {
-    _bind = _M0MP211zhanshishan9liwenjson9RetryHint9of__errorN5tupleS3889;
+    _bind = _M0MP211zhanshishan9liwenjson9RetryHint9of__errorN5tupleS3933;
   } else {
     const _Some = input;
     const _text = _Some;
@@ -17114,7 +17221,7 @@ function _M0FP211zhanshishan9liwenjson21json__schema__pattern(s) {
     return new _M0DTPC16result6ResultGRP211zhanshishan9liwenjson11PatternSpecRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError("json schema: `pattern` has an unterminated class"));
   }
   const inner = _M0MPC16string10StringView9to__owned(_M0MPC16string6String21clamped__view_2einner(body, 1, close));
-  if (_M0MPC16string6String8contains(inner, _M0FP211zhanshishan9liwenjson21json__schema__patternN6recordS4065) || _M0MPC16string6String8contains(inner, _M0FP211zhanshishan9liwenjson21json__schema__patternN6recordS4066)) {
+  if (_M0MPC16string6String8contains(inner, _M0FP211zhanshishan9liwenjson21json__schema__patternN6recordS4109) || _M0MPC16string6String8contains(inner, _M0FP211zhanshishan9liwenjson21json__schema__patternN6recordS4110)) {
     return new _M0DTPC16result6ResultGRP211zhanshishan9liwenjson11PatternSpecRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError("json schema: `pattern` character classes may not contain escapes or nested classes"));
   }
   const rest = _M0MPC16string10StringView9to__owned(_M0MPC16string6String21clamped__view_2einner(body, close + 1 | 0, undefined));
@@ -17122,23 +17229,23 @@ function _M0FP211zhanshishan9liwenjson21json__schema__pattern(s) {
   let max_len;
   _L: {
     if (rest === "") {
-      min_len = _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4067;
-      max_len = _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4068;
+      min_len = _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4111;
+      max_len = _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4112;
       break _L;
     } else {
       if (rest === "*") {
-        min_len = _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4069;
+        min_len = _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4113;
         max_len = undefined;
         break _L;
       } else {
         if (rest === "+") {
-          min_len = _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4070;
+          min_len = _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4114;
           max_len = undefined;
           break _L;
         } else {
           if (rest === "?") {
-            min_len = _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4071;
-            max_len = _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4072;
+            min_len = _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4115;
+            max_len = _M0FP211zhanshishan9liwenjson21json__schema__patternN6constrS4116;
             break _L;
           } else {
             let _tmp$2;
@@ -17156,7 +17263,7 @@ function _M0FP211zhanshishan9liwenjson21json__schema__pattern(s) {
             }
             if (_tmp$2) {
               const spec = _M0MPC16string10StringView9to__owned(_M0MPC16string6String21clamped__view_2einner(rest, 1, rest.length - 1 | 0));
-              const parts = _M0MPB4Iter9to__arrayGRPC16string10StringViewE(_M0MPC16string6String5split(spec, _M0FP211zhanshishan9liwenjson21json__schema__patternN6recordS4073));
+              const parts = _M0MPB4Iter9to__arrayGRPC16string10StringViewE(_M0MPC16string6String5split(spec, _M0FP211zhanshishan9liwenjson21json__schema__patternN6recordS4117));
               if (parts.length === 1) {
                 const _bind = _M0FP211zhanshishan9liwenjson29json__schema__quantifier__int(_M0MPC15array5Array2atGRP211zhanshishan9liwenjson6RepairE(parts, 0));
                 let k;
@@ -17472,90 +17579,22 @@ function _M0FP211zhanshishan9liwenjson25json__schema__constraints(obj, kind) {
   if (!any) {
     return new _M0DTPC16result6ResultGORP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE2Ok(undefined);
   }
-  const _bind$4 = c.min_length;
+  const _bind$4 = _M0MP211zhanshishan9liwenjson11Constraints14bound__problem(c);
   if (_bind$4 === undefined) {
   } else {
     const _Some = _bind$4;
-    const _lo = _Some;
-    const _bind$5 = c.max_length;
-    if (_bind$5 === undefined) {
-    } else {
-      const _Some$2 = _bind$5;
-      const _hi = _Some$2;
-      if (_lo > _hi) {
-        return new _M0DTPC16result6ResultGORP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError("json schema: `minLength` exceeds `maxLength`; the declaration can never be satisfied"));
-      }
-    }
+    const _message = _Some;
+    return new _M0DTPC16result6ResultGORP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError(`json schema: ${_message}`));
   }
   const _bind$5 = c.minimum;
-  const _bind$6 = c.maximum;
-  if (_bind$5 === undefined) {
-  } else {
-    const _Some = _bind$5;
-    const _lo = _Some;
-    if (_bind$6 === undefined) {
-    } else {
-      const _Some$2 = _bind$6;
-      const _hi = _Some$2;
-      if (_M0MP211zhanshishan9liwenjson3Dec7compare(_lo, _hi) > 0) {
-        return new _M0DTPC16result6ResultGORP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError("json schema: `minimum` exceeds `maximum`; the declaration can never be satisfied"));
-      }
-    }
-  }
-  const _bind$7 = c.minimum;
-  const _bind$8 = c.exclusive_maximum;
-  if (_bind$7 === undefined) {
-  } else {
-    const _Some = _bind$7;
-    const _lo = _Some;
-    if (_bind$8 === undefined) {
-    } else {
-      const _Some$2 = _bind$8;
-      const _hi = _Some$2;
-      if (_M0MP211zhanshishan9liwenjson3Dec7compare(_lo, _hi) >= 0) {
-        return new _M0DTPC16result6ResultGORP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError("json schema: `minimum` is not below `exclusiveMaximum`; the declaration can never be satisfied"));
-      }
-    }
-  }
-  const _bind$9 = c.exclusive_minimum;
-  const _bind$10 = c.maximum;
-  if (_bind$9 === undefined) {
-  } else {
-    const _Some = _bind$9;
-    const _lo = _Some;
-    if (_bind$10 === undefined) {
-    } else {
-      const _Some$2 = _bind$10;
-      const _hi = _Some$2;
-      if (_M0MP211zhanshishan9liwenjson3Dec7compare(_lo, _hi) >= 0) {
-        return new _M0DTPC16result6ResultGORP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError("json schema: `exclusiveMinimum` is not below `maximum`; the declaration can never be satisfied"));
-      }
-    }
-  }
-  const _bind$11 = c.exclusive_minimum;
-  const _bind$12 = c.exclusive_maximum;
-  if (_bind$11 === undefined) {
-  } else {
-    const _Some = _bind$11;
-    const _lo = _Some;
-    if (_bind$12 === undefined) {
-    } else {
-      const _Some$2 = _bind$12;
-      const _hi = _Some$2;
-      if (_M0MP211zhanshishan9liwenjson3Dec7compare(_lo, _hi) >= 0) {
-        return new _M0DTPC16result6ResultGORP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError("json schema: `exclusiveMinimum` is not below `exclusiveMaximum`; the declaration can never be satisfied"));
-      }
-    }
-  }
-  const _bind$13 = c.minimum;
   let has_number_constraint;
-  if (_bind$13 === undefined) {
-    const _bind$14 = c.maximum;
-    if (_bind$14 === undefined) {
-      const _bind$15 = c.exclusive_minimum;
-      if (_bind$15 === undefined) {
-        const _bind$16 = c.exclusive_maximum;
-        has_number_constraint = !(_bind$16 === undefined);
+  if (_bind$5 === undefined) {
+    const _bind$6 = c.maximum;
+    if (_bind$6 === undefined) {
+      const _bind$7 = c.exclusive_minimum;
+      if (_bind$7 === undefined) {
+        const _bind$8 = c.exclusive_maximum;
+        has_number_constraint = !(_bind$8 === undefined);
       } else {
         has_number_constraint = true;
       }
@@ -17565,13 +17604,13 @@ function _M0FP211zhanshishan9liwenjson25json__schema__constraints(obj, kind) {
   } else {
     has_number_constraint = true;
   }
-  const _bind$14 = c.min_length;
+  const _bind$6 = c.min_length;
   let has_string_constraint;
-  if (_bind$14 === undefined) {
-    const _bind$15 = c.max_length;
-    if (_bind$15 === undefined) {
-      const _bind$16 = c.pattern;
-      has_string_constraint = !(_bind$16 === undefined);
+  if (_bind$6 === undefined) {
+    const _bind$7 = c.max_length;
+    if (_bind$7 === undefined) {
+      const _bind$8 = c.pattern;
+      has_string_constraint = !(_bind$8 === undefined);
     } else {
       has_string_constraint = true;
     }
@@ -17579,8 +17618,8 @@ function _M0FP211zhanshishan9liwenjson25json__schema__constraints(obj, kind) {
     has_string_constraint = true;
   }
   if (c.additional_properties_closed) {
-    const _bind$15 = _M0MP211zhanshishan9liwenjson6Schema9structure(kind);
-    if (_bind$15.$tag === 7) {
+    const _bind$7 = _M0MP211zhanshishan9liwenjson6Schema9structure(kind);
+    if (_bind$7.$tag === 7) {
     } else {
       return new _M0DTPC16result6ResultGORP211zhanshishan9liwenjson11ConstraintsRP211zhanshishan9liwenjson14LIWENJSONErrorE3Err(new _M0DTPC15error5Error54zhanshishan_2fliwenjson_2eLIWENJSONError_2eSchemaError("json schema: `additionalProperties` applies to `type: \"object\"` only"));
     }
@@ -18776,7 +18815,7 @@ function _M0FP411zhanshishan9liwenjson8examples3web10live__text(input, upto, sch
       let _try_err$2;
       _L$3: {
         _L$4: {
-          const _bind$8 = _M0FP211zhanshishan9liwenjson19semantic__readiness(input, _sk, _M0FP411zhanshishan9liwenjson8examples3web10live__textN6constrS4393, undefined);
+          const _bind$8 = _M0FP211zhanshishan9liwenjson19semantic__readiness(input, _sk, _M0FP411zhanshishan9liwenjson8examples3web10live__textN6constrS4410, undefined);
           if (_bind$8.$tag === 1) {
             const _ok = _bind$8;
             full = _ok._0;

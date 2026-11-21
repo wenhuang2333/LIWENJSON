@@ -161,6 +161,66 @@ fn Constraints::is_empty(self : Constraints) -> Bool {
 }
 
 ///|
+/// The first pair of bounds that cannot be satisfied together, as a message
+/// without a source prefix.
+///
+/// Both declaration surfaces build a `Constraints` and then ask this one
+/// function, so the text form and the JSON Schema bridge cannot drift apart on
+/// which combinations are refusable. A contradiction here is a declaration
+/// error (`E070`): the alternative is a gate that refuses every value at
+/// runtime, which looks like a rule but is really a typo.
+///
+/// The check is on the raw bounds, so keyword order cannot change the answer.
+fn Constraints::bound_problem(self : Constraints) -> String? {
+  match (self.min_length, self.max_length) {
+    (Some(lo), Some(hi)) =>
+      if lo > hi {
+        return Some(
+          "`minLength` exceeds `maxLength`; the declaration can never be satisfied",
+        )
+      }
+    _ => ()
+  }
+  match (self.minimum, self.maximum) {
+    (Some(lo), Some(hi)) =>
+      if lo.compare(hi) > 0 {
+        return Some(
+          "`minimum` exceeds `maximum`; the declaration can never be satisfied",
+        )
+      }
+    _ => ()
+  }
+  match (self.minimum, self.exclusive_maximum) {
+    (Some(lo), Some(hi)) =>
+      if lo.compare(hi) >= 0 {
+        return Some(
+          "`minimum` is not below `exclusiveMaximum`; the declaration can never be satisfied",
+        )
+      }
+    _ => ()
+  }
+  match (self.exclusive_minimum, self.maximum) {
+    (Some(lo), Some(hi)) =>
+      if lo.compare(hi) >= 0 {
+        return Some(
+          "`exclusiveMinimum` is not below `maximum`; the declaration can never be satisfied",
+        )
+      }
+    _ => ()
+  }
+  match (self.exclusive_minimum, self.exclusive_maximum) {
+    (Some(lo), Some(hi)) =>
+      if lo.compare(hi) >= 0 {
+        return Some(
+          "`exclusiveMinimum` is not below `exclusiveMaximum`; the declaration can never be satisfied",
+        )
+      }
+    _ => ()
+  }
+  None
+}
+
+///|
 /// Canonical text of a constraint number, so that `minimum:0` round trips as
 /// `minimum:0` rather than `minimum:0.0`.
 fn constraint_number_text(d : Dec) -> String {
@@ -1192,6 +1252,12 @@ fn sp_constraints(
   let n = p.text.length()
   p.i = p.i + 1
   let out = Constraints::none()
+  // A repeated keyword used to overwrite the earlier one: the last `enum`,
+  // `minimum` or `minLength` in the list won, so reordering the list could
+  // widen what the gate allows. Constraints are conjunctive, but a duplicate
+  // is a declaration bug rather than a second claim: refuse it at modelling
+  // time instead of silently intersecting or overwriting.
+  let seen : Array[String] = []
   while true {
     sp_skip_ws(p)
     if p.i >= n {
@@ -1203,6 +1269,18 @@ fn sp_constraints(
     }
     let name_at = p.i
     let name = sp_constraint_name(p)
+    for previous in seen {
+      if name_eq_ci(previous, name) {
+        raise SchemaError(
+          " schema: duplicate constraint `" +
+          name +
+          "` at offset " +
+          name_at.to_string() +
+          "; write each constraint once",
+        )
+      }
+    }
+    seen.push(name)
     sp_skip_ws(p)
     if p.i >= n || p.text.at(p.i).to_int() != 0x3A {
       raise SchemaError(
@@ -1234,6 +1312,13 @@ fn sp_constraints(
         "; expected `,`, `;` or `)`",
       )
     }
+  }
+  // Same refusal as the JSON Schema bridge (`json_schema.mbt`): a pair of
+  // bounds with an empty intersection can never accept a value, so it is a
+  // declaration error rather than a rule that fires only at runtime.
+  match out.bound_problem() {
+    Some(message) => raise SchemaError(" schema: " + message)
+    None => ()
   }
   out
 }
@@ -1394,7 +1479,7 @@ fn sp_constraint_value(
     name +
     "` at offset " +
     name_at.to_string() +
-    "; the language has minimum, exclusiveMinimum, maximum, exclusiveMaximum, minLength, maxLength, enum and pattern",
+    "; the language has minimum, exclusiveMinimum, maximum, exclusiveMaximum, minLength, maxLength, enum, pattern and additionalProperties",
   )
 }
 

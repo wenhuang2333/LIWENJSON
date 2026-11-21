@@ -433,48 +433,11 @@ fn json_schema_constraints(
     return None
   }
   // A bound pair that cannot be satisfied together is a declaration error, not
-  // a rule that silently never fires. The comparison is on the raw bounds, so
-  // it does not matter which order the keywords were written in.
-  if c.min_length is Some(lo) && c.max_length is Some(hi) && lo > hi {
-    raise SchemaError(
-      "json schema: `minLength` exceeds `maxLength`; the declaration can never be satisfied",
-    )
-  }
-  match (c.minimum, c.maximum) {
-    (Some(lo), Some(hi)) =>
-      if lo.compare(hi) > 0 {
-        raise SchemaError(
-          "json schema: `minimum` exceeds `maximum`; the declaration can never be satisfied",
-        )
-      }
-    _ => ()
-  }
-  match (c.minimum, c.exclusive_maximum) {
-    (Some(lo), Some(hi)) =>
-      if lo.compare(hi) >= 0 {
-        raise SchemaError(
-          "json schema: `minimum` is not below `exclusiveMaximum`; the declaration can never be satisfied",
-        )
-      }
-    _ => ()
-  }
-  match (c.exclusive_minimum, c.maximum) {
-    (Some(lo), Some(hi)) =>
-      if lo.compare(hi) >= 0 {
-        raise SchemaError(
-          "json schema: `exclusiveMinimum` is not below `maximum`; the declaration can never be satisfied",
-        )
-      }
-    _ => ()
-  }
-  match (c.exclusive_minimum, c.exclusive_maximum) {
-    (Some(lo), Some(hi)) =>
-      if lo.compare(hi) >= 0 {
-        raise SchemaError(
-          "json schema: `exclusiveMinimum` is not below `exclusiveMaximum`; the declaration can never be satisfied",
-        )
-      }
-    _ => ()
+  // a rule that silently never fires. `Constraints::bound_problem` is shared
+  // with the text declaration parser so the two surfaces agree on refusals.
+  match c.bound_problem() {
+    Some(message) => raise SchemaError("json schema: " + message)
+    None => ()
   }
   // The kind determines which constraints make sense. Refusing a mismatched
   // constraint here is the same policy as `Schema::parse`: a declaration that

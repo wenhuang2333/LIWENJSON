@@ -828,6 +828,15 @@ fn handle_watch_finish(state : ServeState) -> Json raise @lj.LIWENJSONError {
       for pair in watcher.drain_events_at() {
         events.push(event_json(pair.0, pair.1, fed))
       }
+      // The stream's own account of what it published: the verdict of the
+      // finished value, whether a duplicate key re-opened a decided member
+      // (`conflict`), and whether a published `RootReady` still stands. A host
+      // that stops the model on `root_ready` needs the last one to know the
+      // promise survived the rest of the stream; without `conflict` it cannot
+      // tell a genuine rejection from a provisional one.
+      let verdict = verdict_json(watcher.verdict())
+      let conflict = watcher.conflict()
+      let ready_standing = watcher.ready_standing()
       state.watch_parser = None
       state.watch_watcher = None
       match failure {
@@ -846,6 +855,9 @@ fn handle_watch_finish(state : ServeState) -> Json raise @lj.LIWENJSONError {
                 None => Json::null()
               },
             ),
+            ("verdict", verdict),
+            ("conflict", Json::boolean(conflict)),
+            ("ready_standing", Json::boolean(ready_standing)),
           ])
         // Both finishes ran, so `fin` is `None` only when one of them failed,
         // and that error was re-raised above.

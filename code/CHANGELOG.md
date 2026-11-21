@@ -10,8 +10,29 @@
 第三轮审计（`marks/1120优化.md`）以「让真实宿主按文档使用 CLI、serve/MCP、包装层」为问题：
 上一轮修的是执行语义与 provider 终态，这一轮发现的是**协议帧、参数显式性、资源算术与
 公开 API 边界**上的错误放行。每一条都有定向回归（`test/1120/`、`code/tests/`），且在旧
-实现上会失败。当前树：四个后端 `356/356`、CLI 冒烟 169 项、npm 21 个 Node 测试、
+实现上会失败。当前树：四个后端 `358/358`、CLI 冒烟 169 项、npm 21 个 Node 测试、
 Python 66 个测试、协议一致性 19 组、MCP 契约 13/13。
+
+### Schema 约束顺序审计（1121 追加）
+
+验收指出的核心问题——只调整声明里 `const`/`enum` 的书写顺序，就能让不满足 `const` 的
+`mode=write` 变成可执行——已由 1.5.1 的 `c1168b1` 修复并按 TC-GATE-01..27 钉住。本轮
+按同一类错误（合取被覆盖、判定依赖书写顺序）重做一次变形审计，覆盖 16 组声明 × 全部键序、
+输入对象键序、原子约束合取、一次性/流式终态，共 6650 项检查。审计发现三类缺陷：
+
+- **文本骨架的重复约束关键字仍然后者覆盖前者**：`string(enum:["read"],enum:["read",
+  "write"])` 放行 `"write"`，`number(minimum:5,minimum:1)` 放行 `1`，
+  `{}(additionalProperties:false,additionalProperties:true)` 放行任意多余成员；反向书写
+  则拒绝。现在重复约束名（九种名字，大小写不敏感）在建模阶段报 `E070`（TC-GATE-28），
+  两种顺序都拒绝。
+- **文本骨架接受矛盾边界**：`string(minLength:4,maxLength:1)` 与
+  `number(minimum:5,maximum:1)` 解析成功、运行期拒绝一切值，而 JSON Schema 桥对同样的
+  声明报 `E070`。两个声明面现在共用 `Constraints::bound_problem()`，矛盾边界在建模期即
+  `E070`（TC-GATE-29），错误文本按各自的来源前缀（` schema:` / `json schema:`）区分。
+- **流式终态缺判定字段**：`watch.finish` 只返回解析结果，宿主无法知道已发布的
+  `root_ready` 是否仍然成立，也无法区分「稳定拒绝」与「重复键让早先事件成为临时」。
+  现在返回 `verdict`、`conflict`、`ready_standing` 三个字段（`PROTOCOL.md` 已写明），
+  重复键合并的两种结局都有回归。
 
 ### 真实 Claude Code 会话（1121）
 

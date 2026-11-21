@@ -316,6 +316,18 @@ jobs:
         working-directory: code
         run: moon run examples/agent_loop --target native --release
 
+      # T-01..T-10 of the schema-gate audit: the declaration fold is checked
+      # against an independent oracle (order, conjunction, streaming, entries),
+      # and `--self-test` proves the driver fails on a dropped or mislabelled
+      # response instead of reporting green.
+      - name: Schema gate audit (order, conjunction, streaming, entries)
+        working-directory: code
+        run: |
+          moon build cmd/liwenjson --target native --release
+          python3 tests/schema_gate_audit.py \
+            --cli ./_build/native/release/build/cmd/liwenjson/liwenjson.exe \
+            --self-test
+
   windows:
     name: Windows (native build, protocol and MCP conformance)
     runs-on: windows-latest

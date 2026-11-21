@@ -260,7 +260,16 @@ fi
 # the gate figure.
 if moon test --enable-coverage >/dev/null 2>&1; then
  SUM="$(mktemp "${TMPDIR:-/tmp}/claims_cov.XXXXXX")"
- moon coverage report -f summary >"$SUM" 2>&1
+ # A stale coverage output (after a source edit) makes this command fail with
+ # its reason on the captured stream; under `set -e` the script used to die
+ # there and report nothing, which reads as a silent red gate. Name the
+ # command's own message instead, and let the gate count it as a failure.
+ cov_rc=0
+ moon coverage report -f summary >"$SUM" 2>&1 || cov_rc=$?
+ if [ "$cov_rc" -ne 0 ]; then
+ fail "moon coverage report failed: $(tail -n 1 "$SUM")"
+ rm -f "$SUM"
+ else
  read -r ROOT_C ROOT_T LLM_C LLM_T GATE_C GATE_T <<EOF
 $(awk '
  /^[^:]*\.mbt:[[:space:]]*[0-9]+\/[0-9]+[[:space:]]*$/ {
@@ -294,6 +303,7 @@ EOF
  require_line "$ROOT/README.md" "根包行覆盖率" "$ROOT_C/$ROOT_T"
  require_line "$ROOT/README.md" '`llm` 包行覆盖率' "$LLM_C/$LLM_T"
  require_line "$ROOT/README.md" "覆盖率门（有未覆盖行的文件口径）" "$GATE_C/$GATE_T"
+ fi
 else
  fail "the instrumented test run failed, so no coverage number was derived"
 fi

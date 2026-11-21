@@ -218,6 +218,19 @@ The streaming path. One stream at a time.
 `repair` plus `value`), `events[]` produced by `finish`, and
 `watcher_final` (the readiness watcher's own final parse, or `null`).
 
+`watch.finish` also reports the stream's own account of what it published:
+`verdict` (the `SchemaVerdict` of the finished value), `conflict` (whether a
+duplicate key re-opened a member after it had been decided, which makes the
+earlier events provisional), and `ready_standing` (whether a published
+`root_ready` is still true). A host that stops the model on `root_ready` must
+check `ready_standing` before executing: the rest of the stream can retract the
+promise with `root_invalid`, and `conflict` marks the case where a duplicate key
+means the earlier events described a value that no longer exists.
+
+A failed `watch.feed` ends the stream: the parser is finished, so a later
+`watch.finish` answers `E030` rather than a partial account. Hosts stop on the
+feed error and do not execute anything the stream published before it.
+
 `profile` is honoured; `watch` always enables delta collection internally.
 
 ### `llm.open` / `llm.feed` / `llm.close` / `llm.run`
