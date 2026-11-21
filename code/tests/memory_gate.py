@@ -71,13 +71,18 @@ SHAPES = {
 }
 
 
-def peak_rss_mb(binary: str, args: list[str], data: bytes) -> float:
-    """Peak RSS of one child process, in MiB.
+def peak_rss_mb(binary: str, args: list[str], data: bytes) -> float | None:
+    """Peak RSS of one child process, in MiB, or `None` when unmeasurable.
 
-    `os.wait4` reports the resource usage of the child that just exited, which
-    is the only portable way to get its high-water mark without a wrapper
-    binary. The child's output is discarded: this measures memory, not results.
+    POSIX reports the high-water mark of the child that just exited through
+    `wait4`, which needs no wrapper binary. Windows has no `fork`/`wait4`; the
+    same number is read from `GetProcessMemoryInfo`, on a handle opened while
+    the child is still running (the handle keeps the process object alive after
+    it exits, so the peak survives). The child's output is discarded either
+    way: this measures memory, not results.
     """
+    if sys.platform == "win32":
+        return _peak_rss_mb_windows(binary, args, data)
     pid = os.fork()
     if pid == 0:  # pragma: no cover - child
         try:
@@ -93,6 +98,62 @@ def peak_rss_mb(binary: str, args: list[str], data: bytes) -> float:
     if sys.platform == "darwin":
         return usage.ru_maxrss / (1024 * 1024)
     return usage.ru_maxrss / 1024
+
+
+def _peak_rss_mb_windows(binary: str, args: list[str], data: bytes) -> float | None:
+    """Peak working set of one child on Windows, in MiB.
+
+    Returns `None` instead of raising when the platform refuses to report it:
+    the caller turns that into a SKIP, because a gate that cannot measure must
+    not pretend to have passed.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    class Counters(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    # `PROCESS_QUERY_LIMITED_INFORMATION` is enough for the counters and is what
+    # a non-elevated process is allowed to ask for about its own child.
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        proc = subprocess.Popen(
+            [binary, *args],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, proc.pid)
+        if not handle:
+            proc.communicate(data)
+            return None
+        try:
+            proc.communicate(data)
+            counters = Counters()
+            counters.cb = ctypes.sizeof(counters)
+            if not psapi.GetProcessMemoryInfo(
+                handle, ctypes.byref(counters), counters.cb
+            ):
+                return None
+            return counters.PeakWorkingSetSize / (1024 * 1024)
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return None
 
 
 def main() -> int:
@@ -114,13 +175,28 @@ def main() -> int:
 
     n = int(N * args.scale)
     baseline = peak_rss_mb(binary, ["--check"], b"{}")
+    if baseline is None:
+        print(
+            "memory_gate: SKIP — this platform does not report a child's peak "
+            "working set, so the ceilings cannot be checked here.",
+            file=sys.stderr,
+        )
+        return 2
 
     rows = []
     failures = []
     for name, (gen, ceiling) in SHAPES.items():
         raw = gen(n).encode()
         mb = len(raw) / (1024 * 1024)
-        marginal = peak_rss_mb(binary, ["--check"], raw) - baseline
+        measured = peak_rss_mb(binary, ["--check"], raw)
+        if measured is None:
+            print(
+                "memory_gate: SKIP — the peak working set stopped being "
+                "readable mid-run.",
+                file=sys.stderr,
+            )
+            return 2
+        marginal = measured - baseline
         ratio = marginal / mb
         ok = ratio <= ceiling
         rows.append(

@@ -36,6 +36,10 @@ REFUSED = [
 ]
 
 
+# `install.sh` is a POSIX shell script: the tests write fake `uname`/`curl`
+# shims, chmod them, and run the script under `sh`. Windows has neither, and the
+# platform is refused by the script itself, so the class is skipped there.
+@unittest.skipIf(os.name != "posix", "install.sh is a POSIX shell script")
 class InstallScriptTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()

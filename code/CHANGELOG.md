@@ -13,6 +13,30 @@
 实现上会失败。当前树：四个后端 `358/358`、CLI 冒烟 169 项、npm 21 个 Node 测试、
 Python 66 个测试、协议一致性 19 组、MCP 契约 13/13。
 
+### Windows I/O（1122 追加）
+
+第一轮 Windows 测试报告（`marks/测试报告-Windows.md`）判「不通过」。三条缺陷全部落在 CLI
+的 Windows I/O 层，Linux/macOS 的 CI 从结构上看不见它们；引擎侧的 358 个用例在四个后端上
+一直是全绿的。
+
+- **stdout 与 stdin 都被 CRT 开成文本模式**：写出的每个 `\n` 变成 `\r\n`（Windows 门
+  因此红 40 条断言），而 stdin 里的 `0x1A` 被当成文件结束，把含该字节的文档**静默截断**。
+  `main` 一进入就对 fd 0 与 fd 1 调 `_setmode(_O_BINARY)`。
+- **路径被按 ANSI 代码页解释**：`fopen` 收到的是 UTF-8 字节，中文路径在 936 代码页下
+  一律 ENOENT（`rc=3`），官方 Release 二进制同样复现。改用 `_wopen`，把运行时本来就持有
+  的 UTF-16 路径直接交给 CRT（Windows 上 `moonbit_string_t` 就是 UTF-16，`moonbit_os_string_t`
+  的 typedef 说明这是运行时自己的约定）。
+- **超过 260 字符的绝对路径**：`LongPathsEnabled=0` 的机器上补 `\\?\` 前缀并规范化 `/`；
+  **相对**长路径仍受平台限制，文档记为已知限制，不再算红线。
+- 附带：stdout 是控制台时调 `SetConsoleOutputCP(65001)`（原代码页 936 下 `--help` 是乱码），
+  管道与重定向不受影响。
+
+测试设施同步修正：`win_gate.py` 的长路径用例要自己建删 >MAX_PATH 的目录树（`CreateDirectoryW`
+同样受 260 限制，必须带 `\\?\`），否则组 3 后半段根本跑不到（上一轮就是这样漏了 9 条）；
+`memory_gate.py` 在 Windows 上改用 `GetProcessMemoryInfo`（原实现依赖 `os.fork`，Windows 没有），
+测不到时打印 SKIP 并 exit 2，而不是崩；Python 客户端里三组 POSIX 专属用例在 Windows 上主动
+skip；`run_tests.ps1` 设 `PYTHONUTF8=1`（GBK 控制台下 python 子进程的输出曾让 9 个门假红）。
+
 ### Schema 约束顺序审计（1121 追加）
 
 验收指出的核心问题——只调整声明里 `const`/`enum` 的书写顺序，就能让不满足 `const` 的

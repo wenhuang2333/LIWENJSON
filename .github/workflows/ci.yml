@@ -329,9 +329,17 @@ jobs:
             --self-test
 
   windows:
-    name: Windows (native build, protocol and MCP conformance)
+    name: Windows (native build, I/O invariants, protocol and MCP conformance)
     runs-on: windows-latest
     timeout-minutes: 40
+    env:
+      # A Chinese Windows hands Python the ANSI code page (GBK) for stdio, and a
+      # gate that prints one non-ASCII character then dies with
+      # `UnicodeEncodeError` reads as a product failure. The runner is
+      # English, but the same reasoning applies to any locale: the gates compare
+      # UTF-8, so the children write UTF-8.
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
 
@@ -367,6 +375,18 @@ jobs:
             exit 1
           }
 
+      # `moon check` without `--target native` consults the multi-backend index,
+      # which records `cmd/liwenjson` as already checked because that package is
+      # `supported_targets = "native"`; a type error there then goes unnoticed
+      # until the build. Check the CLI package on the target it is built for.
+      - name: Type check the CLI package (native)
+        working-directory: code
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          moon check --deny-warn --target native
+
       # C-06: `pwsh` does not fail a step when a native command fails, so the
       # old steps were green as long as the *last* command exited 0. Every step
       # sets `$PSNativeCommandUseErrorActionPreference` and checks
@@ -378,6 +398,19 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           moon build cmd/liwenjson --target native --release
+
+      # This job was green while the Windows report was red on 40 assertions:
+      # the CLI's stdio was in text mode (LF became CRLF, 0x1A was read as EOF),
+      # paths were opened in the ANSI code page, and nothing past MAX_PATH was
+      # reachable. `pwsh` compares *strings*, which hides all three, so the bytes
+      # are asserted by a Python gate that runs on every platform.
+      - name: Windows I/O invariants (bytes, stdin, paths)
+        working-directory: code
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          python tests/win_io_check.py --cli .\_build\native\release\build\cmd\liwenjson\liwenjson.exe
 
       - name: CLI smoke
         working-directory: code

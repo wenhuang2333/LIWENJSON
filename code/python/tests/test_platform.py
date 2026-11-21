@@ -101,6 +101,10 @@ class BundledBinaryTests(unittest.TestCase):
         binary.chmod(0o644)  # the mode a wheel can end up with after unpacking
         return binary
 
+    @unittest.skipIf(
+        os.name != "posix",
+        "the expected path uses '/' separators, which Windows does not produce",
+    )
     def test_it_prefers_the_directory_for_this_platform(self) -> None:
         self._place("linux-x86_64")
         with mock.patch(
@@ -112,6 +116,10 @@ class BundledBinaryTests(unittest.TestCase):
 
         self.assertTrue(found.endswith("bin/linux-x86_64/liwenjson"), found)
 
+    @unittest.skipIf(
+        os.name != "posix",
+        "Windows has no executable bit: chmod cannot clear or restore one",
+    )
     def test_it_restores_a_missing_executable_bit(self) -> None:
         # A binary that is present but not executable fails with PermissionError
         # naming a file the user never installed by hand.

@@ -75,6 +75,11 @@ def valid_binary(platform_key: str) -> bytes:
     return pe(0x8664)
 
 
+# The wheel is built by `build_wheel.sh`, which downloads the release binaries
+# with curl and checks them against `SHA256SUMS`; none of that exists on
+# Windows (and the wheel has no Windows-named output to look for), so the class
+# is skipped there instead of failing for a reason it does not test.
+@unittest.skipIf(os.name != "posix", "the wheel is built by a POSIX shell script")
 class BuildWheelTests(unittest.TestCase):
     def run_wheel(self, *args: str, timeout: float = 90.0) -> subprocess.CompletedProcess:
         return subprocess.run(
