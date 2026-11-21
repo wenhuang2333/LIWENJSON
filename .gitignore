@@ -123,3 +123,7 @@ AI 后端.txt
 发布渠道.txt
 publishToken.txt
 pulishToken.txt
+
+# Windows 测试包：从源码树复制出来的分发快照（给队友发的），不进仓库
+windows 测试包/
+windows 测试包.zip
