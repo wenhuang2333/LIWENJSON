@@ -379,13 +379,31 @@ jobs:
       # which records `cmd/liwenjson` as already checked because that package is
       # `supported_targets = "native"`; a type error there then goes unnoticed
       # until the build. Check the CLI package on the target it is built for.
+      #
+      # Actions does not show a raw log to an anonymous reader, and the Windows
+      # runner is the only place some of these gates exist, so the failing
+      # output is posted as an annotation and stays readable through the
+      # check-run API -- the same trick the Python gate uses. The exit code is
+      # read from `$LASTEXITCODE` because
+      # `$PSNativeCommandUseErrorActionPreference` would throw before the
+      # annotation could be written.
       - name: Type check the CLI package (native)
         working-directory: code
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $PSNativeCommandUseErrorActionPreference = $true
-          moon check --deny-warn --target native
+          $log = Join-Path $env:RUNNER_TEMP 'type-check.log'
+          moon check --deny-warn --target native *> $log
+          $rc = $LASTEXITCODE
+          Get-Content $log
+          if ($rc -ne 0) {
+            $raw = Get-Content $log -Raw
+            if ($null -eq $raw) { $raw = "no output (moon did not reach the compiler)" }
+            $text = ($raw -replace "`r?`n", ' | ') -replace '::', '~~'
+            if ($text.Length -gt 1100) { $text = $text.Substring(0, 1100) }
+            Write-Output "::error::type check rc=$rc : $text"
+            exit 1
+          }
 
       # C-06: `pwsh` does not fail a step when a native command fails, so the
       # old steps were green as long as the *last* command exited 0. Every step
