@@ -314,12 +314,32 @@ class HTTPConnectionBodies(unittest.TestCase):
         sock.settimeout(5)
         self.assertEqual(sock.recv(65536), b"")
 
+    def _take_all_workers(self) -> None:
+        # A response on the wire does not mean the handler is done: a refused
+        # body is drained before the close, so a worker slot stays held for up
+        # to the drain's own bound after its 408/413 was sent. Take the slots
+        # once they are free; the wait is bounded, so a slot that never comes
+        # back is still a failure rather than a hang.
+        held = 0
+        deadline = time.monotonic() + 5.0
+        while held < self.server.max_workers:
+            if self.server._workers.acquire(blocking=False):
+                held += 1
+            elif time.monotonic() >= deadline:
+                for _ in range(held):
+                    self.server._workers.release()
+                self.fail(
+                    f"{self.server.max_workers - held} of "
+                    f"{self.server.max_workers} worker slots never freed"
+                )
+            else:
+                time.sleep(0.02)
+
     @contextlib.contextmanager
     def _refusal_case(self, path: str):
         busy = path == "/repair"
         if busy:
-            for _ in range(self.server.max_workers):
-                self.assertTrue(self.server._workers.acquire(blocking=False))
+            self._take_all_workers()
         try:
             yield 503 if busy else 404
         finally:
