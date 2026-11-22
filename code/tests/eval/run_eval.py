@@ -115,7 +115,7 @@ def main() -> int:
     args = ap.parse_args()
 
     cases, skipped = corpus_mod.build(args.target, args.seed)
-    with open(args.dump, "w", encoding="utf-8") as fh:
+    with open(args.dump, "w", encoding="utf-8", newline="\n") as fh:
         for c in cases:
             fh.write(json.dumps(c, ensure_ascii=False, sort_keys=True) + "\n")
     data_hash = corpus_mod.fingerprint(cases)
@@ -379,7 +379,7 @@ def main() -> int:
     w("由 `tests/bench.sh` 与 `tests/memory_gate.py` 测，记录在仓库内（不随包发布）。")
     w("")
 
-    with open(args.out, "w", encoding="utf-8") as fh:
+    with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(lines) + "\n")
 
     ok = all(c[1] for c in checks)

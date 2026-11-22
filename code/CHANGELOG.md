@@ -66,6 +66,13 @@ skip；`run_tests.ps1` 设 `PYTHONUTF8=1`（GBK 控制台下 python 子进程的
 E-03 的期望改为「0 FAIL/0 ERROR」并补上 §6.9 的复测命令；`tests/cli_smoke.sh` 增一条
 「one id on two blocks is ambiguous」（含 `--follow` 的判定翻转）。
 
+行尾也按报告的建议钉住了：新增根目录 `.gitattributes`（`* text=auto eol=lf`，媒体标
+`binary`），`tests/gen_llm_fixtures.py`、`tests/eval/run_eval.py`、`tests/eval/run_readiness.py`
+与 `tests/diff/run_diff.py` 写文件时显式 `encoding="utf-8", newline="\n"`。原先靠平台默认：
+Windows 上文本模式会把 `\n` 写成 CRLF，于是同一份夹具/文档在 Windows 与 Linux 上字节不同，
+`gen_llm_fixtures.py --check` 会报出没人改过代码却出现的 drift（报告 §2 记录了这个陷阱）。
+`docs/DIVERGENCES.md` 顺带用当前二进制重新生成（只变日期与 binary identity 两行）。
+
 顺带两处门自己抓出来的漂移：演示页证据条仍写着 358 条测试（`index_console_smoke.py`
 把它与 README 对比，`test/ci_local.sh` 第 30 步因此红），以及 `tests/claims.sh` 在测量
 覆盖率前不清陈旧插桩、一个源文件改动后会把「counter length mismatch」伪装成文档数字门

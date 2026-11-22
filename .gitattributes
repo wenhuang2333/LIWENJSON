@@ -1,0 +1,14 @@
+# Every text file the repository stores is LF, on every platform.
+#
+# Without this, a Windows checkout with core.autocrlf=true rewrites
+# `code/llm/fixtures_wbtest.mbt` to CRLF while `code/tests/gen_llm_fixtures.py`
+# writes LF, so the "LLM fixtures are in sync" gate reports drift that no source
+# change caused -- one run without `--check` was enough to poison the tree
+# (second Windows report, §2). The generator now also writes LF explicitly, so
+# the two agree even where these attributes are not applied.
+* text=auto eol=lf
+
+# Media: never translated, never diffed as text.
+*.gif binary
+*.mp4 binary
+*.png binary

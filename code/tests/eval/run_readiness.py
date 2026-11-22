@@ -288,7 +288,8 @@ def main() -> int:
         "provider would have emitted the bytes.",
         "",
     ]
-    Path(args.out).write_text("\n".join(lines))
+    with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(lines))
     print(f"readiness table: {len(rows)} cases -> {args.out}")
     for r in rows:
         print(

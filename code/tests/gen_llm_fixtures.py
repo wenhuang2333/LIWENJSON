@@ -331,6 +331,20 @@ fn fx_lines(s : String) -> Array[String] {
 """
 
 
+def write_lf(path: Path, text: str) -> None:
+    """Write `text` with LF endings on every platform.
+
+    `Path.write_text` translates `\n` to `os.linesep`, so on Windows the
+    fixture file came out CRLF while this generator's own comparison expects
+    LF -- one run without `--check` was enough to make `--check` report drift
+    that no source change caused (second Windows report, §2). Opening the file
+    with `newline="\n"` keeps the bytes platform-independent without requiring
+    Python 3.10's `write_text(newline=...)`.
+    """
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+
+
 def canonically_formatted(body: str) -> str:
     """`body` as the pinned formatter leaves it.
 
@@ -340,7 +354,7 @@ def canonically_formatted(body: str) -> str:
     project is checked with makes the two gates agree, and keeps them agreeing
     when the formatter changes.
     """
-    MBT.write_text(body, encoding="utf-8")
+    write_lf(MBT, body)
     subprocess.run(["moon", "fmt", str(MBT)], check=True, capture_output=True)
     return MBT.read_text(encoding="utf-8")
 
@@ -357,7 +371,7 @@ def main() -> int:
             if not path.exists() or path.read_text(encoding="utf-8") != jsonl:
                 problems.append(str(path))
         else:
-            path.write_text(jsonl, encoding="utf-8")
+            write_lf(path, jsonl)
     body = HEADER + "\n".join(built[name][1] for name in FIXTURES)
     for name in RECORDED:
         body += recorded_block(name)
@@ -369,7 +383,7 @@ def main() -> int:
             if committed is None:
                 MBT.unlink(missing_ok=True)
             else:
-                MBT.write_text(committed, encoding="utf-8")
+                write_lf(MBT, committed)
     if check:
         if committed != body:
             problems.append(str(MBT))

@@ -6,9 +6,9 @@ because formatting is not part of the contract.
 
 | item | value |
 | --- | --- |
-| generated (UTC) | 2026-10-29T06:36:53Z |
+| generated (UTC) | 2026-11-22T07:11:45Z |
 | binary under test | `./_build/native/release/build/cmd/liwenjson/liwenjson.exe` |
-| binary identity | sha256:24663a54a1c6773d, 789232 bytes, mtime 2026-10-29T06:22:46Z |
+| binary identity | sha256:12b782343a9bb210, 902752 bytes, mtime 2026-11-22T06:53:47Z |
 | primary oracle | `json-repair` (Python, MIT) 0.64.0 |
 | secondary oracle | **skipped** (skipped by --no-node; the node column is not scored) |
 | corpus | 99 hand written cases + 303 automatic mutations |

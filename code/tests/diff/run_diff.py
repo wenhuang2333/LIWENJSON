@@ -726,7 +726,7 @@ def main():
         )
 
     report = "\n".join(lines)
-    with open(args.out, "w") as fh:
+    with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(report)
     print("\n".join(report.split("## Divergence classes")[0]))
     print("report written to", args.out)
