@@ -115,6 +115,7 @@ fn llm_batch_line(
   sb.write_string(",\"rc\":")
   let mut rc = 0
   let calls : Array[String] = []
+  let mut duplicate_ids : Array[String] = []
   try {
     let s = @llm.ToolStream::new(provider, options~)
     for e in events {
@@ -123,6 +124,7 @@ fn llm_batch_line(
     for v in s.finish() {
       calls.push(llm_line(v))
     }
+    duplicate_ids = s.duplicate_ids()
   } catch {
     e => {
       rc = error_exit_code(e)
@@ -130,7 +132,16 @@ fn llm_batch_line(
     }
   }
   sb.write_string(rc.to_string())
-  sb.write_string(",\"calls\":[")
+  // Which ids the framing repeated, so a harness can tell a stream with one
+  // ambiguous call from a stream with none.
+  sb.write_string(",\"duplicate_ids\":[")
+  for i = 0; i < duplicate_ids.length(); i = i + 1 {
+    if i > 0 {
+      sb.write_string(",")
+    }
+    sb.write_string(Json::string(duplicate_ids[i]).stringify())
+  }
+  sb.write_string("],\"calls\":[")
   for i = 0; i < calls.length(); i = i + 1 {
     if i > 0 {
       sb.write_string(",")
@@ -400,6 +411,50 @@ fn run_llm_text_batch(provider : @llm.Provider, options : @lj.Options) -> Unit {
 
 ///|
 /// Run the `llm` subcommand.
+
+///|
+/// Write one `--follow` line unless it repeats the last line written for the
+/// same call. The follow stream is a sequence of verdicts: a verdict that has
+/// not changed adds nothing, and a verdict that *has* changed (a call that
+/// becomes `ambiguous` after a later block repeated its id) must appear after
+/// the one it supersedes.
+fn emit_view(
+  out : Int64,
+  emitted : Array[(Int32, Int32, String)],
+  v : @llm.ToolCallView,
+) -> Unit {
+  let line = llm_line(v)
+  for i = 0; i < emitted.length(); i = i + 1 {
+    let (choice, index, last) = emitted[i]
+    if choice == v.choice && index == v.index {
+      if last == line {
+        return
+      }
+      emitted[i] = (v.choice, v.index, line)
+      write_line_or_exit(out, line)
+      return
+    }
+  }
+  emitted.push((v.choice, v.index, line))
+  write_line_or_exit(out, line)
+}
+
+///|
+/// Say, on stderr, that these ids arrived on more than one content block. The
+/// calls under them are already `executable: false`; this line says *why*, and
+/// names the upstream rewrite rather than letting a caller read several
+/// ambiguous calls as several calls the model made.
+fn warn_duplicate_ids(ids : Array[String]) -> Unit {
+  if ids.length() == 0 {
+    return
+  }
+  eprintln(
+    "liwenjson: 同一个工具调用 id 出现在多个内容块上（上游把一次调用改写成了多次），这些调用不可执行: " +
+    ids.join(", "),
+  )
+}
+
+///|
 fn run_llm(o : CliOpts) -> Unit {
   let provider = match provider_of(o.provider) {
     Some(p) => p
@@ -492,10 +547,30 @@ fn run_llm(o : CliOpts) -> Unit {
     // a call that ends during `finish()` -- a truncated stream, a stream with
     // no terminator -- is reported, and a provider error is a non-zero exit
     // (audit 5.2).
+    // A duplicated id is discovered late: its first call was already printed as
+    // `executable: true` before the second block carrying the same id arrived.
+    // In an update stream the later line is the verdict, so the affected calls
+    // are printed again here -- a consumer that executes on `executable: true`
+    // must not keep the superseded line.
+    let warned : Array[String] = []
+    let emitted : Array[(Int32, Int32, String)] = []
     for p in payloads {
       for v in s.push_event(p) {
         if o.follow {
-          write_line_or_exit(out, llm_line(v))
+          emit_view(out, emitted, v)
+        }
+      }
+      if o.follow {
+        for id in s.duplicate_ids() {
+          if !warned.contains(id) {
+            warned.push(id)
+            warn_duplicate_ids([id])
+            for v in s.views() {
+              if v.id == id {
+                emit_view(out, emitted, v)
+              }
+            }
+          }
         }
       }
     }
@@ -507,7 +582,7 @@ fn run_llm(o : CliOpts) -> Unit {
       // `done` flag: only calls that ended during `finish()` are re-printed.
       for v in finals {
         if v.end is @llm.Interrupted || v.end is @llm.MaxTokens {
-          write_line_or_exit(out, llm_line(v))
+          emit_view(out, emitted, v)
         }
       }
     } else {
@@ -515,6 +590,15 @@ fn run_llm(o : CliOpts) -> Unit {
         write_line_or_exit(out, llm_line(v))
       }
     }
+    // What `--follow` did not already say: without it nothing was printed yet,
+    // and these are the ids whose calls are not executable.
+    let late : Array[String] = []
+    for id in s.duplicate_ids() {
+      if !warned.contains(id) {
+        late.push(id)
+      }
+    }
+    warn_duplicate_ids(late)
     let unknown = s.unsupported_events()
     if unknown.length() > 0 {
       // Visible, not silent: a reader that skipped an event it did not know

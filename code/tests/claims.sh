@@ -258,6 +258,13 @@ fi
 # (tests/coverage.sh) sums the listed rows only, so both numbers are derived
 # here and both are checked: the per-package split the documents quote, and
 # the gate figure.
+# Clear stale instrumentation before measuring. A coverage file embeds each
+# module's counter length, so one written before the last source edit makes
+# `moon coverage report` fail with "counter length mismatch" -- and a local
+# `_build` outlives edits even though a CI one does not. tests/coverage.sh
+# clears them the same way; measuring an empty slate is the only honest read.
+moon coverage clean >/dev/null 2>&1 || true
+find "$ROOT/_build" -name 'moonbit_coverage_*' -delete 2>/dev/null || true
 if moon test --enable-coverage >/dev/null 2>&1; then
  SUM="$(mktemp "${TMPDIR:-/tmp}/claims_cov.XXXXXX")"
  # A stale coverage output (after a source edit) makes this command fail with

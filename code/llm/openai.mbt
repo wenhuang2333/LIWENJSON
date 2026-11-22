@@ -101,7 +101,21 @@ fn ToolStream::push_openai(
               }
               let c = self.call_at(choice_index, index)
               match field_string(call, "id") {
-                Some(i) => if c.id == "" { c.id = i }
+                Some(i) =>
+                  if i != "" {
+                    // Same rule as the Anthropic reader: one id on two calls
+                    // means the framing was rewritten, and the calls under that
+                    // id are not a reading of one call.
+                    let shared = self.id_shared_with_other_block(
+                      i, choice_index, index,
+                    )
+                    if c.id == "" {
+                      c.id = i
+                    }
+                    if shared {
+                      self.mark_duplicate_id(i)
+                    }
+                  }
                 None => ()
               }
               match field(call, "function") {

@@ -956,6 +956,10 @@ fn handle_llm_close(state : ServeState) -> Json raise @lj.LIWENJSONError {
         ("calls", Json::array(views.map(tool_call_json))),
         ("error", Json::string(err)),
         ("ignored_events", jnum(ignored)),
+        // Tool-call ids the framing repeated: the calls under them are
+        // `executable: false`, and naming the ids is what lets a client tell a
+        // rewritten stream from a model that made three calls.
+        ("duplicate_ids", Json::array(stream.duplicate_ids().map(Json::string))),
       ])
     }
     None => raise @lj.InvalidState("no active provider stream")
@@ -992,6 +996,7 @@ fn handle_llm_run(
     ("calls", Json::array(views.map(tool_call_json))),
     ("error", Json::string(stream.error())),
     ("ignored_events", jnum(stream.ignored_events())),
+    ("duplicate_ids", Json::array(stream.duplicate_ids().map(Json::string))),
   ])
 }
 

@@ -7,7 +7,7 @@
 | 模块 | `zhanshishan/liwenjson` |
 | 版本 | 1.5.2 |
 | 许可证 | Apache-2.0 |
-| 后端 | wasm-gc / native / JS / wasm，同一套测试，各 358/358 通过 |
+| 后端 | wasm-gc / native / JS / wasm，同一套测试，各 362/362 通过 |
 | 发行渠道 | 四个渠道全部已发布：GitHub `v1.5.2`（8 个产物：三系统四二进制 + wasm 探针 + 浏览器包 + 安装脚本 + `SHA256SUMS`）、[mooncakes](https://mooncakes.io/docs/zhanshishan/liwenjson) `zhanshishan/liwenjson@0.14.0`、npm / PyPI `liwenjson@1.5.2`（GitHub / npm / PyPI 2026-11-20，mooncakes 同日）；上一版 1.5.1 的 `0.13.0` 于 2026-10-29 发布，npm / PyPI 于 2026-10-30 发布，都在重命名之前 |
 
 **本页是中文 API 速查**：`Options`、`PartialParser`、`Schema`、修复规则、错误码、快照语义。

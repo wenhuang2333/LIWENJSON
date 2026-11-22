@@ -37,6 +37,7 @@ pub(all) enum CallEnd {
   ProviderError
   Refused
   Unknown
+  Ambiguous
 }
 pub fn CallEnd::equal(Self, Self) -> Bool
 pub fn CallEnd::is_executable(Self) -> Bool
@@ -107,9 +108,11 @@ pub struct ToolStream {
   mut error_message : String
   mut ignored : Int32
   unsupported : Array[String]
+  duplicate_ids : Array[String]
 }
 pub fn ToolStream::arguments(Self, Int32) -> String
 pub fn ToolStream::arguments_at(Self, Int32, Int32) -> String
+pub fn ToolStream::duplicate_ids(Self) -> Array[String]
 pub fn ToolStream::error(Self) -> String
 pub fn ToolStream::finish(Self) -> Array[ToolCallView] raise @liwenjson.LIWENJSONError
 pub fn ToolStream::ignored_events(Self) -> Int32

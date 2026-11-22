@@ -42,11 +42,26 @@ fn ToolStream::push_anthropic(
     }
     let c = self.call_at(0, index)
     match field_string(block, "name") {
-      Some(n) => c.name = n
+      Some(n) => if n != "" { c.name = n }
       None => ()
     }
     match field_string(block, "id") {
-      Some(i) => c.id = i
+      Some(i) =>
+        if i != "" {
+          // The id is the provider's promise that this block *is* one call. The
+          // same id on a second block breaks that promise, and the audit met a
+          // gateway that did exactly this: it split one call into several
+          // starts with one id, only the first carrying a name. Whichever block
+          // holds the real arguments is unknowable, so the id is remembered and
+          // the calls under it are left unresolved (`CallEnd::Ambiguous`).
+          let shared = self.id_shared_with_other_block(i, 0, index)
+          if c.id == "" {
+            c.id = i
+          }
+          if shared {
+            self.mark_duplicate_id(i)
+          }
+        }
       None => ()
     }
     // A provider may put a non-empty `input` here (Anthropic sends `{}` when

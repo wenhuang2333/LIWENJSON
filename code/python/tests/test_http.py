@@ -224,6 +224,24 @@ class HTTPConnectionBodies(unittest.TestCase):
         self.assertEqual(status, 408)
         self.assertLess(elapsed, 4.0)
 
+    def test_a_refused_body_is_drained_before_the_close(self) -> None:
+        # A socket closed while data is still queued is reset, not closed: on
+        # Windows the peer then loses the response it was about to read
+        # (WinError 10053), and everywhere else the next read is a reset. The
+        # server therefore reads the announced remainder after refusing, so the
+        # peer can still send it and still read the 408.
+        sock = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+        self.addCleanup(sock.close)
+        sock.sendall(b"POST /repair HTTP/1.1\r\nHost: x\r\nContent-Length: 20\r\n\r\n")
+        sock.sendall(b" ")
+        time.sleep(0.7)  # past read_timeout=0.5s: the 408 is already on the wire
+        sock.sendall(b" " * 19)  # must not be refused: the server is draining
+        status, _ = self._read_response(sock, 5)
+        self.assertEqual(status, 408)
+        # The close is a plain FIN, so the refusal is the last thing on it.
+        sock.settimeout(5)
+        self.assertEqual(sock.recv(65536), b"")
+
     def test_partial_body_then_close_is_400(self) -> None:
         sock = socket.create_connection(("127.0.0.1", self.port), timeout=5)
         self.addCleanup(sock.close)

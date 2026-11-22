@@ -374,3 +374,121 @@ test "TC-RESP-05: a repeated item after arguments.done does not kill the stream"
   assert_eq(views0.length(), 1)
   assert_eq(s.arguments(0), "{\"a\":1}")
 }
+
+// ---------------------------------------------------------------------------
+// 1.5.2 — a tool-call id that arrives on more than one block
+// (`测试报告-Windows2.md` §6.9: a gateway split one call into three starts that
+// all carried the same id, only the first with a name).
+// ---------------------------------------------------------------------------
+
+///|
+/// The rewritten frames: one id on two blocks, each block carrying a complete
+/// argument object, only the first announcing a name.
+fn duplicate_id_events() -> Array[String] {
+  [
+    "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_dup\",\"name\":\"read_file\",\"input\":{}}}",
+    "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\":\\\"/etc/hosts\\\"}\"}}",
+    "{\"type\":\"content_block_stop\",\"index\":0}", "{\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_dup\",\"name\":\"\",\"input\":{}}}",
+    "{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\":\\\"/etc/hosts\\\"}\"}}",
+    "{\"type\":\"content_block_stop\",\"index\":1}",
+  ]
+}
+
+///|
+test "TC-DUP-01: one id on two blocks leaves both calls not executable" {
+  let s = ToolStream::new(Anthropic) catch { _ => return }
+  for e in duplicate_id_events() {
+    ignore(s.push_event(e)) catch {
+      _ => return
+    }
+  }
+  let views = drain_finish(s)
+  // One view per block: the reader cannot merge them, because merging would
+  // claim the fragments form one argument object the model never wrote.
+  assert_eq(views.length(), 2)
+  for v in views {
+    assert_eq(v.end.name(), "ambiguous")
+    assert_eq(v.end.is_normal(), false)
+    assert_eq(v.is_executable(), false)
+    assert_eq(v.done, true)
+  }
+  // The arguments themselves are readable, so a caller can show what arrived.
+  assert_eq(views[0].exactness.name(), "exact")
+  assert_eq(
+    views[0].snapshot.value.unwrap().stringify(),
+    "{\"path\":\"/etc/hosts\"}",
+  )
+  // The id is named, so the operator can see that the framing was rewritten.
+  assert_eq(s.duplicate_ids().join(","), "toolu_dup")
+}
+
+///|
+test "TC-DUP-02: distinct ids are not duplicates" {
+  let s = ToolStream::new(Anthropic) catch { _ => return }
+  for
+    e in [
+      "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_a\",\"name\":\"a\",\"input\":{}}}",
+      "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"x\\\":1}\"}}",
+      "{\"type\":\"content_block_stop\",\"index\":0}", "{\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_b\",\"name\":\"b\",\"input\":{}}}",
+      "{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"y\\\":2}\"}}",
+      "{\"type\":\"content_block_stop\",\"index\":1}",
+    ] {
+    ignore(s.push_event(e)) catch {
+      _ => return
+    }
+  }
+  let views = drain_finish(s)
+  assert_eq(views.length(), 2)
+  for v in views {
+    assert_eq(v.end.name(), "complete")
+    assert_eq(v.is_executable(), true)
+  }
+  assert_eq(s.duplicate_ids().length(), 0)
+}
+
+///|
+test "TC-DUP-03: a repeated start at the same index is not a duplicate" {
+  // A provider may re-announce a block (a reconnect, a replay). That is the
+  // same call, so it stays executable -- only a second *call* under one id is
+  // ambiguous.
+  let s = ToolStream::new(Anthropic) catch { _ => return }
+  for
+    e in [
+      "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_one\",\"name\":\"get\",\"input\":{}}}",
+      "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_one\",\"name\":\"\",\"input\":{}}}",
+      "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"q\\\":1}\"}}",
+      "{\"type\":\"content_block_stop\",\"index\":0}",
+    ] {
+    ignore(s.push_event(e)) catch {
+      _ => return
+    }
+  }
+  let views = drain_finish(s)
+  assert_eq(views.length(), 1)
+  assert_eq(views[0].name, "get")
+  assert_eq(views[0].end.name(), "complete")
+  assert_eq(views[0].is_executable(), true)
+  assert_eq(s.duplicate_ids().length(), 0)
+}
+
+///|
+test "TC-DUP-04: Chat Completions applies the same rule" {
+  let s = ToolStream::new(OpenAICompat) catch { _ => return }
+  for
+    e in [
+      "{\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_same\",\"type\":\"function\",\"function\":{\"name\":\"a\",\"arguments\":\"{\\\"x\\\":1}\"}}]}}]}",
+      "{\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"call_same\",\"type\":\"function\",\"function\":{\"name\":\"\",\"arguments\":\"{\\\"y\\\":2}\"}}]}}]}",
+      "{\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}",
+    ] {
+    ignore(s.push_event(e)) catch {
+      _ => return
+    }
+  }
+  let views = drain_finish(s)
+  assert_eq(views.length(), 2)
+  for v in views {
+    assert_eq(v.end.name(), "ambiguous")
+    assert_eq(v.is_executable(), false)
+  }
+  assert_eq(s.duplicate_ids().join(","), "call_same")
+}

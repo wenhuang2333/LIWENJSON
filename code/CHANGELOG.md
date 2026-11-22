@@ -10,8 +10,8 @@
 第三轮审计（`marks/1120优化.md`）以「让真实宿主按文档使用 CLI、serve/MCP、包装层」为问题：
 上一轮修的是执行语义与 provider 终态，这一轮发现的是**协议帧、参数显式性、资源算术与
 公开 API 边界**上的错误放行。每一条都有定向回归（`test/1120/`、`code/tests/`），且在旧
-实现上会失败。当前树：四个后端 `358/358`、CLI 冒烟 169 项、npm 21 个 Node 测试、
-Python 66 个测试、协议一致性 19 组、MCP 契约 13/13。
+实现上会失败。当前树：四个后端 `362/362`、CLI 冒烟 170 项、npm 21 个 Node 测试、
+Python 67 个测试、协议一致性 19 组、MCP 契约 13/13。
 
 ### Windows I/O（1122 追加）
 
@@ -36,6 +36,40 @@ Python 66 个测试、协议一致性 19 组、MCP 契约 13/13。
 `memory_gate.py` 在 Windows 上改用 `GetProcessMemoryInfo`（原实现依赖 `os.fork`，Windows 没有），
 测不到时打印 SKIP 并 exit 2，而不是崩；Python 客户端里三组 POSIX 专属用例在 Windows 上主动
 skip；`run_tests.ps1` 设 `PYTHONUTF8=1`（GBK 控制台下 python 子进程的输出曾让 9 个门假红）。
+
+### Windows 测试第二轮（1122 追加，第二份报告）
+
+第二份 Windows 报告（`marks/测试报告-Windows2.md`）判「不通过」。上一轮的三条 I/O 缺陷已
+不复现，这一轮报告的是**一个被 POSIX 行为掩盖的服务端缺陷**和**一处适配器语义**，其余是
+脚本与文档口径。
+
+- **拒绝请求体后立刻 close，把已发出的 408 变成 RST**（`python/liwenjson/http.py`）。
+  body 超时或超限时，facade 先把 408/413 写出去再 `close()`；此时对端还在发 body，接收
+  队列非空，于是 close 触发 RST —— Windows 丢弃已到达的响应字节，客户端拿到
+  `WinError 10053`（Linux/macOS 只是在随后的 `recv` 上得到 `ECONNRESET`，而被测用例恰好
+  只读到状态行，所以四后端一直没红）。现在拒绝之后先把「已声明但没读」的剩余字节读掉再关
+  （`_drain_body`：上限 64 KiB、每块最多等 1 s，超时即放弃），关闭变回普通 FIN。
+  回归 `test_a_refused_body_is_drained_before_the_close`：去掉 drain 后它在 macOS 上以
+  `ConnectionResetError: [Errno 54]` 失败。
+- **同一个 tool-call id 出现在多个内容块时，被当成多次可执行调用**（`llm/`）。Anthropic
+  用 `id` 承诺「这些增量属于同一次调用」；审计遇到一个网关把一次调用改写成 N 个
+  `content_block_start`（同一个 id、只有首个带 `name`），适配器按 `(choice, index)` 分块，
+  于是输出 N 行、后几行 `name` 为空，且每行 `end: complete` —— 下游会执行两遍。现在同一
+  个 id 落在**不同**块上时，这些调用的 `end` 是新的 `CallEnd::Ambiguous`、
+  `executable: false`，`ToolStream::duplicate_ids()` 列出该 id，CLI 在 stderr 点名它，
+  `llm --batch` 与 `serve` 的 `llm.close`/`llm.run` 多返回一个 `duplicate_ids` 数组。
+  **不合并**：合并等于把几个参数对象说成模型写过的一次调用，把「说不清」变成「说得清」。
+  同一个 index 上的重复 start 不算重复（那是同一块的续写）。`--follow` 会在判定变化时
+  把该调用再打一行（第一行当时还是 `executable: true`），未变化的行不重复。回归 TC-DUP-01…04。
+
+文档与门禁口径：`WINDOWS-测试文档.md` 的断言数 190 → 191、用例数 358 → 362、
+E-03 的期望改为「0 FAIL/0 ERROR」并补上 §6.9 的复测命令；`tests/cli_smoke.sh` 增一条
+「one id on two blocks is ambiguous」（含 `--follow` 的判定翻转）。
+
+顺带两处门自己抓出来的漂移：演示页证据条仍写着 358 条测试（`index_console_smoke.py`
+把它与 README 对比，`test/ci_local.sh` 第 30 步因此红），以及 `tests/claims.sh` 在测量
+覆盖率前不清陈旧插桩、一个源文件改动后会把「counter length mismatch」伪装成文档数字门
+失败（`tests/coverage.sh` 本来就有这一步）。
 
 ### Schema 约束顺序审计（1121 追加）
 

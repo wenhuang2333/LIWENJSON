@@ -352,6 +352,37 @@ else
   fail=$((fail + 1)); printf 'FAIL %-34s %s lines\n' "llm --follow" "$n"
 fi
 
+# One id on two blocks: the frames were rewritten upstream, so neither call is
+# executable and the id is named on stderr (Windows report §6.9). Two *distinct*
+# ids stay executable, which the three-call fixture above already covers.
+DUP="$TMP/dup_id.jsonl"
+{
+  printf '%s\n' \
+    '{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_dup","name":"read_file","input":{}}}' \
+    '{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"/x\"}"}}' \
+    '{"type":"content_block_stop","index":0}' \
+    '{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_dup","name":"","input":{}}}' \
+    '{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"/x\"}"}}' \
+    '{"type":"content_block_stop","index":1}'
+} > "$DUP"
+DUP_OUT="$("$BIN" llm --provider anthropic "$DUP" 2>"$TMP/dup_err")"
+DUP_RC=$?
+# `--follow` had already printed the first call as executable before the second
+# block revealed the rewrite, so the corrected verdict must be printed again
+# after it -- the last line for a call is the one that counts.
+DUP_LAST="$("$BIN" llm --follow --provider anthropic "$DUP" 2>/dev/null |
+  grep '"index":0,' | tail -1)"
+if [ "$DUP_RC" = 0 ] \
+   && [ "$(printf '%s\n' "$DUP_OUT" | grep -c '"end":"ambiguous"')" = 2 ] \
+   && [ "$(printf '%s\n' "$DUP_OUT" | grep -c '"executable":false')" = 2 ] \
+   && grep -q 'toolu_dup' "$TMP/dup_err" \
+   && printf '%s' "$DUP_LAST" | grep -q '"end":"ambiguous"' \
+   && printf '%s' "$DUP_LAST" | grep -q '"executable":false'; then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "llm: one id on two blocks is ambiguous"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s rc=%s\n     %s\n     %s\n     follow last=%s\n' "llm: one id on two blocks is ambiguous" "$DUP_RC" "$DUP_OUT" "$(cat "$TMP/dup_err")" "$DUP_LAST"
+fi
+
 # --- round 5 -----------------------------------------------------------------
 # An ambiguous input is repaired by default and flagged.
 STDIN='["a" "b"]'

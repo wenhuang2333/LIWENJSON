@@ -69,6 +69,12 @@ pub(all) enum CallEnd {
   /// became "the model finished normally"; a whitelist makes an unknown
   /// verdict visible instead (audit 3.4).
   Unknown
+  /// The same tool-call id arrived on more than one content block, so the
+  /// frames were rewritten between the provider and this reader and there is no
+  /// way to tell which block holds the call the model made. Not a provider
+  /// verdict at all: the call is left unresolved rather than merged, because
+  /// merging invents one argument object out of several.
+  Ambiguous
 }
 
 ///|
@@ -92,6 +98,7 @@ pub fn CallEnd::name(self : CallEnd) -> String {
     ProviderError => "provider_error"
     Refused => "refused"
     Unknown => "unknown"
+    Ambiguous => "ambiguous"
   }
 }
 
@@ -193,6 +200,10 @@ struct ToolCall {
   mut parser : @liwenjson.PartialParser?
   mut done : Bool
   mut end : CallEnd
+  /// Whether the id of this call also arrived on another block. A property of
+  /// the framing, not of the provider's verdict, so it is kept apart from `end`
+  /// and reported through the view as `CallEnd::Ambiguous`.
+  mut ambiguous : Bool
   mut stop_reason : String
   /// Text of every fragment received, kept for the equivalence check and for
   /// callers that want the raw text.
@@ -221,6 +232,11 @@ pub struct ToolStream {
   /// `finish`, because "the arguments were in an event this build does not
   /// read" is exactly the silent-success failure the audit found (3.5).
   unsupported : Array[String]
+  /// Tool-call ids that arrived on more than one content block, in first-seen
+  /// order. A stream is expected to have none; a non-empty list is the evidence
+  /// that the frames were rewritten upstream, which the caller cannot repair
+  /// and must not execute.
+  duplicate_ids : Array[String]
 }
 
 ///|
@@ -242,6 +258,7 @@ pub fn ToolStream::new(
     error_message: "",
     ignored: 0,
     unsupported: [],
+    duplicate_ids: [],
   }
 }
 
@@ -266,6 +283,7 @@ fn ToolStream::call_at(
     parser: None,
     done: false,
     end: Open,
+    ambiguous: false,
     stop_reason: "",
     text: StringBuilder(),
   }
@@ -312,7 +330,13 @@ fn ToolStream::view(self : ToolStream, c : ToolCall) -> ToolCallView {
     snapshot: snap,
     exactness: snap.exactness,
     done: c.done,
-    end: c.end,
+    // A duplicated id outranks whatever the provider said: the verdict is about
+    // the stream, and the arguments under it are not a reading of one call.
+    end: if c.ambiguous {
+      Ambiguous
+    } else {
+      c.end
+    },
     stop_reason: c.stop_reason,
   }
 }
@@ -373,6 +397,53 @@ fn ToolStream::close_call(
   if c.end is Open {
     c.end = end
   }
+}
+
+///|
+/// Whether a call other than `choice`/`index` already carries `id`.
+fn ToolStream::id_shared_with_other_block(
+  self : ToolStream,
+  id : String,
+  choice : Int32,
+  index : Int32,
+) -> Bool {
+  if id == "" {
+    return false
+  }
+  for c in self.calls {
+    if c.id == id && (c.choice != choice || c.index != index) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// Mark every call carrying `id` as ambiguous and remember the id.
+///
+/// A provider gives each tool call its own id, so one id on two blocks means
+/// the framing was rewritten between the provider and this reader -- a gateway
+/// that split one call into several blocks, which a real one does. Which block
+/// holds the arguments the model wrote is not knowable here, so the calls are
+/// left unresolved rather than merged into one object the model never wrote.
+fn ToolStream::mark_duplicate_id(self : ToolStream, id : String) -> Unit {
+  for c in self.calls {
+    if c.id == id {
+      c.ambiguous = true
+    }
+  }
+  for seen in self.duplicate_ids {
+    if seen == id {
+      return
+    }
+  }
+  self.duplicate_ids.push(id)
+}
+
+///|
+/// Tool-call ids that arrived on more than one block, in first-seen order.
+pub fn ToolStream::duplicate_ids(self : ToolStream) -> Array[String] {
+  self.duplicate_ids.copy()
 }
 
 ///|

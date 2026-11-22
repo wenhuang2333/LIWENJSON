@@ -248,9 +248,18 @@ Provider-aware tool-call streams. One stream at a time for the first three.
 the provider (SSE, WebSocket, a log line) is the caller's business. `llm.feed`
 returns the calls the event touched: `index`, `id`, `name`, `done`,
 `exactness`, `end` (`open`/`complete`/`max_tokens`/`interrupted`/
-`provider_error`), `stop_reason`, `value`, `open_path`. `llm.close` finishes
-every call and adds `error` (the provider's error message, `""` when none) and
-`ignored_events`.
+`provider_error`/`refused`/`unknown`/`ambiguous`), `stop_reason`, `executable`,
+`value`, `open_path`. `llm.close` finishes every call and adds `error` (the
+provider's error message, `""` when none), `ignored_events`, and
+`duplicate_ids` — the tool-call ids the framing repeated.
+
+A tool-call id identifies exactly one call, so one id on two blocks means the
+frames were rewritten between the provider and this server (a gateway that
+split one call into several starts). There is no way to tell which block holds
+the arguments the model wrote, so every call under that id ends `ambiguous`,
+is not executable, and its id appears in `duplicate_ids`. The server does not
+merge them: merging would present several argument objects as one call the
+model never made.
 
 `llm.run` is the stateless form: pass `provider` and an `events` array, and it
 returns the same object as `llm.close`.

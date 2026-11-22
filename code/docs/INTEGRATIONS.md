@@ -478,7 +478,8 @@ with Client() as jm:
         frame = jm.llm_feed(event)
         for call in frame["calls"]:
             render(call["name"], call["value"], call["done"])
-    closed = jm.llm_close()                # end: complete / max_tokens / interrupted
+    closed = jm.llm_close()                # end: complete / max_tokens / interrupted /
+    #                                             refused / unknown / ambiguous
 ```
 
 `llm.*` understands Anthropic `input_json_delta` and OpenAI-compatible

@@ -56,15 +56,40 @@ DEFAULT_READ_TIMEOUT = 5.0
 DEFAULT_MAX_WORKERS = 8
 
 _READ_CHUNK = 64 * 1024
+#: A refused body is drained by at most this many bytes before the close: enough
+#: to empty the receive queue for an honest peer, bounded for a hostile one.
+_DRAIN_CAP = 64 * 1024
+#: How long the drain waits for the next byte of a refused body.
+_DRAIN_IDLE = 1.0
 
 
 class _BodyError(Exception):
-    """A request body the server refuses; `status` is the HTTP status to send."""
+    """A request body the server refuses; `status` is the HTTP status to send.
 
-    def __init__(self, status: int, message: str, code: str | None = None) -> None:
+    `declared` and `consumed` describe how much of the announced body the
+    server has already taken. The rest is drained before the connection is
+    closed, so the peer can read the refusal instead of a connection reset.
+    """
+
+    def __init__(
+        self,
+        status: int,
+        message: str,
+        code: str | None = None,
+        *,
+        declared: int = 0,
+        consumed: int = 0,
+    ) -> None:
         super().__init__(message)
         self.status = status
         self.code = code or {400: "E050", 408: "E408", 413: "E413"}.get(status, "E050")
+        self.declared = int(declared)
+        self.consumed = int(consumed)
+
+    @property
+    def undrained(self) -> int:
+        """How many announced body bytes are still on the wire."""
+        return max(0, self.declared - self.consumed)
 
 
 class LIWENJSONHTTPServer(ThreadingHTTPServer):
@@ -173,6 +198,7 @@ class _Handler(BaseHTTPRequestHandler):
                 413,
                 f"request body is limited to {self._http.max_body} bytes, "
                 f"Content-Length declares {length}",
+                declared=length,
             )
         return length
 
@@ -184,24 +210,77 @@ class _Handler(BaseHTTPRequestHandler):
         while remaining > 0:
             left = deadline - time.monotonic()
             if left <= 0:
-                raise _BodyError(408, f"the request body did not arrive within {self._http.read_timeout:g}s")
+                raise _BodyError(
+                    408,
+                    f"the request body did not arrive within {self._http.read_timeout:g}s",
+                    declared=length,
+                    consumed=length - remaining,
+                )
             self.connection.settimeout(left)
             try:
                 chunk = self.rfile.read1(min(remaining, _READ_CHUNK))
             except (TimeoutError, socket.timeout):
                 raise _BodyError(
-                    408, f"the request body did not arrive within {self._http.read_timeout:g}s"
+                    408,
+                    f"the request body did not arrive within {self._http.read_timeout:g}s",
+                    declared=length,
+                    consumed=length - remaining,
                 ) from None
             except OSError:
-                raise _BodyError(400, "the connection was closed before the request body arrived") from None
+                raise _BodyError(
+                    400,
+                    "the connection was closed before the request body arrived",
+                    declared=length,
+                    consumed=length - remaining,
+                ) from None
             if not chunk:
                 raise _BodyError(
                     400,
                     f"the request body ended after {length - remaining} of {length} bytes",
+                    declared=length,
+                    consumed=length - remaining,
                 )
             chunks.append(chunk)
             remaining -= len(chunk)
         return b"".join(chunks)
+
+    def _drain_body(self, error: _BodyError) -> None:
+        """Take the rest of a refused body off the wire before closing.
+
+        A socket that is closed while data is still queued is reset, not closed:
+        Windows sends RST and the peer loses the response it was about to read
+        (`ConnectionAbortedError`, WinError 10053). The refusal is already on
+        the wire, so the server reads the announced remainder and discards it;
+        the close is then a plain FIN and the peer reads the 408 or 413.
+
+        The buffered reader is unusable once a read has timed out -- it raises
+        `cannot read from timed out object` from then on -- so the socket
+        itself is read once that happens. The buffer is empty at that point,
+        so no byte is skipped.
+        """
+        remaining = min(error.undrained, _DRAIN_CAP)
+        if remaining <= 0:
+            return
+        # The peer may still be sending; the drain waits for the next byte, but
+        # never longer than this idle budget per byte.
+        self.connection.settimeout(min(self._http.read_timeout, _DRAIN_IDLE))
+        raw = False
+        while remaining > 0:
+            want = min(remaining, _READ_CHUNK)
+            chunk = b""
+            if not raw:
+                try:
+                    chunk = self.rfile.read1(want)
+                except (TimeoutError, socket.timeout, OSError):
+                    raw = True
+            if raw:
+                try:
+                    chunk = self.connection.recv(want)
+                except (TimeoutError, socket.timeout, OSError):
+                    return
+            if not chunk:
+                return
+            remaining -= len(chunk)
 
     def _body(self) -> dict[str, Any]:
         """The parsed body; on refusal the response is already sent and it raises."""
@@ -209,9 +288,11 @@ class _Handler(BaseHTTPRequestHandler):
             length = self._declared_length()
             raw = self._read_body(length) if length else b"{}"
         except _BodyError as exc:
-            # The unread part of the body (if any) makes keep-alive unsafe.
+            # The unread part of the body (if any) makes keep-alive unsafe; it is
+            # drained so the close is graceful and the peer can read the refusal.
             self.close_connection = True
             self._send(exc.status, {"ok": False, "error": {"code": exc.code, "message": str(exc)}})
+            self._drain_body(exc)
             raise
         try:
             value = json.loads(raw.decode("utf-8"))
