@@ -1615,7 +1615,7 @@ fn sp_constraint_enum(
   let open = p.i
   let close = sp_scan_brackets(p, open)
   let slice = p.text[open:close].to_owned()
-  let parsed = @json.parse(slice) catch {
+  let parsed = @json.parse(slice, preserve_number_repr=true) catch {
     _ =>
       raise SchemaError(
         " schema: `enum` is not a valid JSON array at offset " +
@@ -1948,12 +1948,12 @@ fn is_integer(v : Json) -> Bool {
     // `Int32` round trip made `2147483648` a non-integer, because the
     // conversion saturates. The exact decimal decides: `1.0`, `1e3` and
     // `2147483648` are whole numbers, `1.5` is not.
-    Json::Number(d, ..) =>
+    Json::Number(_, ..) =>
       match number_dec(v) {
         Some(dec) => dec.is_integer()
-        // No exact decimal (a text with an unrepresentable exponent): the
-        // double decides, and an infinity is not a whole number.
-        None => !d.is_nan() && !d.is_inf() && d == d.floor()
+        // An unreadable source text cannot prove integer-ness. In particular,
+        // a tiny nonzero fraction may have underflowed to a whole Double zero.
+        None => false
       }
     _ => false
   }

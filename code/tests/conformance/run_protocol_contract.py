@@ -4,6 +4,10 @@
 Covers the parts of the protocol the tool declarations publish but that the
 older corpus did not assert:
 
+- one-shot readers bound UTF-16 input before EOF without corrupting UTF-8
+  characters at chunk boundaries;
+- repair's schema check respects the requested depth and the repaired output's
+  budget, not the original input length;
 - a long-lived mode (`serve`, `mcp`) refuses the one-shot `--check` flag with a
   usage error (exit 2) instead of silently accepting it;
 - `serve` frames are strict UTF-8: a malformed frame is a controlled `E040`
@@ -29,6 +33,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -77,6 +82,85 @@ def parse_lines(stdout: bytes) -> list[dict]:
 
 
 REPLACEMENT = b"\xef\xbf\xbd"
+
+
+def utf16_len(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+def check_one_shot_limits(binary: str) -> None:
+    # Do not close stdin or call communicate(): refusal must happen while a
+    # producer still owns the pipe, even after only two bytes with a limit of 1.
+    for mode in ("explain", "readiness"):
+        for limit, payload in ((1, b"{}"), (1, "😀".encode()), (2, "中文值".encode()), (65536, b"x" * 65537)):
+            proc = subprocess.Popen(
+                [binary, mode, f"--max-input-len={limit}"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            timed_out = False
+            try:
+                assert proc.stdin is not None
+                try:
+                    proc.stdin.write(payload)
+                    proc.stdin.flush()
+                except BrokenPipeError:
+                    pass  # The reader may refuse before the producer finishes.
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    proc.kill()
+                    proc.wait(timeout=5)
+                assert proc.stdout is not None and proc.stderr is not None
+                out, err = proc.stdout.read(), proc.stderr.read()
+                ok = not timed_out and proc.returncode == 4 and b"E021" in err and not out.strip()
+                record(
+                    f"{mode}: live stdin over {limit} UTF-16 units exits before EOF ({len(payload)} bytes)",
+                    ok, f"rc={proc.returncode} timed_out={timed_out} stderr={err[:100]!r}",
+                )
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                for pipe in (proc.stdin, proc.stdout, proc.stderr):
+                    if pipe is not None:
+                        try:
+                            pipe.close()
+                        except BrokenPipeError:
+                            pass
+
+    for text in ('{}', '{"a":"中文😀�"}'):
+        limit = utf16_len(text)
+        payload = text.encode()
+        rc, out, err = run(binary, ["explain", "--json", f"--max-input-len={limit}"], payload)
+        plan = json.loads(out) if out.strip() else {}
+        ok = rc == 0 and plan.get("executable") is True and plan.get("value") == json.loads(text)
+        record("explain: exact UTF-16 limit preserves Chinese/emoji", ok, f"limit={limit} bytes={len(payload)} rc={rc}")
+        rc, out, err = run(binary, ["readiness", f"--max-input-len={limit}"], payload)
+        record("readiness: exact UTF-16 limit accepted", rc == 0, f"limit={limit} rc={rc} stderr={err[:100]!r}")
+        for mode in ("explain", "readiness"):
+            rc, out, err = run(binary, [mode, f"--max-input-len={limit - 1}"], payload)
+            record(f"{mode}: one UTF-16 unit over limit -> E021", rc == 4 and b"E021" in err, f"rc={rc}")
+
+    # Exercise the full-size read boundary, both a three-byte BMP character and
+    # a four-byte surrogate pair. A per-chunk lossy decode changes the value.
+    for char in ("中", "😀"):
+        text = '{"a":"' + "x" * (65535 - len(b'{"a":"')) + char + '"}'
+        rc, out, err = run(binary, ["explain", "--json", f"--max-input-len={utf16_len(text)}"], text.encode())
+        plan = json.loads(out) if out.strip() else {}
+        ok = rc == 0 and plan.get("value") == json.loads(text)
+        record(f"explain: {char!r} across byte 65536 survives", ok, f"rc={rc} stderr={err[:100]!r}")
+        rc, out, err = run(binary, ["readiness", "--step=65536", f"--max-input-len={utf16_len(text)}"], text.encode())
+        record(f"readiness: {char!r} across byte 65536 accepted", rc == 0, f"rc={rc} stderr={err[:100]!r}")
+
+    for mode in ("explain", "readiness"):
+        # INT_MAX used to make a naive three-byte raw budget overflow Int32.
+        rc, out, err = run(binary, [mode, "--max-input-len=2147483647"], b"{}")
+        record(f"{mode}: INT_MAX input limit does not overflow", rc == 0, f"rc={rc} stderr={err[:100]!r}")
+        for payload in (b'{"a":"\xff"}', b'{"a":"\xe4\xb8', b'{"a":"\xf0\x9f\x98', b'{"a":"\xed\xa0\x80"}'):
+            rc, out, err = run(binary, [mode], payload)
+            ok = rc == 3 and b"E040" in err and REPLACEMENT not in out
+            record(f"{mode}: invalid/truncated UTF-8 at EOF -> E040", ok, f"rc={rc} bytes={payload!r}")
 
 
 def serve(binary: str, payload: bytes) -> tuple[int, bytes, bytes, list[dict]]:
@@ -216,7 +300,7 @@ def check_serve_protocol_errors(binary: str) -> None:
     )
 
 
-def mcp_session(binary: str, tail: list[dict], extra_raw: bytes = b"") -> tuple[int, bytes, list[dict]]:
+def mcp_session(binary: str, tail: list[dict], extra_raw: bytes = b"", cli_args: list[str] | None = None) -> tuple[int, bytes, list[dict]]:
     head = jsonl(
         [
             {
@@ -233,7 +317,7 @@ def mcp_session(binary: str, tail: list[dict], extra_raw: bytes = b"") -> tuple[
         ]
     )
     payload = head + jsonl(tail) + extra_raw
-    rc, out, err = run(binary, ["mcp"], payload)
+    rc, out, err = run(binary, ["mcp", *(cli_args or [])], payload)
     rows: list[dict] = []
     for raw in out.split(b"\n"):
         if not raw.strip():
@@ -250,6 +334,173 @@ def tool_call(tool_id: int, name: str, arguments: dict) -> dict:
         "method": "tools/call",
         "params": {"name": name, "arguments": arguments},
     }
+
+
+def check_repair_schema_limits(binary: str) -> None:
+    deep = "[" * 600 + "0" + "]" * 600
+    too_deep = "[" * 701 + "0" + "]" * 701
+    params = [
+        {"text": deep},
+        {"text": deep, "schema": "any"},
+        {"text": deep, "schema_json": {}},
+        {"text": too_deep, "schema": "any"},
+        {"text": "{}", "schema": "any"},
+    ]
+    rc, out, err = run(binary, ["serve", "--max-depth=700"], jsonl([
+        {"id": i, "method": "repair", "params": p} for i, p in enumerate(params)
+    ]))
+    rows = parse_lines(out)
+    ok = (
+        rc == 0 and len(rows) == 5
+        and all(r.get("ok") is True and r.get("result", {}).get("text") == deep for r in rows[:3])
+        and error_of(rows[3]).get("code") == "E020"
+        and error_of(rows[3]).get("exit") == 4 and rows[4].get("ok") is True
+    )
+    record("serve: repair schema honors depth 700, refuses 701 and continues", ok, f"rc={rc} errors={[error_of(r).get('code') for r in rows]}")
+    rc, out, rows = mcp_session(binary, [
+        tool_call(i + 2, "liwenjson_repair", p) for i, p in enumerate(params)
+    ], cli_args=["--max-depth=700"])
+    results = [r.get("result", {}) for r in rows[1:]]
+    ok = (
+        rc == 0 and len(results) == 5
+        and all(r.get("isError") is False and r.get("structuredContent", {}).get("text") == deep for r in results[:3])
+        and results[3].get("isError") is True and "E020" in json.dumps(results[3])
+        and results[4].get("isError") is False
+    )
+    record("mcp: repair schema any/JSON schema honors depth 700", ok, f"rc={rc} isError={[r.get('isError') for r in results]}")
+
+    # One input unit can expand to two output bytes. The schema walk must not
+    # impose the original input budget again, but E023 still protects rendering.
+    grow = [{"text": "{"}, {"text": "{", "schema": "any"}, {"text": "{", "schema_json": {}}]
+    for budget in (2, 1):
+        flags = ["--max-input-len=1", f"--max-output-len={budget}"]
+        rc, out, err = run(binary, ["serve", *flags], jsonl([
+            {"id": i, "method": "repair", "params": p} for i, p in enumerate(grow)
+        ]))
+        rows = parse_lines(out)
+        ok = rc == 0 and len(rows) == 3 and all(
+            (r.get("ok") is True and r.get("result", {}).get("text") == "{}") if budget == 2
+            else (r.get("ok") is False and error_of(r).get("code") == "E023") for r in rows
+        )
+        record(f"serve: schema repair input=1 output={budget} preserves budgets", ok, f"rc={rc} errors={[error_of(r).get('code') for r in rows]}")
+        rc, out, rows = mcp_session(binary, [
+            tool_call(i + 2, "liwenjson_repair", p) for i, p in enumerate(grow)
+        ], cli_args=flags)
+        results = [r.get("result", {}) for r in rows[1:]]
+        ok = rc == 0 and len(results) == 3 and all(
+            (r.get("isError") is False and r.get("structuredContent", {}).get("text") == "{}") if budget == 2
+            else (r.get("isError") is True and "E023" in json.dumps(r)) for r in results
+        )
+        record(f"mcp: schema repair input=1 output={budget} preserves budgets", ok, f"rc={rc} isError={[r.get('isError') for r in results]}")
+
+
+def exact_json(raw: bytes | str):
+    def reject_constant(token: str):
+        raise ValueError(f"non-JSON number: {token}")
+
+    return json.loads(raw, parse_float=Decimal, parse_int=Decimal,
+                      parse_constant=reject_constant)
+
+
+def check_serve_numbers(binary: str) -> None:
+    # These are wire literals, never Python floats. Default json.loads would
+    # hide both long-decimal rounding and underflow in the regression itself.
+    cases = [
+        ("0.99999999999999999999", "1"),
+        ("1e-400", "0"),
+        ("1e400", "1e401"),
+        ("9007199254740993", "9007199254740992"),
+    ]
+    for token, other in cases:
+        expected = {"n": Decimal(token)}
+        document = '{"n":' + token + '}'
+        schema = '{"type":"object","properties":{"n":{"const":' + token + '}},"required":["n"]}'
+        requests = []
+        checks = []
+        for method in ("analyze", "repair", "validate", "readiness"):
+            for matches in (True, False):
+                text = document if matches else '{"n":' + other + '}'
+                params = '{"text":' + json.dumps(text) + ',"schema_json":' + schema
+                if method == "analyze":
+                    params += ',"with_text":true'
+                params += '}'
+                requests.append('{"id":' + token + ',"method":' + json.dumps(method) + ',"params":' + params + '}\n')
+                checks.append((method, matches))
+        # Also test scalar roots and the default, text-free plan bridge.
+        for text in (token, document):
+            requests.append(json.dumps({"id": "plain", "method": "analyze", "params": {"text": text}}) + '\n')
+        rc, out, err = run(binary, ["serve"], ''.join(requests).encode())
+        rows = [exact_json(line) for line in out.splitlines() if line.strip()]
+        ok = rc == 0 and len(rows) == len(requests)
+        for row, (method, matches) in zip(rows, checks):
+            result = row.get("result", {})
+            ok = ok and row.get("id") == Decimal(token)
+            if method == "repair":
+                ok = ok and (row.get("ok") is True and exact_json(result.get("text", "null")) == expected if matches
+                             else row.get("ok") is False and error_of(row).get("code") == "E070")
+            elif method == "analyze":
+                rendered = expected if matches else {"n": Decimal(other)}
+                value = expected if matches else None  # Refused plans withhold value.
+                ok = (ok and row.get("ok") is True and result.get("executable") is matches
+                      and result.get("value") == value and exact_json(result.get("text", "null")) == rendered)
+            elif method == "validate":
+                ok = ok and row.get("ok") is True and result.get("valid") is True and result.get("schema", {}).get("ok") is matches
+            else:
+                ok = ok and row.get("ok") is True and result.get("verdict", {}).get("ok") is matches
+        for row, value in zip(rows[len(checks):], (Decimal(token), expected)):
+            result = row.get("result", {})
+            ok = (ok and row.get("ok") is True and result.get("executable") is True
+                  and result.get("value") == value and "text" not in result)
+        record(f"serve: {token} exact plans/ids/schema const, nearby value refused", ok, f"rc={rc} rows={len(rows)}")
+
+        # Deltas and both final values use the original engine Json directly.
+        split = max(1, len(token) // 2)
+        payload = jsonl([
+            {"id": 1, "method": "watch.start"},
+            {"id": 2, "method": "watch.feed", "params": {"chunk": '{"n":' + token[:split]}},
+            {"id": 3, "method": "watch.feed", "params": {"chunk": token[split:] + '}'}},
+            {"id": 4, "method": "watch.finish"},
+        ])
+        rc, out, err = run(binary, ["serve"], payload)
+        rows = [exact_json(line) for line in out.splitlines() if line.strip()]
+        ok = rc == 0 and len(rows) == 4 and all(row.get("ok") is True for row in rows)
+        deltas = [delta for row in rows[1:3] for delta in row.get("result", {}).get("deltas", [])]
+        number_deltas = [d for d in deltas if d.get("path") == "/n"]
+        ok = ok and bool(number_deltas) and all(d.get("value") == Decimal(token) for d in number_deltas)
+        for key in ("final", "watcher_final"):
+            result = rows[-1].get("result", {}).get(key, {}) if rows else {}
+            ok = ok and result.get("value") == expected and exact_json(result.get("text", "null")) == expected
+        record(f"serve: {token} chunked watch delta/final values agree with text", ok, f"rc={rc} numeric_deltas={len(number_deltas)}")
+
+        events = [
+            json.dumps({"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "id": "precise", "function": {"name": "f", "arguments": document}}]}}]}),
+            json.dumps({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}),
+        ]
+        requests = [
+            {"id": 1, "method": "llm.run", "params": {"provider": "openai", "events": events}},
+            {"id": 2, "method": "llm.open", "params": {"provider": "openai"}},
+            *[{"id": i + 3, "method": "llm.feed", "params": {"event": e}} for i, e in enumerate(events)],
+            {"id": 5, "method": "llm.close"},
+        ]
+        rc, out, err = run(binary, ["serve"], jsonl(requests))
+        rows = [exact_json(line) for line in out.splitlines() if line.strip()]
+        ok = rc == 0 and len(rows) == 5 and all(row.get("ok") is True for row in rows)
+        calls = [call for row in rows for call in row.get("result", {}).get("calls", [])]
+        ok = ok and bool(calls) and all(call.get("value") == expected for call in calls)
+        ok = ok and all(rows[i].get("result", {}).get("calls", [{}])[0].get("executable") is True for i in (0, 4))
+        record(f"serve: {token} tool-stream snapshots/run/final retain exact value", ok, f"rc={rc} calls={len(calls)}")
+        # llm_line/text_line already stringify engine repr; pin those output
+        # points too, without introducing another renderer or touching adapters.
+        text_events = [
+            json.dumps({"choices": [{"index": 0, "delta": {"content": document}}]}),
+            json.dumps({"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}),
+        ]
+        for flags, stream_events in (([], events), (["--follow"], events), (["--text"], text_events)):
+            rc, out, err = run(binary, ["llm", "--provider=openai", *flags], ('\n'.join(stream_events) + '\n').encode())
+            calls = [exact_json(line) for line in out.splitlines() if line.strip()]
+            ok = (rc == 0 and bool(calls) and all(call.get("value") == expected for call in calls)
+                  and calls[-1].get("executable") is True)
+            record(f"llm: {token} {' '.join(flags) or 'final'} output preserves exact value", ok, f"rc={rc} lines={len(calls)}")
 
 
 def check_mcp_schemas(binary: str) -> None:
@@ -387,6 +638,9 @@ def main() -> int:
     if not Path(binary).exists():
         print(f"binary not found: {binary}", file=sys.stderr)
         return 2
+    check_one_shot_limits(binary)
+    check_repair_schema_limits(binary)
+    check_serve_numbers(binary)
     check_serve_flags(binary)
     check_serve_utf8(binary)
     check_serve_watch_finish(binary)

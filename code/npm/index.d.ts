@@ -79,8 +79,8 @@ export interface Plan {
    * `"syntax"` (the text was not a complete, unambiguous document -- safe to
    * re-emit), `"schema_or_intent"` (the document was complete but conflicts
    * with the declaration -- re-emitting may change the *action*, so the host
-   * must not execute the retry automatically), `"host_declaration"` or
-   * `"provider"`.
+   * must not execute the retry automatically), `"host_declaration"` (including
+   * an unrepresentable JavaScript host value; never auto-retry) or `"provider"`.
    */
   refusal: { kind: RefusalKind; auto_retry: boolean } | null;
   /**
@@ -88,7 +88,9 @@ export interface Plan {
    * authorise the action.
    */
   business_authorized: boolean;
+  /** Exact engine JSON text; use string-returning repair for text-only output. */
   text: string;
+  /** Verified equal to `text` when provided; `null` if host numbers cannot be preserved. */
   value: unknown;
 }
 
@@ -103,21 +105,30 @@ export interface RepairOutcome {
   retry: RetryHint | null;
 }
 
-/** Repair `input`; with `profile: "agent"` a lossy/ambiguous repair throws. */
+/**
+ * Repair `input`; with `profile: "agent"` a lossy/ambiguous repair throws.
+ * Returns exact engine text, without requiring JavaScript-representable numbers.
+ */
 export function repair(input: string, options?: AnalyzeOptions): string;
 
 /** Repair and return the decision fields too. */
 export function repairResult(input: string, options?: AnalyzeOptions): RepairOutcome;
 
-/** The never-throwing decision call: returns the full plan object. */
+/**
+ * Returns a full plan; malformed JSON is a refusal. An executable host value
+ * must round-trip through JavaScript JSON without changing the engine value.
+ * Numeric rounding, overflow or underflow produces a non-auto-retryable refusal.
+ * Invalid options/declarations can still throw.
+ */
 export function analyze(input: string, options?: AnalyzeOptions): Plan;
 
 /**
  * The gate, with the profile the MCP tools use (`agent`).
  *
  * Use this rather than `analyze` when the question is "may I execute this?":
- * it is the same call the `liwenjson_gate` MCP tool makes, so the npm package
- * and the MCP server cannot disagree about the same input.
+ * it uses the same engine policy as the `liwenjson_gate` MCP tool. Unlike the
+ * MCP wire text, the returned JavaScript value must also preserve the engine's
+ * JSON numbers; otherwise this host adds a blocked `host_declaration` refusal.
  */
 export function gate(input: string, options?: AnalyzeOptions): Plan;
 

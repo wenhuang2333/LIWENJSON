@@ -10,6 +10,33 @@ This document is the canonical deployment guide. The host-side surfaces
 [INTEGRATIONS.md](INTEGRATIONS.md); the engine and its guarantees are in
 [../README.md](../README.md).
 
+## 1.5.3: the digits you sent are the digits the gate judged
+
+This release is about what a *host* does to a number before the gate ever sees
+it. `1.5.2` enforced the published contract; `1.5.3` keeps the value's original
+decimal text through `serve`, MCP, the provider adapters and both language
+packages, and compares `enum` / `const` membership and duplicate keys on that
+text instead of a `Double`. An exponent no float can hold is no longer read as
+zero, a leading-zero exponent is no longer dropped, and closed-object
+`required` that names a member the declaration never declared is refused with
+`E070` instead of quietly widening the allowed set.
+
+Where the damage happened before we were called — `JSON.parse` in Node, a
+Python `float`, a JS `number` inside `schema_json` — the gate refuses rather
+than guesses: `refusal.kind` is `host_declaration`, `auto_retry` is `false`,
+`value` is `null` and the error is `E070`, in the npm and Python results as
+well as over `serve` and MCP. Raw repaired text is still handed back, so nothing
+is lost; what is blocked is *execution*.
+
+Two protocol-level changes come out of the Windows reports and the request
+framing audit: a refused HTTP request body is now drained under a deadline
+before the socket closes, so a 408/413 can no longer become an RST that
+corrupts the next request's frame, and `NaN` / `Infinity` are refused on the way
+in rather than serialised on the way out. On the streaming side,
+`liwenjson_readiness` reports the stream's own verdict, and a document whose
+final value breaks the declaration revokes an early `RootReady` instead of
+keeping a promise the finished value cannot honour.
+
 ## 1.5.2: the protocol contract the tools publish is now the one they satisfy
 
 Every MCP tool publishes an `outputSchema`, and a strict client validates
@@ -90,7 +117,7 @@ sentence to send back to the model when the answer is no.
 | Alias | `liwenjson-mcp` — the same binary under that name starts the MCP server with no arguments |
 | Transport | stdio: one JSON-RPC 2.0 object per line on stdin, one per line on stdout |
 | Protocol revisions | `2025-06-18`, `2025-03-26` and `2024-11-05` are all accepted verbatim; any other requested revision is answered with `2025-06-18` and is **never echoed back** |
-| Server identity | `serverInfo.name = "liwenjson"`, `serverInfo.title = "LIWENJSON — the execution gate"`, `serverInfo.version` = engine version (`1.5.2`) |
+| Server identity | `serverInfo.name = "liwenjson"`, `serverInfo.title = "LIWENJSON — the execution gate"`, `serverInfo.version` = engine version (`1.5.3`) |
 | Capabilities | `tools.listChanged: false` (tools only; no resources or prompts) |
 | Tools | `liwenjson_gate` (primary), `liwenjson_repair`, `liwenjson_validate`, `liwenjson_readiness` — all read-only |
 | Request line limit | 8 MiB (8,388,608 bytes); a longer line is answered with JSON-RPC `-32700` and discarded through the next LF |
@@ -111,7 +138,7 @@ Pick one install path; each ends with a working `liwenjson` binary. Every
 launcher and client below needs that binary, so verify it first:
 
 ```sh
-liwenjson --version          # liwenjson 1.5.2
+liwenjson --version          # liwenjson 1.5.3
 ```
 
 > **Technical preview.** The prebuilt binary comes from the GitHub release, which
@@ -120,12 +147,13 @@ liwenjson --version          # liwenjson 1.5.2
 > from source needs the MoonBit toolchain `moon 0.1.20261016`. The mooncakes
 > counterpart **0.13.0 was published on 2026-10-29**, and `interjson-moonbit@1.5.1`
 > reached npm and PyPI on 2026-10-30, so both language packages install with one
-> command. **1.5.2 is `liwenjson` on npm, on PyPI and on mooncakes** — npm/PyPI and
-> the GitHub release on 2026-11-20, and the mooncakes counterpart `0.14.0` the same
-> day, as the new module `zhanshishan/liwenjson` (the registry has no rename, so
-> 0.11.0–0.13.0 stay under `zhanshishan/interjson` and earlier under
-> `zhanshishan/jsonmend`; both old modules were deprecated on 2026-11-20 and their
-> deprecation reason names the new module).
+> command. **1.5.2 was the first release named `liwenjson` on npm, on PyPI and on
+> mooncakes** — npm/PyPI and the GitHub release on 2026-11-20, and the mooncakes
+> counterpart `0.14.0` the same day, as the new module `zhanshishan/liwenjson` (the
+> registry has no rename, so 0.11.0–0.13.0 stay under `zhanshishan/interjson` and
+> earlier under `zhanshishan/jsonmend`; both old modules were deprecated on
+> 2026-11-20 and their deprecation reason names the new module). **`1.5.3` is the
+> same four channels again**, with the mooncakes counterpart `0.15.0`.
 
 ### One command: `install.sh`
 
@@ -142,7 +170,7 @@ curl -fsSL https://github.com/wenhuang2333/LIWENJSON/releases/latest/download/li
 
 `latest` serves `liwenjson-install.sh` and the `liwenjson-*` assets from `v1.5.2`
 on, and the one-liner above is verified against that release: it checks the
-release's own `SHA256SUMS` and installs `liwenjson 1.5.2`. Releases before it keep
+release's own `SHA256SUMS` and installs `liwenjson 1.5.3`. Releases before it keep
 the `interjson-install.sh` name — use that URL for `v1.5.1` and earlier.
 
 Environment: `LIWENJSON_VERSION` (tag; default = latest release),
@@ -160,7 +188,7 @@ surface today:
 git clone https://github.com/wenhuang2333/LIWENJSON
 cd LIWENJSON/code
 moon build cmd/liwenjson --target native --release
-./_build/native/release/build/cmd/liwenjson/liwenjson.exe --version   # liwenjson 1.5.2
+./_build/native/release/build/cmd/liwenjson/liwenjson.exe --version   # liwenjson 1.5.3
 ```
 
 Put the binary on `PATH` under the name `liwenjson` (or point
@@ -182,16 +210,17 @@ The release assets are `liwenjson-linux-x86_64`,
 `liwenjson-windows-x86_64.exe`, `liwenjson-probe.wasm`,
 `liwenjson-demo.js`, `liwenjson-install.sh` and `SHA256SUMS`. There is **no
 Intel macOS asset**: the MoonBit toolchain publishes no `darwin-x86_64` target,
-so no runner can build one. `v1.5.2` publishes exactly these eight names. The
+so no runner can build one. `v1.5.2` and later publish exactly these eight names. The
 assets already published keep the name of the release that produced them:
 `v1.4.0`–`v1.5.1` were published as InterJSON, with `interjson-*` assets and
 `interjson_*` tool names, and `v1.3.0` and earlier as JSONMend, with
 `jsonmend-*` assets and `jsonmend_*` tool names. No published asset is renamed
 retroactively, so use the release whose prefixes match the CLI you install.
 
-The 1.5.2 release is tagged `v1.5.2` and is published with those eight assets;
-the mooncakes counterpart `0.14.0` (published 2026-11-20 as `zhanshishan/liwenjson`)
-is the 1.5.2 correspondence, so the installer above installs the 1.5.2 binaries.
+The 1.5.3 release is tagged `v1.5.3` and is published with those eight assets; the
+mooncakes counterpart `0.15.0` (as `zhanshishan/liwenjson`) is the 1.5.3
+correspondence, so the installer above installs the 1.5.3 binaries. The previous
+`1.5.2` release went out the same way on 2026-11-20 with counterpart `0.14.0`.
 
 ### pip: `liwenjson`
 
@@ -200,7 +229,7 @@ import is `liwenjson` too; it installs two console scripts.
 
 ```sh
 pip install liwenjson
-liwenjson --version          # liwenjson 1.5.2: the engine the launcher needs
+liwenjson --version          # liwenjson 1.5.3: the engine the launcher needs
 liwenjson-mcp --version      # same output, through the console script
 liwenjson-http --help        # HTTP facade; not needed for MCP
 ```
@@ -792,7 +821,7 @@ Run these from a checkout; `B` is the built binary.
 ```sh
 B=./code/_build/native/release/build/cmd/liwenjson/liwenjson.exe
 
-"$B" --version                     # liwenjson 1.5.2
+"$B" --version                     # liwenjson 1.5.3
 "$B" mcp --print-config=claude     # claude mcp add liwenjson -- liwenjson mcp
 "$B" mcp --help                    # names liwenjson_gate and the six named clients
 ```

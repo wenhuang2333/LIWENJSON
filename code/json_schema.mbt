@@ -623,10 +623,16 @@ fn json_schema_node_at(v : Json, depth : Int32) -> Schema raise LIWENJSONError {
             raise SchemaError("json schema: `properties` must be an object")
           None => ()
         }
-        // A required member may be declared without a `properties` entry; in
-        // JSON Schema that means "present, any value".
+        // Required-only members mean "present, any value" in open objects.
+        // A closed object forbids such a member: adding it to the skeleton
+        // would silently widen `properties` and admit an impossible declaration.
         for key, _ in required {
           if !seen.get(key).unwrap_or(false) {
+            if obj.get("additionalProperties") is Some(Json::False) {
+              raise SchemaError(
+                "json schema: a required member is not declared in `properties` while `additionalProperties` is false",
+              )
+            }
             members.push({ key, required: true, schema: Any, })
           }
         }
@@ -667,7 +673,9 @@ pub fn Schema::of_json_schema(value : Json) -> Schema raise LIWENJSONError {
 ///|
 /// Parse JSON Schema text and translate it.
 pub fn Schema::parse_json_schema(text : String) -> Schema raise LIWENJSONError {
-  let value = @json.parse(text) catch {
+  // Declaration numbers are authoritative too: dropping their text would
+  // round enum/const values or underflow an unreadable bound before checking it.
+  let value = @json.parse(text, preserve_number_repr=true) catch {
     _ => raise SchemaError("json schema: input is not valid JSON")
   }
   json_schema_node(value)

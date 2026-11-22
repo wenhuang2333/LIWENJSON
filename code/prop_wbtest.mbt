@@ -980,3 +980,43 @@ test "TC-P-06 token soup" {
     }
   }
 }
+
+///|
+test "TC-P-10 exact numeric duplicate decisions are chunk invariant" {
+  for
+    (a, b, equal) in [
+      ("0", "1e-400", false),
+      ("1", "0.99999999999999999999", false),
+      ("0", "1e-9999999999", false),
+      ("1e-9999999999", "2e-9999999999", false),
+      ("1", "1.0", true),
+      ("1e-400", "10e-401", true),
+      ("1e-9999999999", "1e-9999999999", true),
+    ] {
+    let input = "{\"n\":" + a + ",\"n\":" + b + "}"
+    for opts in [Options::for_agent(), Options::for_execution()] {
+      let one = attempt(input, opts)
+      assert_eq(one.err == "", equal, msg=input)
+      let want = one.text + " | " + one.recs + " | " + one.err
+      for cut = 0; cut <= input.length(); cut = cut + 1 {
+        let chunks = [
+          slice_units(input, 0, cut),
+          slice_units(input, cut, input.length()),
+        ]
+        tc_expect_chunks(input, cut.to_string(), run_stream(chunks, opts), want)
+      }
+      let units : Array[String] = []
+      for i = 0; i < input.length(); i = i + 1 {
+        units.push(slice_units(input, i, i + 1))
+      }
+      tc_expect_chunks(input, "per unit", run_stream(units, opts), want)
+      if equal {
+        let second = attempt(one.text, opts)
+        assert_eq(second.text, one.text)
+        assert_eq(second.recs, "")
+        assert_eq(second.err, "")
+        assert_true(is_valid_json(one.text))
+      }
+    }
+  }
+}

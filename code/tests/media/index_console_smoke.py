@@ -206,36 +206,64 @@ def main() -> None:
             overflow = page.evaluate("document.scrollingElement.scrollWidth - window.innerWidth")
             assert overflow <= 2, f"horizontal overflow at 390px: {overflow}px"
 
-            # 11. The other two pages get the same treatment: at 390px they must
-            # load every local resource (no 4xx/5xx), raise no console error,
-            # and not scroll sideways. This is the "three pages at both widths"
-            # half of the demo closing rule; the poster/screenshot halves live
-            # in demo_visual_smoke.py, which writes files and so stays out of CI.
-            pages = (
-                ("live.html", "() => globalThis.liwenjson && globalThis.liwenjson.live"),
-                ("mcp.html", "() => document.querySelector('#decision') !== null"),
-            )
-            for name, ready in pages:
-                other = browser.new_page(viewport={"width": 390, "height": 844})
-                other_errors: list[str] = []
-                missing: list[str] = []
-                other.on("console", lambda msg: other_errors.append(msg.text) if msg.type == "error" else None)
-                other.on("pageerror", lambda exc: other_errors.append(str(exc)))
-                other.on(
-                    "response",
-                    lambda response: missing.append(f"{response.status} {response.url}")
-                    if response.status >= 400
-                    else None,
+            for width in (1440, 390):
+                page.set_viewport_size({"width": width, "height": 900})
+                page.select_option("#wb-policy", "agent")
+                for text, executable in (( '{"a":1}', True), ('{"a":1,"a":2}', False), ('{"a":1', False), ("", False)):
+                    page.fill("#wb-input", text)
+                    page.click("#wb-run")
+                    page.click('[data-wb-tab="plan"]')
+                    plan = json.loads(page.text_content("#wb-plan"))
+                    assert plan["executable"] is executable, (width, text, plan)
+                page.fill("#wb-input", '{"text":"<img src=x onerror=globalThis.injected=1>"}')
+                page.click("#wb-run")
+                assert page.evaluate("globalThis.injected === undefined")
+                assert page.evaluate("document.scrollingElement.scrollWidth - innerWidth") <= 2
+
+                pages = (
+                    ("live.html", "() => globalThis.liwenjson && globalThis.liwenjson.live"),
+                    ("mcp.html", "() => document.querySelector('#decision') !== null"),
                 )
-                other.goto(f"{base}/{name}", wait_until="networkidle")
-                other.wait_for_function(ready)
-                other.wait_for_timeout(300)
-                narrow = other.evaluate("document.scrollingElement.scrollWidth - window.innerWidth")
-                assert narrow <= 2, f"{name} overflows at 390px: {narrow}px"
-                assert not missing, f"{name} failed to load {missing}"
-                assert not other_errors, f"{name} console errors: {other_errors[:3]}"
-                errors.extend(f"{name}: {text}" for text in other_errors)
-                other.close()
+                for name, ready in pages:
+                    other = browser.new_page(viewport={"width": width, "height": 900})
+                    other_errors: list[str] = []
+                    missing: list[str] = []
+                    other.on("console", lambda msg: other_errors.append(msg.text) if msg.type == "error" else None)
+                    other.on("pageerror", lambda exc: other_errors.append(str(exc)))
+                    other.on(
+                        "response",
+                        lambda response: missing.append(f"{response.status} {response.url}")
+                        if response.status >= 400
+                        else None,
+                    )
+                    other.goto(f"{base}/{name}", wait_until="networkidle")
+                    other.wait_for_function(ready)
+                    if name == "live.html":
+                        other.get_by_role("button", name="接入面", exact=True).click()
+                        other.click('[data-preset="whole"]')
+                        assert other.text_content("#p-executable") == "true"
+                        other.click('[data-preset="truncated"]')
+                        assert other.text_content("#p-executable") == "false"
+                        assert other.locator("#p-retry").is_visible()
+                        other.click('[data-preset="ref"]')
+                        assert "E070" in other.text_content("#p-plan")
+                        other.click('[data-preset="whole"]')
+                        assert other.text_content("#p-executable") == "true"
+                        assert not other.locator("#p-retry").is_visible()
+                    else:
+                        assert other.text_content("#executable") == "false"
+                        other.click("#run-good")
+                        assert other.text_content("#executable") == "true"
+                        for text in ('{"amount":-1,"currency":"USD"}', ""):
+                            other.fill("#model-text", text)
+                            other.click("#run-bad")
+                            assert other.text_content("#executable") == "false"
+                    narrow = other.evaluate("document.scrollingElement.scrollWidth - window.innerWidth")
+                    assert narrow <= 2, f"{name} overflows at {width}px: {narrow}px"
+                    assert not missing, f"{name} failed to load {missing}"
+                    assert not other_errors, f"{name} console errors: {other_errors[:3]}"
+                    errors.extend(f"{name}: {text}" for text in other_errors)
+                    other.close()
             browser.close()
 
         httpd.shutdown()

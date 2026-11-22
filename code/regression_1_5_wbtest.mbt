@@ -222,6 +222,56 @@ test "TC-R-13 the agent profile refuses a lossy repair" {
   assert_true(plan.decision == LossyRepair, msg="decision")
 }
 
+///|
+test "TC-R-13b rounded numeric duplicates are lossy in both safety profiles" {
+  for
+    (a, b) in [
+      ("0", "1e-400"),
+      ("1", "0.99999999999999999999"),
+      ("9007199254740992", "9007199254740993"),
+      ("0", "1e-9999999999"),
+      ("1e-9999999999", "2e-9999999999"),
+    ] {
+    for (x, y) in [(a, b), (b, a)] {
+      let input = "{\"n\":" + x + ",\"n\":" + y + "}"
+      let permissive = analyze(input)
+      assert_true(permissive.exactness == Lossy, msg=input)
+      assert_eq(permissive.repairs.length(), 1, msg=input)
+      assert_eq(permissive.repairs[0].rule, "R018", msg=input)
+      assert_true(permissive.repairs[0].severity == Warning, msg=input)
+      for opts in [Options::for_agent(), Options::for_execution()] {
+        let plan = analyze(input, options=opts)
+        assert_false(plan.is_executable(), msg=input)
+        assert_true(plan.decision == LossyRepair, msg=input)
+        assert_true(plan.value is None, msg=input)
+        assert_eq(plan.error_code, "E010", msg=input)
+      }
+    }
+  }
+}
+
+///|
+test "TC-R-13c equal numeric spellings stay executable in both safety profiles" {
+  for
+    (a, b) in [
+      ("1", "1.0"),
+      ("100", "1e2"),
+      ("-0", "0"),
+      ("1e-400", "10e-401"),
+      ("1e400", "10e399"),
+      ("1e-9999999999", "1e-9999999999"),
+    ] {
+    for opts in [Options::for_agent(), Options::for_execution()] {
+      let input = "{\"n\":" + a + ",\"n\":" + b + "}"
+      let plan = analyze(input, options=opts)
+      assert_true(plan.is_executable(), msg=input)
+      assert_true(plan.exactness == Cosmetic, msg=input)
+      assert_eq(plan.repairs.length(), 1, msg=input)
+      assert_true(plan.repairs[0].severity == Info, msg=input)
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Recursion must be bounded: a declaration is external input.
 // ---------------------------------------------------------------------------
@@ -859,15 +909,15 @@ test "TC-COV-02: a JSON Schema bound with no exact value is refused" {
 }
 
 ///|
-test "TC-COV-03: a number with no exact decimal falls back to the double" {
-  // The reader kept a text the decimal type cannot read, so `is_integer` falls
-  // back to the double: it is a whole number, and a non-number is not.
+test "TC-COV-03: an unreadable decimal cannot prove the integer kind" {
+  // The reader kept a text the decimal type cannot read. The number kind
+  // accepts it, but `integer` must refuse rather than trust a rounded Double.
   let v = @json.parse("1e9999999999", preserve_number_repr=true) catch {
     _ => Json::null()
   }
   assert_eq(v.stringify(), "1e9999999999")
-  // A value with no bound is not asked to be exactly comparable: the number
-  // kind accepts it, and `integer` asks only whether it is a whole number.
+  // A value with no bound is not asked to be exactly comparable by the number
+  // kind; proving integer-ness still requires an exact decimal.
   let any = Schema::parse("number") catch { _ => Any }
   assert_eq(any.accepts(v), true)
   // `1e400` normalises (its exponent fits), so it *is* a whole number: the
@@ -877,9 +927,16 @@ test "TC-COV-03: a number with no exact decimal falls back to the double" {
   }
   let integer = Schema::parse("integer") catch { _ => Any }
   assert_eq(integer.accepts(big), true)
-  // `1e9999999999` does not normalise, so the double decides, and the double
-  // is infinite: not a whole number.
+  // An unrepresentable exponent is refused even when the Double underflows
+  // to zero, so tiny fractions cannot become integers.
   assert_eq(integer.accepts(v), false)
+  for text in ["1e-9999999999", "-1e-9999999999"] {
+    let tiny = @json.parse(text, preserve_number_repr=true)
+    assert_false(integer.accepts(tiny), msg=text)
+    assert_true(any.accepts(tiny), msg=text)
+  }
+  assert_true(integer.accepts(Json::number(1.0)))
+  assert_false(integer.accepts(Json::number(0.0, repr="invalid")))
 }
 
 ///|

@@ -25,6 +25,7 @@ pub struct TextStream {
   mut end : CallEnd
   mut stop_reason : String
   mut error_message : String
+  mut finish_error : @liwenjson.LIWENJSONError?
   mut ignored : Int32
   mut seen_text : Bool
   // The Chat Completions choice the single parser belongs to, -1 before the
@@ -58,6 +59,7 @@ pub fn TextStream::new(
     end: Open,
     stop_reason: "",
     error_message: "",
+    finish_error: None,
     ignored: 0,
     seen_text: false,
     choice: -1,
@@ -83,9 +85,25 @@ pub fn TextStream::stop_reason(self : TextStream) -> String {
 }
 
 ///|
-/// The provider error message, "" when no error event arrived.
+/// The provider error message, or the final parse error when no provider error
+/// arrived. "" means neither failed.
 pub fn TextStream::error(self : TextStream) -> String {
-  self.error_message
+  if self.error_message != "" {
+    return self.error_message
+  }
+  match self.finish_error {
+    Some(e) => e.to_string()
+    None => ""
+  }
+}
+
+///|
+/// The original final parse error, so a caller can preserve its error code
+/// without mistaking a failed parse for a stream that carried no text.
+pub fn TextStream::finish_error(
+  self : TextStream,
+) -> @liwenjson.LIWENJSONError? {
+  self.finish_error
 }
 
 ///|
@@ -101,7 +119,7 @@ pub fn TextStream::push_event(
   self : TextStream,
   event_json : String,
 ) -> @liwenjson.Snapshot? raise @liwenjson.LIWENJSONError {
-  let v = @json.parse(event_json) catch {
+  let v = @json.parse(event_json, preserve_number_repr=true) catch {
     _ => raise @liwenjson.InvalidEvent("event payload is not valid JSON")
   }
   let fragment = match self.provider {
@@ -324,17 +342,23 @@ pub fn stop_end(reason : String) -> CallEnd {
 ///|
 /// The final parse of the text received so far.
 ///
-/// Returns `None` when no text ever arrived, or when the text held no JSON at
-/// all: a caller that asked for JSON but got prose should see "nothing", not an
-/// empty object. A stream that was still open when this is called is reported
-/// as `Interrupted`, because the provider never said it had finished.
+/// Returns `None` when no text ever arrived or the final parse failed. In the
+/// latter case `finish_error()` holds the original error and `error()` reports
+/// it: `None` alone is never evidence of a successful parse. A stream that was
+/// still open is reported as `Interrupted`; parsing does not change a verdict
+/// the provider already gave.
 pub fn TextStream::finish(self : TextStream) -> @liwenjson.FinalResult? {
   if self.end is Open {
     self.end = Interrupted
   }
-  if !self.seen_text {
+  if !self.seen_text || self.finish_error is Some(_) {
     return None
   }
-  let r = self.parser.finish() catch { _ => return None }
+  let r = self.parser.finish() catch {
+    e => {
+      self.finish_error = Some(e)
+      return None
+    }
+  }
   Some(r)
 }

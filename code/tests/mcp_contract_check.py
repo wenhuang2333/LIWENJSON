@@ -31,6 +31,7 @@ import argparse
 import json
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -117,6 +118,75 @@ def call(messages):
     return run([INIT] + messages)[1:]
 
 
+def check_exact_numbers():
+    """Raw JSON literals and Decimal assertions, independent of jsonschema."""
+    def exact_json(raw):
+        def reject_constant(token):
+            raise ValueError(f"non-JSON number: {token}")
+        return json.loads(raw, parse_float=Decimal, parse_int=Decimal,
+                          parse_constant=reject_constant)
+
+    failures = []
+    for token, other in (("0.99999999999999999999", "1"), ("1e-400", "0"),
+                         ("1e400", "1e401"), ("9007199254740993", "9007199254740992")):
+        document = '{"n":' + token + '}'
+        expected = {"n": Decimal(token)}
+        schema = '{"type":"object","properties":{"n":{"const":' + token + '}},"required":["n"]}'
+        messages = []
+        probes = []
+        for tool in ("liwenjson_gate", "liwenjson_repair", "liwenjson_validate", "liwenjson_readiness"):
+            for matches in (True, False):
+                text = document if matches else '{"n":' + other + '}'
+                arguments = '{"text":' + json.dumps(text) + ',"schema_json":' + schema
+                if tool == "liwenjson_gate":
+                    arguments += ',"with_text":true'
+                arguments += '}'
+                messages.append('{"jsonrpc":"2.0","id":' + token + ',"method":"tools/call","params":{"name":' + json.dumps(tool) + ',"arguments":' + arguments + '}}')
+                probes.append((tool, matches))
+        for text in (token, document):
+            messages.append(json.dumps({"jsonrpc": "2.0", "id": "plain", "method": "tools/call", "params": {"name": "liwenjson_gate", "arguments": {"text": text}}}))
+        body = json.dumps(INIT) + '\n' + '\n'.join(messages) + '\n'
+        proc = subprocess.run([J, "mcp"], input=body, capture_output=True, text=True, timeout=60)
+        responses = [exact_json(line) for line in proc.stdout.splitlines() if line.strip()][1:]
+        if proc.returncode != 0 or len(responses) != len(messages):
+            failures.append(f"mcp {token}: rc={proc.returncode}, responses={len(responses)}")
+            continue
+        for response, (tool, matches) in zip(responses, probes):
+            result = response.get("result", {})
+            sc = result.get("structuredContent", {})
+            summary = result.get("content", [{}])[0].get("text", "")
+            ok = response.get("id") == Decimal(token)
+            if tool == "liwenjson_repair" and not matches:
+                ok = ok and result.get("isError") is True and "E070" in summary
+            else:
+                ok = ok and result.get("isError") is False
+                if tool == "liwenjson_gate":
+                    rendered = expected if matches else {"n": Decimal(other)}
+                    value = expected if matches else None  # Blocked plans withhold value.
+                    ok = (ok and sc.get("executable") is matches and sc.get("value") == value
+                          and exact_json(sc.get("text", "null")) == rendered
+                          and f"executable={str(matches).lower()}" in summary)
+                elif tool == "liwenjson_repair":
+                    # Repair's human text channel carries the document; gate's
+                    # is a verdict summary, not a second JSON payload.
+                    ok = (ok and exact_json(sc.get("text", "null")) == expected
+                          and exact_json(summary.split('\n', 1)[-1]) == expected)
+                elif tool == "liwenjson_validate":
+                    ok = ok and sc.get("valid") is True and sc.get("schema", {}).get("ok") is matches
+                else:
+                    ok = ok and sc.get("verdict", {}).get("ok") is matches
+            if not ok:
+                failures.append(f"{tool} {token}: precise const {'match' if matches else 'refusal'} or channels disagree")
+        for response, value in zip(responses[len(probes):], (Decimal(token), expected)):
+            result = response.get("result", {})
+            sc = result.get("structuredContent", {})
+            if not (result.get("isError") is False and sc.get("executable") is True
+                    and sc.get("value") == value and "text" not in sc):
+                failures.append(f"liwenjson_gate {token}: default value-only channel lost precision")
+    print(f"MCP exact-number wire regression: {len(failures)} failure(s)")
+    return failures
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("cli", nargs="?", default=str(
@@ -133,7 +203,7 @@ def main():
     # `tools/list` is structural: never needs jsonschema.
     tools = run([INIT, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}])[1]["result"]["tools"]
     by_name = {t["name"]: t for t in tools}
-    failures = []
+    failures = check_exact_numbers()
 
     # 1. Every advertised inputSchema must be usable as `schema_json` by the
     #    gate: the server would otherwise reject its own tool declarations.

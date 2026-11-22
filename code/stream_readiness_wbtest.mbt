@@ -871,16 +871,13 @@ test "KeepFirst is a documented composition: numbers from the stream, verdict fr
   }
   assert_eq(keep_last.verdict.ok, false)
   assert_eq(keep_last.settled_permille, r.settled_permille)
-  // Byte by byte, the watcher announces the first value (which is the one
-  // `KeepFirst` keeps) and concludes `RootReady` on it. It cannot retract that
-  // when the duplicate arrives, so the duplicate is reported as a conflict
-  // instead: an early conclusion is a lower bound, never a wrong event.
+  // Events use KeepLast; its final invalid value revokes the earlier readiness.
   let events = watch_readiness(doc, s, chunk=1, options=keep_first) catch {
     _ => return assert_true(false, msg="watch_readiness failed")
   }
   assert_eq(
     sr_names_of(events.map(fn(e) { e.event })),
-    "field_ready:a,root_ready:",
+    "field_ready:a,root_ready:,root_invalid:",
   )
   let w = match sr_watch_opts(doc, s, 1, keep_first) {
     Some(x) => x
@@ -1455,4 +1452,383 @@ test "a proper prefix needs every shared segment to agree" {
   // An empty prefix is a proper prefix of any non-empty path.
   assert_true(is_prefix([], [Key("a")]))
   assert_true(is_prefix([Key("a")], [Key("a"), Key("b")]))
+}
+
+///|
+priv struct SrReplayRun {
+  watcher : SemanticWatcher
+  events : Array[String]
+  result : FinalResult
+}
+
+///|
+fn sr_same_value(a : Json?, b : Json?) -> Bool {
+  match (a, b) {
+    (Some(x), Some(y)) => json_equal(x, y)
+    (None, None) => true
+    _ => false
+  }
+}
+
+///|
+fn sr_same_verdict(a : SchemaVerdict, b : SchemaVerdict) -> Unit raise {
+  assert_eq(a.ok, b.ok)
+  assert_eq(a.total, b.total)
+  assert_eq(a.satisfied, b.satisfied)
+  assert_eq(a.missing, b.missing)
+  assert_eq(a.mismatched.length(), b.mismatched.length())
+  for i = 0; i < a.mismatched.length(); i = i + 1 {
+    assert_eq(a.mismatched[i].path, b.mismatched[i].path)
+    assert_eq(a.mismatched[i].expected, b.mismatched[i].expected)
+    assert_eq(a.mismatched[i].got, b.mismatched[i].got)
+  }
+}
+
+///|
+/// Assert the observable value and verdict after *every* drain, not just the
+/// names of events. The parser's snapshot is an independent oracle here.
+fn sr_replay_run(
+  schema : Schema,
+  chunks : Array[String],
+  options : Options,
+) -> SrReplayRun raise {
+  let w = SemanticWatcher::new(schema, options~)
+  let events : Array[String] = []
+  for chunk in chunks {
+    w.feed(chunk)
+    let snapshot = w.parser.snapshot().value
+    assert_true(sr_same_value(w.value, snapshot), msg="replay after " + chunk)
+    let root = match snapshot {
+      Some(v) => v
+      None => Json::object(Map([]))
+    }
+    sr_same_verdict(w.verdict(), schema.evaluate(root))
+    for (event, at) in w.drain_events_at() {
+      events.push(event.to_json() + "@" + at.to_string())
+    }
+  }
+  let fin = w.finish()
+  assert_true(sr_same_value(w.value, Some(fin.value)), msg="final replay")
+  assert_true(sr_same_value(w.value, w.parser.snapshot().value))
+  sr_same_verdict(w.verdict(), schema.evaluate(fin.value))
+  for (event, at) in w.drain_events_at() {
+    events.push(event.to_json() + "@" + at.to_string())
+  }
+  { watcher: w, events, result: fin, }
+}
+
+///|
+fn sr_same_run(a : SrReplayRun, b : SrReplayRun) -> Unit raise {
+  assert_eq(a.events, b.events)
+  assert_true(json_equal(a.result.value, b.result.value))
+  sr_same_verdict(a.watcher.verdict(), b.watcher.verdict())
+  assert_eq(a.watcher.ready_standing(), b.watcher.ready_standing())
+  assert_eq(a.watcher.concluded(), b.watcher.concluded())
+  assert_eq(a.watcher.conflict(), b.watcher.conflict())
+  assert_eq(a.watcher.all_settled(), b.watcher.all_settled())
+  assert_eq(a.watcher.ready_count(), b.watcher.ready_count())
+  assert_eq(a.watcher.settled_at(), b.watcher.settled_at())
+  assert_eq(a.watcher.syntax_at(), b.watcher.syntax_at())
+  assert_eq(a.watcher.verdict_offset(), b.watcher.verdict_offset())
+}
+
+///|
+/// Whole input, every single cut (including empty chunks), every pair of cuts,
+/// code-unit chunks and reproducible many-cut chunkings must give the same
+/// stamped events and terminal state.
+fn sr_all_cuts(text : String, decl : String) -> SrReplayRun raise {
+  let schema = Schema::parse(decl)
+  let opts = Options::default()
+  let whole = sr_replay_run(schema, [text], opts)
+  for i = 0; i <= text.length(); i = i + 1 {
+    sr_same_run(
+      whole,
+      sr_replay_run(
+        schema,
+        [slice_units(text, 0, i), slice_units(text, i, text.length())],
+        opts,
+      ),
+    )
+    for j = i; j <= text.length(); j = j + 1 {
+      sr_same_run(
+        whole,
+        sr_replay_run(
+          schema,
+          [
+            slice_units(text, 0, i),
+            slice_units(text, i, j),
+            slice_units(text, j, text.length()),
+          ],
+          opts,
+        ),
+      )
+    }
+  }
+  let units : Array[String] = []
+  for i = 0; i < text.length(); i = i + 1 {
+    units.push(slice_units(text, i, i + 1))
+  }
+  sr_same_run(whole, sr_replay_run(schema, units, opts))
+  let rng = tc_lcg(20261124L)
+  for _i = 0; _i < 20; _i = _i + 1 {
+    sr_same_run(whole, sr_replay_run(schema, tc_chunks(rng, text, 10), opts))
+  }
+  whole
+}
+
+///|
+test "readiness replays the delta-time value for optional string constraints" {
+  for
+    (text, decl) in [
+      ("{\"a\":\"ok\",\"b\":\"long\"}", "{!a:string,?b:string(minLength:3)}"),
+      ("{\"b\":\"long\",\"a\":\"ok\"}", "{!a:string,?b:string(minLength:3)}"),
+      ("{\"a\":\"ok\",\"b\":\"ABC\"}", "{!a:string,?b:string(pattern:[A-Z])}"),
+      (
+        "{\"a\":{\"x\":\"ok\",\"b\":\"long\"}}", "{!a:{!x:string,?b:string(minLength:3)}}",
+      ),
+      (
+        "{\"a\":\"ok\",\"b\":{\"c\":\"long\"}}", "{!a:string,?b:{!c:string(minLength:3)}}",
+      ),
+      (
+        "{\"a\":\"ok\",\"b\":[\"long\"]}", "{!a:string,?b:[string(minLength:3)]}",
+      ),
+    ] {
+    let run = sr_all_cuts(text, decl)
+    assert_true(run.watcher.verdict().ok, msg=text)
+    assert_true(run.watcher.ready_standing(), msg=text)
+    assert_false(run.watcher.conflict(), msg=text)
+    assert_true(run.watcher.all_settled(), msg=text)
+    assert_eq(run.watcher.ready_count(), run.watcher.total_required())
+    assert_false(run.events.join(",").contains("root_invalid"), msg=text)
+  }
+  // The original two-chunk failure must remain executable after finish, not
+  // merely produce the same field event names as the unchunked run.
+  let schema = Schema::parse("{!a:string,?b:string(minLength:3)}")
+  let w = SemanticWatcher::new(schema)
+  w.feed("{\"a\":\"ok\",\"b\":\"l")
+  assert_eq(sr_names_of(w.drain_events()), "field_ready:a,root_ready:")
+  assert_false(w.verdict().ok)
+  assert_true(w.ready_standing())
+  w.feed("ong\"}")
+  assert_eq(w.drain_events().length(), 0)
+  let fin = w.finish()
+  assert_true(schema.evaluate(fin.value).ok)
+  assert_true(w.verdict().ok)
+  assert_true(w.ready_standing())
+  assert_eq(w.drain_events().length(), 0)
+}
+
+///|
+test "readiness settles empty final strings without rejecting growing optional strings" {
+  for text in ["{\"a\":\"\"}", "{\"a\":\""] {
+    let run = sr_all_cuts(text, "{!a:string(minLength:3)}")
+    assert_false(run.watcher.verdict().ok)
+    assert_false(run.watcher.ready_standing())
+    assert_true(run.watcher.all_settled())
+    assert_eq(run.watcher.ready_count(), 0)
+    assert_eq(run.events.length(), 2)
+    assert_true(run.events[0].contains("field_rejected"))
+    assert_true(run.events[1].contains("root_invalid"))
+  }
+  for
+    (text, decl) in [
+      ("{\"a\":\"\",\"b\":\"long\"}", "{!a:string,?b:string(minLength:3)}"),
+      ("{\"a\":\"ok\",\"b\":\"\"}", "{!a:string,?b:string(minLength:0)}"),
+      (
+        "{\"a\":{\"x\":\"\",\"b\":\"long\"}}", "{!a:{!x:string,?b:string(minLength:3)}}",
+      ),
+      ("{\"a\":\"\"}", "{!a:string}"),
+      ("{\"a\":\"", "{!a:string}"),
+    ] {
+    let run = sr_all_cuts(text, decl)
+    assert_true(run.watcher.verdict().ok, msg=text)
+    assert_true(run.watcher.ready_standing(), msg=text)
+    assert_true(run.watcher.all_settled(), msg=text)
+    assert_eq(run.watcher.ready_count(), run.watcher.total_required())
+    assert_false(run.events.join(",").contains("root_invalid"), msg=text)
+  }
+}
+
+///|
+test "readiness invalid optional endings revoke the standing ready event" {
+  for
+    (text, decl) in [
+      ("{\"a\":\"ok\",\"b\":\"x\"}", "{!a:string,?b:string(minLength:3)}"),
+      ("{\"a\":\"ok\",\"b\":\"\"}", "{!a:string,?b:string(minLength:3)}"),
+      ("{\"a\":\"ok\",\"b\":\"ab\"}", "{!a:string,?b:string(pattern:[A-Z])}"),
+      (
+        "{\"a\":{\"x\":\"ok\",\"b\":\"x\"}}", "{!a:{!x:string,?b:string(minLength:3)}}",
+      ),
+      (
+        "{\"a\":\"ok\",\"b\":{\"c\":\"x\"}}", "{!a:string,?b:{!c:string(minLength:3)}}",
+      ),
+      ("{\"a\":\"ok\",\"b\":\"x", "{!a:string,?b:string(minLength:3)}"),
+    ] {
+    let run = sr_all_cuts(text, decl)
+    assert_false(run.watcher.verdict().ok, msg=text)
+    assert_false(run.watcher.ready_standing(), msg=text)
+    assert_false(run.watcher.conflict(), msg=text)
+    assert_true(run.watcher.concluded(), msg=text)
+    assert_eq(run.events.length(), 3, msg=text)
+    assert_true(run.events[0].contains("field_ready"), msg=text)
+    assert_true(run.events[1].contains("root_ready"), msg=text)
+    assert_true(run.events[2].contains("root_invalid"), msg=text)
+  }
+}
+
+///|
+test "readiness replay keeps duplicate conflicts and finalized refusals fail closed" {
+  for
+    (text, decl, ok, conflict) in [
+      ("{\"a\":\"x\",\"a\":\"long\"}", "{!a:string(minLength:3)}", true, true),
+      ("{\"a\":\"long\",\"a\":\"x\"}", "{!a:string(minLength:3)}", false, true),
+      ("{\"a\":1,\"a\":2}", "{!a:integer}", true, true),
+      ("{\"a\":\"x\" + \"yz\"}", "{!a:string(minLength:3)}", true, false),
+      ("{\"a\":{\"x\":1},\"a\":{\"x\":2}}", "{!a:{!x:integer}}", true, true),
+      (
+        "{\"b\":\"x\",\"a\":\"ok\",\"b\":\"long\"}", "{!a:string,?b:string(minLength:3)}",
+        true, false,
+      ),
+    ] {
+    let run = sr_all_cuts(text, decl)
+    assert_eq(run.watcher.verdict().ok, ok, msg=text)
+    assert_eq(run.watcher.conflict(), conflict, msg=text)
+    assert_true(run.watcher.concluded(), msg=text)
+    // No terminal execution licence: either the refusal still stands or the
+    // caller must reject the conflict, even if KeepLast's final schema is OK.
+    assert_false(
+      run.watcher.ready_standing() && !run.watcher.conflict(),
+      msg=text,
+    )
+    if text == "{\"a\":\"x\",\"a\":\"long\"}" || !conflict {
+      assert_false(run.watcher.ready_standing(), msg=text)
+      assert_false(run.events.join(",").contains("root_ready"), msg=text)
+      assert_true(run.events.join(",").contains("root_invalid"), msg=text)
+    }
+  }
+}
+
+///|
+test "readiness duplicate invalid values revoke a prior ready event at every cut" {
+  for text in ["{\"a\":\"x\",\"a\":1}", "{\"a\":\"x\",\"a\":1"] {
+    let run = sr_all_cuts(text, "{!a:string}")
+    assert_false(run.watcher.verdict().ok, msg=text)
+    assert_false(run.watcher.ready_standing(), msg=text)
+    assert_true(run.watcher.conflict(), msg=text)
+    assert_eq(run.events.length(), 3, msg=text)
+    assert_true(run.events[0].contains("field_ready"), msg=text)
+    assert_true(run.events[1].contains("root_ready"), msg=text)
+    assert_true(run.events[2].contains("root_invalid"), msg=text)
+  }
+  let valid = sr_all_cuts("{\"a\":\"x\",\"a\":\"y\"}", "{!a:string}")
+  assert_true(valid.watcher.verdict().ok)
+  assert_true(valid.watcher.ready_standing())
+  assert_true(valid.watcher.conflict())
+  assert_eq(valid.events.length(), 2)
+}
+
+///|
+test "readiness replay agrees with the independent delta oracle on generated inputs" {
+  let rng = tc_lcg(98231L)
+  for text in tc_valid_docs(20261124L, 80) {
+    for (_name, opts) in dj_profiles() {
+      let _ = sr_replay_run(Any, tc_chunks(rng, text, 8), opts)
+    }
+  }
+  for
+    (text, decl) in [
+      ("42", "integer(minimum:0)"),
+      ("'ok'", "string(minLength:2)"),
+      ("\"\"", "string(minLength:0)"),
+      ("-1", "integer(minimum:0)"),
+    ] {
+    let schema = Schema::parse(decl)
+    let whole = sr_replay_run(schema, [text], Options::for_agent())
+    for i = 0; i <= text.length(); i = i + 1 {
+      sr_same_run(
+        whole,
+        sr_replay_run(
+          schema,
+          [slice_units(text, 0, i), slice_units(text, i, text.length())],
+          Options::for_agent(),
+        ),
+      )
+    }
+    assert_eq(whole.watcher.ready_standing(), whole.watcher.verdict().ok)
+  }
+  // An already completed scalar emits no further delta at finish.
+  let w = SemanticWatcher::new(Schema::parse("string(minLength:2)"))
+  w.feed("\"ok\"")
+  assert_eq(w.parser.drain_deltas().length(), 0)
+  assert_eq(w.drain_events().length(), 0)
+  let fin = w.finish()
+  assert_true(json_equal(w.value_at_root(), fin.value))
+  assert_true(w.ready_standing())
+  let events = w.drain_events_at()
+  assert_eq(events.length(), 1)
+  assert_true(events[0].0 is RootReady)
+  assert_eq(events[0].1, -1)
+}
+
+///|
+test "readiness replay owns its containers and traverses deep paths iteratively" {
+  assert_eq(readiness_child(Json::null(), Key("a")), None)
+  readiness_put(Json::null(), Key("a"), Json::string("ignored"))
+  let sparse = SemanticWatcher::new(Any)
+  sparse.replay({
+    path: [Key("a")],
+    op: AppendText,
+    value: None,
+    text: "x",
+    at: 0,
+  })
+  assert_eq(lookup_path(sparse.value_at_root(), "a"), Some(Json::string("x")))
+  sparse.replay({ path: [Key("a")], op: Set, value: None, text: "", at: 0, })
+  assert_eq(lookup_path(sparse.value_at_root(), "a"), Some(Json::string("x")))
+  let w = SemanticWatcher::new(Any)
+  w.feed("{\"a\":{\"s\":\"x\"}}")
+  let original = copy_json(w.parser.snapshot().value.unwrap())
+  // The root Close carried the parser's object. Extending a nested replay slot
+  // must not change either that payload or a later parser snapshot/final value.
+  w.replay({
+    path: [Key("a"), Key("s")],
+    op: AppendText,
+    value: None,
+    text: "y",
+    at: 0,
+  })
+  assert_true(json_equal(w.parser.snapshot().value.unwrap(), original))
+  assert_eq(lookup_path(w.value_at_root(), "a.s"), Some(Json::string("xy")))
+  let fin = w.finish()
+  assert_true(json_equal(fin.value, original))
+  assert_true(json_equal(w.value_at_root(), original))
+
+  let deep = SemanticWatcher::new(Any)
+  let path : Array[PathSegment] = []
+  for _i = 0; _i < 4096; _i = _i + 1 {
+    path.push(Index(0))
+  }
+  deep.replay({
+    path,
+    op: Set,
+    value: Some(Json::string("x")),
+    text: "",
+    at: 0,
+  })
+  let mut leaf = deep.value_at_root()
+  for seg in path {
+    leaf = readiness_child(leaf, seg).unwrap()
+  }
+  assert_eq(leaf, Json::string("x"))
+  let payload = deep.value_at_root()
+  deep.replay({ path: [], op: Close, value: Some(payload), text: "", at: 0, })
+  deep.replay({ path, op: AppendText, value: None, text: "y", at: 0, })
+  let mut before = payload
+  let mut after = deep.value_at_root()
+  for seg in path {
+    before = readiness_child(before, seg).unwrap()
+    after = readiness_child(after, seg).unwrap()
+  }
+  assert_eq(before, Json::string("x"))
+  assert_eq(after, Json::string("xy"))
 }

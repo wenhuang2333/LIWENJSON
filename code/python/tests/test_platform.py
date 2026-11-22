@@ -22,6 +22,7 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
+from liwenjson import mcp
 from liwenjson.client import _not_found_message, _platform_key, find_binary
 
 # The platform keys the wheel ships. Kept next to the assertions rather than
@@ -151,6 +152,49 @@ class BundledBinaryTests(unittest.TestCase):
         self.assertIn("macos-arm64", message)
         # "Reinstall" is the wrong advice when the platform has no binary at all.
         self.assertNotIn("Reinstall", message)
+
+
+class LauncherTests(unittest.TestCase):
+    def test_cli_forwards_arguments_without_inserting_mcp(self) -> None:
+        binary = os.path.abspath("native engine")
+        with mock.patch.object(mcp, "find_binary", return_value=binary), mock.patch.object(
+            sys, "argv", [os.path.abspath("python launcher"), "repair", "--profile=agent"]
+        ), mock.patch.object(mcp.os, "execv") as execute:
+            mcp.cli_main()
+        execute.assert_called_once_with(binary, [binary, "repair", "--profile=agent"])
+
+    def test_mcp_entry_point_keeps_its_subcommand(self) -> None:
+        binary = os.path.abspath("native engine")
+        with mock.patch.object(mcp, "find_binary", return_value=binary), mock.patch.object(
+            sys, "argv", [os.path.abspath("python launcher"), "--print-config=json"]
+        ), mock.patch.object(mcp.os, "execv") as execute:
+            mcp.main()
+        execute.assert_called_once_with(binary, [binary, "mcp", "--print-config=json"])
+
+    def test_both_launchers_resolve_the_bundle_instead_of_recursing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            module = root / "site-packages" / "liwenjson" / "mcp.py"
+            engine = module.parent / "bin" / "linux-x86_64" / "liwenjson"
+            engine.parent.mkdir(parents=True)
+            engine.write_bytes(b"native engine")
+            for launcher_name in ("liwenjson", "liwenjson-mcp", "liwenjson.exe", "liwenjson-mcp.exe"):
+                with self.subTest(launcher=launcher_name), mock.patch.object(
+                    mcp, "__file__", str(module)
+                ), mock.patch.object(mcp, "_platform_key", return_value="linux-x86_64"), mock.patch.object(
+                    mcp, "find_binary", return_value=str(root / "Scripts" / "liwenjson.exe")
+                ), mock.patch.object(sys, "argv", [str(root / "Scripts" / launcher_name)]):
+                    self.assertEqual(Path(mcp._engine_binary()), engine.resolve())
+
+    def test_engine_less_launcher_fails_instead_of_execing_itself(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            launcher = str(Path(tmp) / "bin" / "liwenjson")
+            with mock.patch.object(mcp, "__file__", str(Path(tmp) / "liwenjson" / "mcp.py")), mock.patch.object(
+                mcp, "find_binary", return_value=launcher
+            ), mock.patch.object(sys, "argv", [launcher]), mock.patch.object(mcp.os, "execv") as execute:
+                with self.assertRaisesRegex(FileNotFoundError, "no bundled engine"):
+                    mcp.cli_main()
+            execute.assert_not_called()
 
 
 class WheelShapeTests(unittest.TestCase):

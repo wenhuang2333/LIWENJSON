@@ -2,7 +2,7 @@
 // Module manifest for the MoonBit toolchain.
 name = "zhanshishan/liwenjson"
 
-version = "1.5.2"
+version = "1.5.3"
 
 readme = "README.md"
 

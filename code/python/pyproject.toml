@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "liwenjson"
-version = "1.5.2"
+version = "1.5.3"
 description = "The local execution gate for LLM output: an MCP server and streaming JSON repair, powered by the MoonBit engine."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -54,6 +54,7 @@ Issues = "https://github.com/wenhuang2333/LIWENJSON/issues"
 Changelog = "https://github.com/wenhuang2333/LIWENJSON/blob/main/code/CHANGELOG.md"
 
 [project.scripts]
+liwenjson = "liwenjson.mcp:cli_main"
 liwenjson-mcp = "liwenjson.mcp:main"
 liwenjson-http = "liwenjson.http:main"
 

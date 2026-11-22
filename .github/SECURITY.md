@@ -51,9 +51,9 @@ or damaged input can make the parser do, not about authentication.
   records that history and what is still open.
 - **No code execution, no I/O.** Repair is pure text transformation. There is no
   `eval`, no dynamic loading, and the library never opens files or sockets.
-- **Log injection is not possible through messages.** Repair messages are fixed
-  English templates; they never interpolate input text. Error messages embed
-  positions and codes only.
+- **Repair messages use fixed English templates.** They never interpolate input
+  text. Schema diagnostics and retry prompts can contain user-provided names or
+  input excerpts; escape them for the destination when writing logs or HTML.
 - **No third-party runtime dependencies.** The only dependency is the MoonBit
   standard library. `jsonrepair` and `json-repair` are used exclusively as
   out-of-process test oracles and are never linked into the product.
@@ -87,13 +87,21 @@ know that `{"amount": 100}` should have been `1000`.
 ## Known limits
 
 - The parser is **not thread-safe**: one `PartialParser` per stream.
-- `snapshot()` copies the current tree; calling it per byte on a large document
-  is O(tree) per call and can be used for a denial of service by the *caller*.
-  Poll at a sane rate (the benchmark measures 1 KB and 64 KB intervals).
-- The CLI reads the whole input into memory and builds a tree, so peak usage is a
-  multiple of the input size (measured by `tests/memory_gate.py`; the full report is
-  in `docs/MEMORY.md`, maintained in the repository and not published); do not point it
-  at an unbounded stream.
+- `snapshot_copy()` deep-copies the current tree; polling it per byte costs
+  O(tree) per call. `snapshot()` may share cached structure and must be treated
+  as immutable. Poll at a sane rate (benchmarks use 1 KB and 64 KB intervals).
+- One-shot CLI commands buffer input within `max_input_len` and build a tree,
+  so peak usage is a multiple of the input size (`tests/memory_gate.py`,
+  `docs/MEMORY.md`). Input accumulation is bounded before EOF; an idle stream
+  can still wait indefinitely because the CLI does not impose a read timeout.
+- The Python HTTP facade is for local integrations, not an Internet-facing
+  application server. Put TLS, authentication and connection/header limits in
+  a reverse proxy before exposing it beyond loopback. Its worker limit bounds
+  engine processes, not idle HTTP connections.
+- Execution values must remain representable in the host language. The npm and
+  Python wrappers refuse values whose numeric conversion changes
+  the exact JSON number, with no automatic business-action retry. Raw MCP and
+  `serve` responses retain numeric text; other hosts must preserve it themselves.
 - Lone surrogates and invalid UTF-8 are replaced rather than rejected in some
   paths; the `E040` code only covers byte-level decoding failures.
 

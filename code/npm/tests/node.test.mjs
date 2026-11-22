@@ -6,7 +6,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
+import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -181,6 +183,66 @@ test("the MCP launcher exposes the local server without touching stdout", () => 
   assert.equal(r.stderr, "");
 });
 
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  test(`the MCP launcher forwards ${signal} after a real handshake and reaps the server`, {
+    skip: process.platform === "win32" ? "POSIX signal lifecycle" : false,
+    timeout: 10000,
+  }, async (t) => {
+    const binary = resolve(here, "..", "..", "_build", "native", "release", "build", "cmd", "liwenjson", "liwenjson.exe");
+    const launcher = spawn(process.execPath, [resolve(here, "..", "mcp.cjs")], {
+      env: { ...process.env, LIWENJSON_BIN: binary },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let serverPid;
+    let stderr = "";
+    launcher.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; });
+    const lines = createInterface({ input: launcher.stdout });
+    t.after(() => {
+      lines.close();
+      // Even a broken handshake must not leave the server running after this
+      // test times out; discover owned children before stopping the launcher.
+      const processes = spawnSync("ps", ["-ax", "-o", "pid=,ppid="], { encoding: "utf8" });
+      const owned = (processes.stdout || "").trim().split("\n")
+        .map((row) => row.trim().split(/\s+/).map(Number))
+        .filter(([, parent]) => parent === launcher.pid).map(([pid]) => pid);
+      for (const pid of new Set([...owned, ...(serverPid ? [serverPid] : [])])) {
+        try { process.kill(pid, "SIGKILL"); } catch {}
+      }
+      if (launcher.exitCode === null && launcher.signalCode === null) launcher.kill("SIGKILL");
+      launcher.stdin.destroy();
+      launcher.stdout.destroy();
+      launcher.stderr.destroy();
+    });
+    const closed = once(launcher, "close", { signal: t.signal });
+    closed.catch(() => {}); // The handshake may time out before close is awaited.
+    const response = once(lines, "line", { signal: t.signal });
+    launcher.stdin.write(`${JSON.stringify({
+      jsonrpc: "2.0", id: 1, method: "initialize",
+      params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "npm-lifecycle-test", version: "1" } },
+    })}\n`);
+    const [line] = await response;
+    const handshake = JSON.parse(line);
+    assert.equal(handshake.id, 1);
+    assert.ok(handshake.result.serverInfo);
+    launcher.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n');
+
+    const processes = spawnSync("ps", ["-ax", "-o", "pid=,ppid="], { encoding: "utf8" });
+    assert.equal(processes.status, 0);
+    const servers = processes.stdout.trim().split("\n")
+      .map((row) => row.trim().split(/\s+/).map(Number))
+      .filter(([, parent]) => parent === launcher.pid);
+    assert.equal(servers.length, 1, "the launcher owns one native MCP server");
+    serverPid = servers[0][0];
+    // Keep stdin open and signal only the launcher, never the process group.
+    assert.equal(launcher.kill(signal), true);
+    const [code, exitSignal] = await closed;
+    assert.ok(exitSignal === signal || code === (signal === "SIGINT" ? 130 : 143));
+    assert.throws(() => process.kill(serverPid, 0), { code: "ESRCH" }, "the native server must not outlive its launcher");
+    serverPid = undefined;
+    assert.equal(stderr, "");
+  });
+}
+
 test("the package reports the engine version", () => {
   // Read from `code/moon.mod` rather than pinning a literal: the version is
   // hardcoded in the MoonBit sources, so a pinned literal goes red on every
@@ -261,6 +323,71 @@ test("repair honours a declaration instead of ignoring it", () => {
     }),
     '{"a":"x"}',
   );
+});
+
+for (const number of [
+  "9007199254740993", "-9007199254740993",
+  "0.10000000000000001", "1.0000000000000001",
+  "1e400", "-1e400", "1e-400", "-1e-400",
+]) {
+  test(`host number conversion never yields an executable changed value (${number})`, () => {
+    for (const input of [number, `{"amount":[${number}]}`]) {
+      for (const decide of [analyze, gate]) {
+        for (const options of [{}, { profile: "permissive", schemaJson: {} }]) {
+          const plan = decide(input, options);
+          assert.equal(plan.executable, false, input);
+          assert.equal(plan.execution, "blocked");
+          assert.equal(plan.decision, "invalid");
+          assert.doesNotMatch(plan.label, /PASSED|SAFE/);
+          assert.equal(plan.value, null);
+          assert.equal(plan.text, input, "the engine text remains exact");
+          assert.equal(plan.error.code, "E070");
+          assert.equal(plan.refusal.kind, "host_declaration");
+          assert.equal(plan.refusal.auto_retry, false);
+          assert.match(plan.retry.prompt, /Do not automatically retry/);
+          assert.equal(plan.business_authorized, false);
+        }
+      }
+    }
+    assert.equal(repair(number, { profile: "agent" }), number);
+    assert.equal(repair(number, { profile: "agent", schema: "number" }), number);
+    assert.equal(repair(number, { schemaJson: `{"const":${number}}` }), number);
+    assert.equal(repair(`{'amount':${number},}`, {
+      schemaJson: { type: "object", properties: { amount: { type: "number" } }, required: ["amount"] },
+    }), `{"amount":${number}}`);
+    assert.equal(repairResult(number).executable, false);
+    const refused = analyze(`{"amount":${number},"words":["a" "b"]}`, { profile: "permissive" });
+    assert.equal(refused.executable, false);
+    assert.equal(refused.value, null);
+    assert.equal(refused.error.code, "E070");
+    assert.equal(refused.refusal.auto_retry, false);
+  });
+}
+
+test("host equality accepts ordinary numbers and equivalent decimal spellings", () => {
+  for (const number of ["1", "0.1", "1.0", "1e0", "1e+0", "0.10", "10e-2", "100e-3", "-0", "0e400", "9007199254740992", "1e300", "1e-300", "5e-324"]) {
+    for (const decide of [analyze, gate]) {
+      const plan = decide(`{"amount":[${number}]}`);
+      assert.equal(plan.executable, true, number);
+      assert.deepEqual(plan.value, { amount: [JSON.parse(number)] });
+      assert.equal(plan.refusal, null);
+    }
+  }
+  for (const number of ["1.0", "1e0", "10e-2", "100e-3"]) {
+    const plan = gate(number, { schemaJson: { const: JSON.parse(number) } });
+    assert.equal(plan.executable, true, number);
+  }
+});
+
+test("agent web options skip prose without changing execution or strict defaults", () => {
+  const input = 'Here are the arguments: {"a":1}';
+  const accepted = gate(input);
+  assert.equal(accepted.executable, true);
+  assert.deepEqual(accepted.value, { a: 1 });
+  assert.equal(gate(input, { schemaJson: { const: { a: 1 } } }).executable, true);
+  assert.equal(repair(input, { profile: "agent" }), '{"a":1}');
+  assert.equal(gate(input, { profile: "execution" }).executable, false);
+  assert.equal(gate(input, { profile: "strict" }).executable, false);
 });
 
 test("a refusal says whether an automatic retry is safe", () => {

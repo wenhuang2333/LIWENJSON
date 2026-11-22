@@ -510,3 +510,127 @@ test "TC-GATE-29 a contradiction is refused on both declaration surfaces" {
   assert_true(code.contains("E070"), msg=code)
   assert_true(code.contains("json schema:"), msg=code)
 }
+
+///|
+test "TC-GATE-30 numeric enum and const do not compare rounded Doubles" {
+  for opts in [Options::for_agent(), Options::for_execution()] {
+    for keyword in ["\"enum\":[1]", "\"const\":1"] {
+      let schema = Schema::parse_json_schema(
+        "{\"type\":\"number\"," + keyword + "}",
+      )
+      let bad = analyze("0.99999999999999999999", options=opts, schema~)
+      assert_false(bad.is_executable())
+      assert_eq(bad.error_code, "E070")
+      assert_true(bad.value is None)
+      for text in ["1", "1.0", "1e0", "10e-1"] {
+        assert_true(
+          analyze(text, options=opts, schema~).is_executable(),
+          msg=text,
+        )
+      }
+    }
+    let zero = Schema::parse_json_schema("{\"type\":\"number\",\"enum\":[0]}")
+    assert_false(analyze("1e-400", options=opts, schema=zero).is_executable())
+    let nested = Schema::parse_json_schema(
+      "{\"type\":\"object\",\"const\":{\"n\":1}}",
+    )
+    assert_false(
+      analyze("{\"n\":0.99999999999999999999}", options=opts, schema=nested).is_executable(),
+    )
+    assert_true(
+      analyze("{\"n\":1e0}", options=opts, schema=nested).is_executable(),
+    )
+  }
+  // Precision must survive declaration parsing as well as value parsing.
+  for
+    schema in [
+      Schema::parse_json_schema(
+        "{\"type\":\"number\",\"enum\":[0.99999999999999999999]}",
+      ),
+      Schema::parse("number(enum:[0.99999999999999999999])"),
+    ] {
+    for opts in [Options::for_agent(), Options::for_execution()] {
+      assert_false(analyze("1", options=opts, schema~).is_executable())
+      assert_true(
+        analyze("0.99999999999999999999", options=opts, schema~).is_executable(),
+      )
+    }
+  }
+  assert_eq(
+    gate_code(
+      "{\"type\":\"number\",\"const\":1,\"enum\":[0.99999999999999999999]}",
+    ),
+    "E070",
+  )
+}
+
+///|
+test "TC-GATE-31 huge exponents fail closed for bounds and integer kind" {
+  let bounded = Schema::parse_json_schema("{\"type\":\"number\",\"minimum\":0}")
+  let integer = Schema::parse_json_schema("{\"type\":\"integer\"}")
+  for opts in [Options::for_agent(), Options::for_execution()] {
+    for text in ["-1e-9999999999", "1e-9999999999", "1e9999999999"] {
+      for schema in [bounded, integer] {
+        let plan = analyze(text, options=opts, schema~)
+        assert_false(plan.is_executable(), msg=text)
+        assert_eq(plan.error_code, "E070", msg=text)
+        assert_true(plan.value is None, msg=text)
+      }
+    }
+    assert_false(
+      analyze("-1e-400", options=opts, schema=bounded).is_executable(),
+    )
+    assert_false(
+      analyze("1e-400", options=opts, schema=integer).is_executable(),
+    )
+    assert_true(analyze("1e400", options=opts, schema=integer).is_executable())
+  }
+  for text in ["1e-9999999999", "-1e-9999999999"] {
+    assert_eq(
+      gate_code("{\"type\":\"number\",\"minimum\":" + text + "}"),
+      "E070",
+    )
+  }
+}
+
+///|
+test "TC-GATE-32 a closed required-only member makes the declaration impossible" {
+  for
+    decl in [
+      "{\"type\":\"object\",\"required\":[\"x\"],\"additionalProperties\":false}",
+      "{\"type\":\"object\",\"properties\":{},\"required\":[\"x\"],\"additionalProperties\":false}",
+      "{\"type\":\"object\",\"properties\":{\"a\":{}},\"required\":[\"a\",\"x\"],\"additionalProperties\":false}",
+      "{\"additionalProperties\":false,\"required\":[\"x\"]}", "{\"type\":\"array\",\"items\":{\"type\":\"object\",\"required\":[\"x\"],\"additionalProperties\":false}}",
+    ] {
+    assert_eq(gate_code(decl), "E070", msg=decl)
+  }
+  for suffix in ["", ",\"additionalProperties\":true"] {
+    let open = Schema::parse_json_schema(
+      "{\"type\":\"object\",\"required\":[\"x\"]" + suffix + "}",
+    )
+    for opts in [Options::for_agent(), Options::for_execution()] {
+      assert_true(
+        analyze("{\"x\":null,\"other\":1}", options=opts, schema=open).is_executable(),
+      )
+      assert_false(analyze("{}", options=opts, schema=open).is_executable())
+    }
+  }
+  let closed = Schema::parse_json_schema(
+    "{\"type\":\"object\",\"properties\":{\"x\":{}},\"required\":[\"x\"],\"additionalProperties\":false}",
+  )
+  let empty = Schema::parse_json_schema(
+    "{\"type\":\"object\",\"required\":[],\"additionalProperties\":false}",
+  )
+  for opts in [Options::for_agent(), Options::for_execution()] {
+    assert_true(
+      analyze("{\"x\":null}", options=opts, schema=closed).is_executable(),
+    )
+    assert_false(
+      analyze("{\"x\":null,\"other\":1}", options=opts, schema=closed).is_executable(),
+    )
+    assert_true(analyze("{}", options=opts, schema=empty).is_executable())
+    assert_false(
+      analyze("{\"x\":null}", options=opts, schema=empty).is_executable(),
+    )
+  }
+}

@@ -269,12 +269,10 @@ priv struct WatchedPath {
 ///
 ///   * *which duplicate wins*: observations are made under `KeepLast`, so a
 ///     value that was dropped is never invented. Which value a followed path is
-///     judged against is the value the tree holds **when the delta is drained**,
-///     and that is the whole subtlety: fed incrementally (the normal case, and
-///     what the batch helpers do) the first value of a repeated name is judged
-///     as soon as it is final, and the later duplicate arrives as `conflict()`
-///     rather than as a retraction; fed as one chunk, every delta is drained
-///     after the tree is complete, so the path is judged against the last value.
+///     judged against is the value obtained by replaying through that delta,
+///     not the parser's chunk-end snapshot. The first value of a repeated name
+///     is judged as soon as it is final, and the later duplicate arrives as
+///     `conflict()` rather than as a retraction, regardless of the chunking.
 ///     `verdict()` after `finish()` is the `KeepLast` verdict either way, i.e.
 ///     `Schema::evaluate(parse(input).value)` under the rewritten options. A
 ///     caller who asked for `KeepFirst` must take the verdict from
@@ -295,6 +293,10 @@ priv struct WatchedPath {
 ///     parser raises on), not a readiness measurement.
 pub struct SemanticWatcher {
   priv parser : PartialParser
+  /// Private replay, advanced before judging each delta. Parser snapshots are
+  /// already at the end of the fed chunk and cannot describe an earlier delta.
+  /// Containers in this tree never alias parser or delta payload containers.
+  priv mut value : Json?
   priv schema : Schema
   priv watched : Array[WatchedPath]
   /// Whether the declaration constrains a container's *whole* value
@@ -404,6 +406,7 @@ pub fn SemanticWatcher::new(
     settled.push(false)
   }
   {
+    value: parser.snapshot().value.map(copy_json),
     parser,
     schema,
     watched,
@@ -530,8 +533,90 @@ fn SemanticWatcher::emit(self : SemanticWatcher, e : ReadinessEvent) -> Unit {
 }
 
 ///|
+/// Child lookup for replay: path segments retain their key/index distinction.
+fn readiness_child(v : Json, seg : PathSegment) -> Json? {
+  match (v, seg) {
+    (Json::Object(m), Key(k)) => m.get(k)
+    (Json::Array(a), Index(i)) =>
+      if i >= 0 && i < a.length() {
+        Some(a[i])
+      } else {
+        None
+      }
+    _ => None
+  }
+}
+
+///|
+fn readiness_put(v : Json, seg : PathSegment, child : Json) -> Unit {
+  match (v, seg) {
+    (Json::Object(m), Key(k)) => m[k] = child
+    (Json::Array(a), Index(i)) =>
+      if i >= 0 {
+        while a.length() <= i {
+          a.push(Json::null())
+        }
+        a[i] = child
+      }
+    _ => ()
+  }
+}
+
+///|
+fn readiness_container(seg : PathSegment) -> Json {
+  match seg {
+    Key(_) => Json::object(Map([]))
+    Index(_) => Json::array([])
+  }
+}
+
+///|
+/// Apply the delta contract without a recursive path walk. Parents are private
+/// reference containers, so attaching an empty child before filling it needs
+/// neither a recursive rebuild nor a copy of the entire accumulated tree.
+fn SemanticWatcher::replay(self : SemanticWatcher, d : Delta) -> Unit {
+  let mut parent : Json? = None
+  let mut current = self.value
+  for i = 0; i < d.path.length(); i = i + 1 {
+    let node = match current {
+      Some(v) => v
+      None => readiness_container(d.path[i])
+    }
+    match parent {
+      Some(p) => readiness_put(p, d.path[i - 1], node)
+      None => self.value = Some(node)
+    }
+    parent = Some(node)
+    current = readiness_child(node, d.path[i])
+  }
+  let replacement = match d.op {
+    // Even Close payloads may share containers with the engine. A subsequent
+    // Set/AppendText must never mutate those containers through our replay.
+    Set | Close => d.value.map(copy_json)
+    AppendText =>
+      Some(
+        Json::string(
+          match current {
+            Some(Json::String(s)) => s + d.text
+            _ => d.text
+          },
+        ),
+      )
+  }
+  match parent {
+    None => self.value = replacement
+    Some(p) =>
+      match replacement {
+        Some(v) => readiness_put(p, d.path[d.path.length() - 1], v)
+        None => ()
+      }
+  }
+}
+
+///|
 /// Consume one delta.
 fn SemanticWatcher::on_delta(self : SemanticWatcher, d : Delta) -> Unit {
+  self.replay(d)
   // `Delta.at` is the input offset the delta was produced at, and it does not
   // depend on how the caller split the stream (`api.mbt`). Positions are taken
   // from it rather than from `self.bytes`, which is the *end of the chunk* and
@@ -619,13 +704,17 @@ fn SemanticWatcher::on_delta(self : SemanticWatcher, d : Delta) -> Unit {
   // after that verdict can still contradict it: `{"a":"ok",` says
   // `RootReady`, `"b":"bad"}` makes that promise false, and the refusal has to
   // be published at the offset where it became true (audit 3.3).
-  if self.conflict {
-    return
-  }
   if root_closed {
     self.checked = true
-    self.decide()
-  } else if !self.concluded &&
+    if self.conflict {
+      if !self.verdict().ok {
+        self.conclude_invalid()
+      }
+    } else {
+      self.decide()
+    }
+  } else if !self.conflict &&
+    !self.concluded &&
     !self.checked &&
     self.all_settled() &&
     self.watched.length() > 0 &&
@@ -742,9 +831,10 @@ fn SemanticWatcher::decide(self : SemanticWatcher) -> Unit {
 }
 
 ///|
-/// The value as it stands: the aggregate is judged on the parser's snapshot.
+/// The value through the current delta, or through the complete drain when
+/// called from the public observation methods.
 fn SemanticWatcher::value_at_root(self : SemanticWatcher) -> Json {
-  match self.parser.snapshot().value {
+  match self.value {
     Some(root) => root
     None => Json::object(Map([]))
   }
@@ -940,6 +1030,10 @@ pub fn SemanticWatcher::finish(
   }
   self.in_finish = false
   self.cur_at = -1
+  // Finish is authoritative even when it emits no delta (including a scalar
+  // recovered by the skip-prose retry). Only this genuinely final value may
+  // replace the replay before settling remaining paths and deciding the root.
+  self.value = Some(copy_json(fin.value))
   for i = 0; i < self.watched.length(); i = i + 1 {
     if !self.settled[i] {
       self.settle(i)
@@ -960,6 +1054,8 @@ pub fn SemanticWatcher::finish(
   if !self.conflict {
     self.checked = true
     self.decide()
+  } else if !self.verdict().ok {
+    self.conclude_invalid()
   }
   if !self.concluded {
     self.conclude_invalid()

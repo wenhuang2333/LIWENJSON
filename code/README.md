@@ -12,12 +12,12 @@ question for host-side callers (`serve`, npm, pip, HTTP).
 | | |
 | --- | --- |
 | Module | `zhanshishan/liwenjson` |
-| Version | 1.5.2 |
+| Version | 1.5.3 |
 | License | Apache-2.0 |
 | MCP server | `liwenjson mcp`, also `liwenjson-mcp`; JSON-RPC 2.0 over stdio, protocol `2025-06-18` (`2025-03-26` and `2024-11-05` accepted) |
 | Backends | wasm-gc, native, JS, wasm — one test suite, all four |
-| Registry | [`mooncakes.io zhanshishan/liwenjson`](https://mooncakes.io/docs/zhanshishan/liwenjson) — **`0.14.0` (the 1.5.2 correspondence) was published on 2026-11-20**; pull it back with `moon add zhanshishan/liwenjson`, the package reports `VERSION=1.5.2` / `REGISTRY_VERSION=0.14.0`. Earlier releases live under the pre-rename module names, because the registry cannot rename a module: 0.13.0 (1.5.1) on 2026-10-29, 0.12.0 (1.5.0) on 2026-10-28 and 0.11.0 (1.4.0) on 2026-10-27 as `zhanshishan/interjson`, everything earlier as `zhanshishan/jsonmend`. Both pre-rename modules were deprecated on 2026-11-20 with this name in the reason, so `moon add zhanshishan/interjson` warns and points here |
-| Prebuilt binaries | The GitHub release `v1.5.2` (and `v1.5.1` before it): four binaries across three operating systems (`linux-x86_64`, `linux-arm64`, `macos-arm64`, `windows-x86_64.exe`), the wasm probe, the browser bundle, `SHA256SUMS` and the `liwenjson-install.sh` one-command installer. There is **no Intel macOS build** — the MoonBit toolchain publishes no `darwin-x86_64` target. `v1.5.2` publishes the `liwenjson-*` names; `v1.4.0`–`v1.5.1` carry `interjson-*` assets, `v1.3.0` and earlier `jsonmend-*` |
+| Registry | [`mooncakes.io zhanshishan/liwenjson`](https://mooncakes.io/docs/zhanshishan/liwenjson) — **this package is `0.15.0`, the 1.5.3 correspondence**; the previous `0.14.0` (1.5.2) went up on 2026-11-20. Pull it back with `moon add zhanshishan/liwenjson`, the package reports `VERSION=1.5.3` / `REGISTRY_VERSION=0.15.0`. Earlier releases live under the pre-rename module names, because the registry cannot rename a module: 0.13.0 (1.5.1) on 2026-10-29, 0.12.0 (1.5.0) on 2026-10-28 and 0.11.0 (1.4.0) on 2026-10-27 as `zhanshishan/interjson`, everything earlier as `zhanshishan/jsonmend`. Both pre-rename modules were deprecated on 2026-11-20 with this name in the reason, so `moon add zhanshishan/interjson` warns and points here |
+| Prebuilt binaries | The GitHub release `v1.5.3` (and `v1.5.2` before it): four binaries across three operating systems (`linux-x86_64`, `linux-arm64`, `macos-arm64`, `windows-x86_64.exe`), the wasm probe, the browser bundle, `SHA256SUMS` and the `liwenjson-install.sh` one-command installer. There is **no Intel macOS build** — the MoonBit toolchain publishes no `darwin-x86_64` target. `v1.5.2` and later publish the `liwenjson-*` names; `v1.4.0`–`v1.5.1` carry `interjson-*` assets, `v1.3.0` and earlier `jsonmend-*` |
 | Docs | [`docs/MCP.md`](docs/MCP.md) (deployment), [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) (host-side recipes), [`docs/SPEC.md`](docs/SPEC.md) (the normative contract), [../README.md](../README.md) (project front page) |
 
 This page is the package page for mooncakes.io and the **API reference**: the
@@ -413,7 +413,7 @@ Flags:
 | `--chunk N` | Feed the input in N-code-unit chunks (≤1048576) to exercise the streaming path. |
 | `--batch` | Read `{"id","input"}` objects line by line and write one result object per line. |
 | `-h`, `--help` | Show help. |
-| `--version` | Show the version (`liwenjson 1.5.2`). |
+| `--version` | Show the version (`liwenjson 1.5.3`). |
 | file, or `-` | Read a file; `-` or an omitted argument reads standard input. |
 
 `--indent=N`, `--multi-root=MODE`, and `--max-repairs=N` are accepted as
@@ -457,7 +457,7 @@ python3 tests/eval/run_eval.py --cli ./_build/native/release/build/cmd/liwenjson
 moon run examples/agent_loop --target native --release
 ```
 
-Cross-backend results are identical: **362/362** tests pass on each of wasm-gc,
+Cross-backend results are identical: **384/384** tests pass on each of wasm-gc,
 native, JS and wasm. `.github/workflows/ci.yml` runs the same commands on every
 push, so the numbers are re-derived rather than trusted. The commands above are
 the reproduction path; the figures they produce are in the [repository front

@@ -166,6 +166,14 @@ if (ij.version !== '$NPM_VERSION') { throw new Error('version mismatch'); }
 if (plan.executable !== false) { throw new Error('the gate accepted a lossy merge'); }
 if (!plan.retry || !plan.retry.prompt) { throw new Error('a refusal carries no prompt'); }
 if (ij.repair(\"{'a':1,}\") !== '{\"a\":1}') { throw new Error('repair is wrong'); }
+for (const number of ['1e400', '1e-400', '0.99999999999999999999', '9007199254740993']) {
+  const numeric = ij.analyze('{\"amount\":' + number + ',\"words\":[\"a\" \"b\"]}', {profile: 'permissive'});
+  if (numeric.executable || numeric.value !== null || numeric.error.code !== 'E070' || numeric.refusal.auto_retry) {
+    throw new Error('the installed package exposed a changed host number');
+  }
+}
+const exact = ij.gate('{\"amount\":0.1}');
+if (!exact.executable || exact.value.amount !== 0.1) { throw new Error('an exact number was refused'); }
 " >/dev/null 2>&1; then
   fail "the installed npm package does not behave as documented"
 fi
@@ -180,26 +188,73 @@ if [ -n "${WHEEL:-}" ]; then
   echo "installing the Python wheel into an empty virtualenv..."
   python3 -m venv "$TMP/pyenv" >/dev/null 2>&1
   if "$TMP/pyenv/bin/pip" install --no-index --no-deps -q "$WHEEL" >/dev/null 2>&1; then
-    if ! env -u LIWENJSON_BIN PATH="$TMP/pyenv/bin:/usr/bin:/bin" \
-      "$TMP/pyenv/bin/python" - "$PY_VERSION" <<'PY' >/dev/null 2>&1
+    if ! env -u LIWENJSON_BIN -u PYTHONPATH -u PYTHONHOME PATH="$TMP/pyenv/bin:/usr/bin:/bin" \
+      "$TMP/pyenv/bin/python" - "$PY_VERSION" <<'PY'
+import json
+import os
+import shutil
+import subprocess
 import sys
+from pathlib import Path
 from liwenjson import Client, __version__, find_binary
 
+assert "LIWENJSON_BIN" not in os.environ
 assert __version__ == sys.argv[1], f"version {__version__} != {sys.argv[1]}"
+command = shutil.which("liwenjson")
+assert command, "the wheel did not install the liwenjson CLI"
+assert Path(command).parent.resolve() == Path(sys.executable).parent.resolve(), command
 binary = find_binary()
-assert "site-packages" in binary, f"did not use the bundled engine: {binary}"
+assert binary == command or "site-packages" in binary, f"external engine: {binary}"
 with Client() as jm:
     result = jm.repair("{'a':1,}")
     assert result["text"] == '{"a":1}', result["text"]
     plan = jm.analyze('{"a":1,"a":2}', profile="agent")
     assert plan["executable"] is False, plan
     assert plan["retry"]["prompt"], "a refusal carries no prompt"
+    for number in ("1e400", "1e-400", "0.99999999999999999999"):
+        numeric = jm.analyze('{"amount":' + number + ',"words":["a" "b"]}', profile="permissive")
+        assert numeric["executable"] is False and numeric["value"] is None, numeric
+        assert numeric["error"]["code"] == "E070" and numeric["refusal"]["auto_retry"] is False, numeric
+    exact = jm.analyze('{"amount":9007199254740993}', profile="agent")
+    assert exact["executable"] and exact["value"]["amount"] == 9007199254740993, exact
+
+def run(args, input=""):
+    return subprocess.run(args, input=input, text=True, capture_output=True,
+                          timeout=15, check=True).stdout
+
+assert run([command, "--version"]).strip() == f"liwenjson {__version__}"
+config = json.loads(run(["liwenjson-mcp", "--print-config=json"]))
+assert json.loads(run([command, "mcp", "--print-config=json"])) == config
+server = config["mcpServers"]["liwenjson"]
+assert server["command"] == "liwenjson", server
+assert shutil.which(server["command"]) == command, server
+configured = [server["command"], *server.get("args", [])]
+assert json.loads(run([*configured, "--print-config=json"])) == config
+requests = [
+    {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+     "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                "clientInfo": {"name": "wheel-gate", "version": "1"}}},
+    {"jsonrpc": "2.0", "method": "notifications/initialized"},
+    {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+    {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
+        "name": "liwenjson_gate", "arguments": {"text": '{"a":1,"a":2}'}}},
+    {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {
+        "name": "liwenjson_gate", "arguments": {"text": '{"a":1}'}}},
+]
+replies = [json.loads(line) for line in run(
+    configured, "".join(json.dumps(request) + "\n" for request in requests)
+).splitlines()]
+by_id = {reply.get("id"): reply for reply in replies}
+assert by_id[1]["result"]["protocolVersion"] == "2025-06-18", replies
+assert "liwenjson_gate" in {tool["name"] for tool in by_id[2]["result"]["tools"]}, replies
+assert by_id[3]["result"]["structuredContent"]["executable"] is False, replies
+assert by_id[4]["result"]["structuredContent"]["executable"] is True, replies
 PY
     then
-      fail "the installed Python wheel does not work without an external engine"
+      fail "the installed Python wheel, CLI or generated MCP config does not work without an external engine"
     fi
     # The console scripts are the MCP surface; they must start too.
-    if ! env -u LIWENJSON_BIN PATH="$TMP/pyenv/bin:/usr/bin:/bin" \
+    if ! env -u LIWENJSON_BIN -u PYTHONPATH -u PYTHONHOME PATH="$TMP/pyenv/bin:/usr/bin:/bin" \
       "$TMP/pyenv/bin/liwenjson-mcp" --version >/dev/null 2>&1; then
       fail "liwenjson-mcp from the installed wheel does not start"
     fi

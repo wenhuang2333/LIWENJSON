@@ -75,12 +75,27 @@ function main() {
     stdio: "inherit",
     windowsHide: true,
   });
+  const forwardInterrupt = () => child.kill("SIGINT");
+  const forwardTerminate = () => child.kill("SIGTERM");
+  const removeSignalHandlers = () => {
+    process.removeListener("SIGINT", forwardInterrupt);
+    process.removeListener("SIGTERM", forwardTerminate);
+  };
+  process.on("SIGINT", forwardInterrupt);
+  process.on("SIGTERM", forwardTerminate);
   child.on("error", (err) => {
+    removeSignalHandlers();
     process.stderr.write(`liwenjson-mcp: failed to start ${binary}: ${err.message}\n`);
     process.exit(127);
   });
   child.on("exit", (code, signal) => {
-    if (signal) process.kill(process.pid, signal);
+    // Wait for the server to exit, then preserve its termination status. Remove
+    // our forwarding handlers first, or self-signalling would hit them again.
+    removeSignalHandlers();
+    if (signal) {
+      process.kill(process.pid, signal);
+      process.exit(128 + (require("node:os").constants.signals[signal] || 0));
+    }
     process.exit(code === null ? 1 : code);
   });
 }

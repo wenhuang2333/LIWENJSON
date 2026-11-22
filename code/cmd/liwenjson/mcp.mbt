@@ -1271,7 +1271,9 @@ fn run_mcp(o : CliOpts) -> Unit {
         if trimmed.length() == 0 {
           continue
         }
-        let message = @json.parse(trimmed) catch {
+        // Preserve numeric declarations in `arguments.schema_json` and ids.
+        // stringify writes repr verbatim on the structured channel.
+        let message = @json.parse(trimmed, preserve_number_repr=true) catch {
           _ => {
             write_line(proto, rpc_err(Json::null(), -32700, "parse error"))
             continue

@@ -23,7 +23,7 @@
 
 ///|
 /// Read the whole input, exiting 3 when it cannot be opened.
-fn read_stdin_or_file(path : String?) -> String {
+fn read_stdin_or_file(path : String?, max_input_len? : Int32) -> String {
   let stream = open_input(path)
   if stream == 0L {
     let name = match path {
@@ -34,7 +34,7 @@ fn read_stdin_or_file(path : String?) -> String {
     quit(3)
     return ""
   }
-  let text = read_all_or_exit(stream)
+  let text = read_all_or_exit(stream, max_input_len?)
   close_input(stream)
   text
 }
@@ -131,9 +131,9 @@ fn print_readiness_lines(
 ///|
 /// `liwenjson explain`: analyse the input and print the decision (FR-32).
 fn run_explain(o : CliOpts) -> Unit {
-  let text = read_stdin_or_file(o.path)
-  let schema = schema_of(o)
   let opts = options_of(o, agent_protocol=true)
+  let text = read_stdin_or_file(o.path, max_input_len=opts.max_input_len)
+  let schema = schema_of(o)
   // `--json` already carries the value, so the rendered text is a second copy
   // of the whole document that a machine consumer does not need. It is dropped
   // unless `--with-text` asks for it; the text block below always renders it,

@@ -35,7 +35,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from . import __version__
-from .client import Client, LIWENJSONError, find_binary
+from .client import Client, LIWENJSONError, _JSONFloat, _host_value_exact, find_binary
 
 __all__ = ["LIWENJSONHTTPServer", "create_server", "main"]
 
@@ -61,6 +61,8 @@ _READ_CHUNK = 64 * 1024
 _DRAIN_CAP = 64 * 1024
 #: How long the drain waits for the next byte of a refused body.
 _DRAIN_IDLE = 1.0
+#: The whole drain is bounded too, even if a peer keeps trickling bytes.
+_DRAIN_TIMEOUT = 2.0
 
 
 class _BodyError(Exception):
@@ -147,6 +149,8 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        if close:
+            self.send_header("Connection", "close")
         if status == 503:
             self.send_header("Retry-After", "1")
         self._cors()
@@ -162,11 +166,23 @@ class _Handler(BaseHTTPRequestHandler):
     def _acquire_worker(self) -> bool:
         if self._http._workers.acquire(blocking=False):
             return True
-        self._send(
-            503,
-            {"ok": False, "error": {"code": "E503", "message": "too many concurrent requests"}},
-        )
+        payload = {"ok": False, "error": {"code": "E503", "message": "too many concurrent requests"}}
+        if self.command == "POST":
+            self._refuse_post(503, payload)
+        else:
+            self._send(503, payload)
         return False
+
+    def _refuse_post(self, status: int, payload: dict[str, Any]) -> None:
+        """Send the route/worker refusal, then boundedly drain before closing."""
+        self.close_connection = True
+        self._send(status, payload)
+        try:
+            length = self._declared_length()
+        except _BodyError as error:
+            self._drain_body(error)
+        else:
+            self._drain_body(_BodyError(status, "", declared=length))
 
     def _release_worker(self) -> None:
         try:
@@ -190,9 +206,16 @@ class _Handler(BaseHTTPRequestHandler):
         if not lengths:
             return 0
         raw = lengths[0].strip()
-        if not raw.isdigit():
+        if not raw.isascii() or not raw.isdigit():
             raise _BodyError(400, f"invalid Content-Length {lengths[0]!r}")
-        length = int(raw)
+        normalized = raw.lstrip("0") or "0"
+        if len(normalized) > 20:
+            raise _BodyError(
+                413,
+                f"request body is limited to {self._http.max_body} bytes",
+                declared=_DRAIN_CAP,
+            )
+        length = int(normalized)
         if length > self._http.max_body:
             raise _BodyError(
                 413,
@@ -261,11 +284,15 @@ class _Handler(BaseHTTPRequestHandler):
         remaining = min(error.undrained, _DRAIN_CAP)
         if remaining <= 0:
             return
-        # The peer may still be sending; the drain waits for the next byte, but
-        # never longer than this idle budget per byte.
-        self.connection.settimeout(min(self._http.read_timeout, _DRAIN_IDLE))
+        # Bound both idle reads and the whole drain; trickling bytes must not
+        # keep a refused connection (or its worker slot) alive indefinitely.
+        deadline = time.monotonic() + _DRAIN_TIMEOUT
         raw = False
         while remaining > 0:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                return
+            self.connection.settimeout(min(self._http.read_timeout, _DRAIN_IDLE, left))
             want = min(remaining, _READ_CHUNK)
             chunk = b""
             if not raw:
@@ -274,6 +301,10 @@ class _Handler(BaseHTTPRequestHandler):
                 except (TimeoutError, socket.timeout, OSError):
                     raw = True
             if raw:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    return
+                self.connection.settimeout(min(self._http.read_timeout, _DRAIN_IDLE, left))
                 try:
                     chunk = self.connection.recv(want)
                 except (TimeoutError, socket.timeout, OSError):
@@ -295,13 +326,20 @@ class _Handler(BaseHTTPRequestHandler):
             self._drain_body(exc)
             raise
         try:
-            value = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            error = _BodyError(400, f"the request body is not valid JSON: {exc}")
+            value = json.loads(raw.decode("utf-8"), parse_float=_JSONFloat, parse_constant=_JSONFloat)
+        except (UnicodeDecodeError, ValueError, RecursionError) as exc:
+            error = _BodyError(400, f"the request body cannot be decoded as JSON: {exc}")
         else:
-            if isinstance(value, dict):
+            if not isinstance(value, dict):
+                error = _BodyError(400, "the request body must be a JSON object")
+            elif not _host_value_exact(value):
+                error = _BodyError(
+                    400,
+                    "a request number cannot be represented without changing its value; pass exact numeric constraints in the schema text",
+                    code="E070",
+                )
+            else:
                 return value
-            error = _BodyError(400, "the request body must be a JSON object")
         self._send(error.status, {"ok": False, "error": {"code": error.code, "message": str(error)}})
         raise error
 
@@ -335,7 +373,7 @@ class _Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         method = _METHODS.get(path)
         if method is None:
-            self._send(404, {"ok": False, "error": {"code": "E404", "message": "not found"}})
+            self._refuse_post(404, {"ok": False, "error": {"code": "E404", "message": "not found"}})
             return
         if not self._acquire_worker():
             return

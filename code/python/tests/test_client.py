@@ -183,6 +183,61 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(closed["calls"][0]["value"], {"location": "Paris"})
         self.assertEqual(closed["calls"][0]["end"], "complete")
 
+    def test_host_number_conversion_refuses_changed_execution_values(self) -> None:
+        for number in ("0.99999999999999999999", "1.00000000000000000001", "1e400", "1e-400", "-1e-400"):
+            for text in (number, '{"amount":' + number + '}'):
+                with self.subTest(text=text):
+                    plan = self.client.analyze(text, profile="agent", with_text=True)
+                    self.assertFalse(plan["executable"])
+                    self.assertEqual(plan["error"]["code"], "E070")
+                    self.assertFalse(plan["refusal"]["auto_retry"])
+                    self.assertIsNone(plan["value"])
+                    self.assertEqual(plan["text"], text)
+                    self.assertEqual(self.client.repair(text)["text"], text)
+        self.assertEqual(self.client.hello()["name"], "liwenjson")
+
+    def test_host_number_conversion_preserves_representable_values_and_big_integers(self) -> None:
+        for text, value in (("0.1", 0.1), ("1.0", 1.0), ("1e3", 1000.0), ("9007199254740993", 9007199254740993)):
+            with self.subTest(text=text):
+                plan = self.client.analyze(text, profile="agent")
+                self.assertTrue(plan["executable"])
+                self.assertEqual(plan["value"], value)
+                self.assertIn(type(plan["value"]), (int, float))
+                json.dumps(plan, allow_nan=False)
+
+    def test_host_number_conversion_guards_refused_and_streaming_values(self) -> None:
+        for number in ("1e400", "1e-400", "0.99999999999999999999"):
+            with self.subTest(number=number):
+                plan = self.client.analyze('{"amount":' + number + ',"words":["a" "b"]}', profile="permissive")
+                self.assertFalse(plan["executable"])
+                self.assertIsNone(plan["value"])
+                self.assertFalse(plan["refusal"]["auto_retry"])
+                json.dumps(plan, allow_nan=False)
+                self.client.watch_start(schema="{!amount:number}")
+                for request in (
+                    lambda: self.client.watch_feed('{"amount":' + number + '}'),
+                    self.client.watch_finish,
+                ):
+                    with self.assertRaises(LIWENJSONError) as caught:
+                        request()
+                    self.assertEqual(caught.exception.code, "E070")
+        self.assertEqual(self.client.hello()["name"], "liwenjson")
+
+    def test_host_number_conversion_guards_nested_llm_call_values(self) -> None:
+        for executable in ("true", "false"):
+            for number in ("1e400", "1e-400", "0.99999999999999999999"):
+                with self.subTest(executable=executable, number=number):
+                    frame = self.client._classify(
+                        '{"id":1,"ok":true,"result":{"calls":[{"executable":' + executable
+                        + ',"value":{"amount":' + number + '}}]}}'
+                    )
+                    call = frame.payload["result"]["calls"][0]
+                    self.assertFalse(call["executable"])
+                    self.assertIsNone(call["value"])
+                    self.assertFalse(call["refusal"]["auto_retry"])
+                    json.dumps(frame.payload, allow_nan=False)
+        json.dumps(frame.payload, allow_nan=False)
+
     def test_unknown_profile_is_rejected(self) -> None:
         with self.assertRaises(LIWENJSONError) as caught:
             self.client.analyze("{}", profile="nope")

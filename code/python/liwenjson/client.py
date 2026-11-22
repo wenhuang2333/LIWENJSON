@@ -9,12 +9,14 @@ reading can hold a caller longer than the deadline it asked for.
 from __future__ import annotations
 
 import json
+import math
 import os
 import queue
 import shutil
 import subprocess
 import threading
 import time
+from decimal import Decimal, DecimalException
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -42,6 +44,76 @@ _CLOSE_EXIT_GRACE = 1.0  # the engine's exit after it answered
 _CLOSE_TERM_GRACE = 1.0  # after terminate()
 _CLOSE_KILL_GRACE = 1.0  # after kill()
 _CLOSE_JOIN_GRACE = 0.5  # per thread
+
+
+class _JSONFloat(float):
+    def __new__(cls, text: str) -> _JSONFloat:
+        value = super().__new__(cls, text)
+        try:
+            value.exact = math.isfinite(value) and Decimal(text) == Decimal(str(float(value)))
+        except DecimalException:
+            value.exact = False
+        return value
+
+
+def _host_value_exact(value: Any) -> bool:
+    pending = [value]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, _JSONFloat) and not node.exact:
+            return False
+        if isinstance(node, dict):
+            pending.extend(node.values())
+        elif isinstance(node, list):
+            pending.extend(node)
+    return True
+
+
+def _host_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    pending: list[Any] = [payload]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, dict):
+            if "value" in node and not _host_value_exact(node["value"]):
+                if not isinstance(node.get("executable"), bool):
+                    return {
+                        "id": payload.get("id"),
+                        "ok": False,
+                        "error": {
+                            "code": "E070",
+                            "message": "The Python host value cannot preserve the exact JSON numbers.",
+                            "exit": 5,
+                        },
+                    }
+                message = "The Python host value cannot preserve the exact JSON numbers."
+                node.update(
+                    decision="invalid",
+                    label="REJECT (host value not representable)",
+                    exactness="lossy",
+                    information_loss=True,
+                    execution="blocked",
+                    executable=False,
+                    value=None,
+                    error={"code": "E070", "message": message},
+                    refusal={"kind": "host_declaration", "auto_retry": False},
+                    retry={
+                        "code": "E070",
+                        "prompt": message + " Use a representation that preserves the exact JSON text. Do not automatically retry or execute a changed business action.",
+                    },
+                    business_authorized=False,
+                )
+            for key, value in node.items():
+                if isinstance(value, _JSONFloat):
+                    node[key] = float(value)
+                elif isinstance(value, (dict, list)):
+                    pending.append(value)
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                if isinstance(value, _JSONFloat):
+                    node[index] = float(value)
+                elif isinstance(value, (dict, list)):
+                    pending.append(value)
+    return payload
 
 
 class LIWENJSONError(RuntimeError):
@@ -325,7 +397,7 @@ class Client:
     def _classify(self, line: str) -> _Frame | None:
         """Check one line against the protocol, or end the connection."""
         try:
-            payload = json.loads(line)
+            payload = json.loads(line, parse_float=_JSONFloat)
         except json.JSONDecodeError:
             self._terminate(f"liwenjson wrote a line that is not JSON: {line[:120]!r}")
             return None
@@ -356,7 +428,7 @@ class Client:
                 f"liwenjson wrote a successful response without a result: {line[:120]!r}"
             )
             return None
-        return _Frame(payload, True)
+        return _Frame(_host_payload(payload), True)
 
     def _read_stderr(self) -> None:
         assert self.proc.stderr is not None

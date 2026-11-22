@@ -187,6 +187,10 @@ if [ "$actual" != "$expected" ]; then
 fi
 printf '  verified : sha256 %s\n' "$actual"
 
+# Check the downloaded executable before touching an existing installation.
+chmod +x "$tmp/$asset" 2>/dev/null || die 1 "could not make the downloaded $asset executable"
+"$tmp/$asset" --version >/dev/null 2>&1 || die 1 "downloaded $asset did not answer --version; nothing was installed"
+
 # -- install ---------------------------------------------------------------
 
 mkdir -p "$INSTALL_DIR" 2>/dev/null || die 1 "could not create the install directory: $INSTALL_DIR"
@@ -210,21 +214,22 @@ cp "$tmp/$asset" "$target" || die 1 "could not copy $asset to $target"
 chmod +x "$target" 2>/dev/null || die 1 "could not make $target executable"
 [ -x "$target" ] || die 1 "$target is not executable after the install"
 
-printf '  installed: %s\n' "$target"
-
 # -- verify the binary and report -----------------------------------------
 
-if "$target" --version >/dev/null 2>&1; then
-  printf '\n%s\n' "$("$target" --version)"
-else
-  printf '\nwarning: %s did not answer --version; the install may be incomplete\n' "$target" >&2
-fi
+installed_version="$("$target" --version 2>/dev/null)" || die 1 "$target did not answer --version; the install failed"
+printf '  installed: %s\n' "$target"
+printf '\n%s\n' "$installed_version"
 
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
   *)
     printf '\n%s is not on your PATH. Add this to your shell profile:\n\n' "$INSTALL_DIR"
-    printf '  export PATH="$INSTALL_DIR:$PATH"\n\n'
+    # Single-quote the actual directory, escaping embedded quotes. Keep PATH
+    # as a variable in the printed command; directory contents are never code.
+    printf "  export PATH='"
+    printf '%s' "$INSTALL_DIR" | sed "s/'/'\\\\''/g"
+    printf "'"
+    printf ':"$PATH"\n\n'
     ;;
 esac
 

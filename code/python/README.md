@@ -3,7 +3,7 @@
 LIWENJSON is the **execution gate for LLM output**: it decides whether a model's
 JSON may be executed, and when it may not, returns the sentence to send back to
 the model. This distribution is the Python client for the MoonBit engine —
-streaming repair, partial parsing, and the gate — plus two console scripts, one
+streaming repair, partial parsing, and the gate — plus three console scripts, one
 of which starts the local MCP server.
 
 No third-party dependencies and nothing else to install: the wheel carries the
@@ -53,6 +53,10 @@ with Client() as jm:
 `plan["value"]` is the parsed document. The repaired text is only included when
 you ask for it (`analyze(..., with_text=True)` returns it as `plan["text"]`),
 so gating on `executable` and reading `value` is the dependency-free path.
+The client refuses execution if converting a JSON number to Python `float`
+changes its decimal value or produces infinity. Integers remain exact; repair
+still returns the exact JSON text. These host refusals have
+`refusal.auto_retry: false` and must not trigger an automatic business-action retry.
 
 `Client` keeps one `liwenjson serve` process alive, so a loop pays the spawn
 cost once. `repair`, `analyze` and `validate` are one-shot convenience
@@ -76,6 +80,7 @@ contract that comes with it.
 
 | Script | Use |
 | --- | --- |
+| `liwenjson` | Run the native CLI, including generated MCP configurations |
 | `liwenjson-mcp` | Start the local MCP server (stdio, JSON-RPC 2.0) for Claude Code, Cursor, Cline, Windsurf, VS Code, Codex CLI or Zed |
 | `liwenjson-http` | Start the stateless HTTP facade (`--port 8080`) |
 
@@ -87,13 +92,13 @@ platform the release does not build for — Intel macOS, for example — needs
 `LIWENJSON_BIN`.
 
 ```bash
-liwenjson --version                  # liwenjson 1.5.2: the engine the launchers need
+liwenjson --version                  # liwenjson 1.5.3: the engine the launchers need
 liwenjson-mcp                        # MCP stdio server
 liwenjson-mcp --print-config=claude  # the client configuration snippet
 liwenjson-http --port 8080           # POST /repair /analyze /validate /readiness, GET /healthz
 ```
 
-`pip install` installs the client, the two console scripts and the engine.
+`pip install` installs the client, the three console scripts and the engine.
 Nothing has to be on `PATH` for the configuration below to work:
 
 With the engine resolvable, the client configuration is one line:
@@ -148,10 +153,10 @@ than being silently dropped.
 
 ## Version
 
-The Python package is `1.5.2`, the engine version, published to PyPI on
-2026-11-20. The MoonBit package on mooncakes is `0.14.0` because the registry
-currently accepts only `0.x.y`; the bytes are the same. `Client.hello()` reports
-both. `0.14.0` was published on 2026-11-20, `0.13.0` (the 1.5.1 correspondence)
-on 2026-10-29, and `0.12.0` (the 1.5.0 correspondence) on 2026-10-28.
+The Python package is `1.5.3`, the engine version, published to PyPI in the same
+release train as the `v1.5.3` GitHub tag. The MoonBit package on mooncakes is
+`0.15.0` because the registry currently accepts only `0.x.y`; the bytes are the
+same. `Client.hello()` reports both. Earlier correspondences: `0.14.0` (1.5.2) on
+2026-11-20, `0.13.0` (1.5.1) on 2026-10-29, and `0.12.0` (1.5.0) on 2026-10-28.
 
 License: Apache-2.0.

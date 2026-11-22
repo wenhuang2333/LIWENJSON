@@ -439,3 +439,40 @@ test "golden appendix A" {
 test "golden appendix B" {
   check_all(cases_b())
 }
+
+///|
+test "golden exact numeric duplicate repairs" {
+  check_all([
+    ok("exact-dup-01", "{\"n\":0,\"n\":1e-400}", "{\"n\":1e-400}", "R018@7"),
+    ok(
+      "exact-dup-02", "{\"n\":1,\"n\":0.99999999999999999999}", "{\"n\":0.99999999999999999999}",
+      "R018@7",
+    ),
+    bad_opt(
+      "exact-dup-03",
+      "{\"n\":0,\"n\":1e-400}",
+      Options::for_agent(),
+      "E010(R018@7)",
+    ),
+    bad_opt(
+      "exact-dup-04",
+      "{\"n\":0,\"n\":1e-400}",
+      Options::for_execution(),
+      "E010(R018@7)",
+    ),
+    ok_opt(
+      "exact-dup-05",
+      "{\"n\":1,\"n\":1e0}",
+      Options::for_agent(),
+      "{\"n\":1e0}",
+      "R018@7",
+    ),
+    ok_opt(
+      "exact-dup-06",
+      "{\"n\":1,\"n\":1e0}",
+      Options::for_execution(),
+      "{\"n\":1e0}",
+      "R018@7",
+    ),
+  ])
+}

@@ -1,6 +1,6 @@
 {
   "name": "liwenjson",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "The local execution gate for LLM output, as a Model Context Protocol server and a library, powered by the MoonBit engine.",
   "license": "Apache-2.0",
   "author": {

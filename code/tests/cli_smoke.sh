@@ -449,6 +449,125 @@ else
   fail=$((fail + 1)); printf 'FAIL %-34s\n     %s\n' "llm --text" "$out"
 fi
 
+# Text finalisation must preserve parser errors, distinguish absent text from
+# JSON null, and read Interrupted after finish. Follow mode must publish a late
+# provider verdict even when the content block already completed.
+for llm_case in strict_finish strict_finish_batch render_limit_batch text_interrupted_batch text_complete_batch no_text_complete no_text_interrupted text_interrupted text_complete null_complete late_refusal late_error; do
+  if python3 - "$BIN" "$llm_case" <<'PY'
+import json, subprocess, sys
+binary, case = sys.argv[1:]
+args = [binary, "llm", "--provider", "openai", "--text"]
+if case in ("late_refusal", "late_error"):
+    args = [binary, "llm", "--provider", "anthropic", "--follow"]
+    events = [
+        {"type": "content_block_start", "index": 0,
+         "content_block": {"type": "tool_use", "id": "late", "name": "f", "input": {}}},
+        {"type": "content_block_delta", "index": 0,
+         "delta": {"type": "input_json_delta", "partial_json": '{"a":1}'}},
+        {"type": "content_block_stop", "index": 0},
+    ]
+    if case == "late_refusal":
+        events.append({"type": "message_delta", "delta": {"stop_reason": "refusal"}})
+    else:
+        events.append({"type": "error", "error": {"message": "overloaded"}})
+else:
+    text, reason = {
+        "strict_finish": ('{"a":1', "stop"),
+        "strict_finish_batch": ('{"a":1', "stop"),
+        "render_limit_batch": ('{"a":1}', "stop"),
+        "text_interrupted_batch": ('{"a":1}', None),
+        "text_complete_batch": ('{"a":1}', "stop"),
+        "no_text_complete": (None, "stop"),
+        "no_text_interrupted": (None, None),
+        "text_interrupted": ('{"a":1}', None),
+        "text_complete": ('{"a":1}', "stop"),
+        "null_complete": ("null", "stop"),
+    }[case]
+    choice = {"delta": {} if text is None else {"content": text}}
+    if reason is not None:
+        choice["finish_reason"] = reason
+    events = [{"choices": [choice]}]
+    if case in ("strict_finish", "strict_finish_batch"):
+        args.append("--strict")
+    if case == "render_limit_batch":
+        args.append("--max-output-len=4")
+body = "".join(json.dumps(e) + "\n" for e in events)
+if case.endswith("_batch"):
+    args.append("--batch")
+    body = json.dumps({"id": "batch", "events": events}) + "\n"
+p = subprocess.run(args, input=body, capture_output=True, text=True)
+try:
+    if case == "strict_finish":
+        assert p.returncode == 5 and "E010" in p.stderr
+        assert p.stdout == "", "a failed parse must not emit a success row"
+    elif case in ("strict_finish_batch", "render_limit_batch"):
+        frame = json.loads(p.stdout)
+        code, rc = ("E010", 5) if case == "strict_finish_batch" else ("E023", 4)
+        assert p.returncode == 0 and frame["rc"] == rc
+        assert code in frame["calls"][0]["error"]
+    elif case in ("late_refusal", "late_error"):
+        rows = [json.loads(line) for line in p.stdout.splitlines()]
+        assert len(rows) == 4, "unchanged updates must stay deduplicated"
+        assert rows[-2]["end"] == "complete" and rows[-2]["executable"] is True
+        last = rows[-1]
+        assert last["index"] == 0 and last["id"] == "late" and last["value"] == {"a": 1}
+        assert last["done"] is True and last["executable"] is False
+        assert last["end"] == ("refused" if case == "late_refusal" else "provider_error")
+        assert p.returncode == (0 if case == "late_refusal" else 4)
+        if case == "late_error":
+            assert "overloaded" in p.stderr
+        else:
+            assert last["stop_reason"] == "refusal" and p.stderr == ""
+    else:
+        rows = [json.loads(line) for line in p.stdout.splitlines()]
+        assert p.returncode == 0 and p.stderr == "" and len(rows) == 1
+        if case.endswith("_batch"):
+            assert rows[0]["rc"] == 0
+            rows = rows[0]["calls"]
+        expected_value = None if text is None else json.loads(text)
+        assert rows[0] == {
+            "index": 0, "id": "", "name": "", "done": True, "exactness": "exact",
+            "end": "complete" if reason else "interrupted", "stop_reason": reason or "",
+            "executable": text is not None and reason == "stop", "value": expected_value,
+        }
+except (AssertionError, ValueError, KeyError, IndexError) as e:
+    print("FAIL", case, "rc=", p.returncode, str(e),
+          "stdout=", repr(p.stdout), "stderr=", repr(p.stderr))
+    sys.exit(1)
+PY
+  then
+    pass=$((pass + 1)); printf 'ok   %-34s\n' "llm regression: $llm_case"
+  else
+    fail=$((fail + 1)); printf 'FAIL %-34s\n' "llm regression: $llm_case"
+  fi
+done
+
+if python3 - "$BIN" <<'PY'
+from decimal import Decimal
+import json, subprocess, sys
+binary = sys.argv[1]
+for number in ("0.99999999999999999999", "1e-400", "1e400", "9007199254740993"):
+    start = '{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"n","name":"f","input":{"amount":' + number + '}}}'
+    stop = '{"type":"content_block_stop","index":0}'
+    for batch in (False, True):
+        args = [binary, "llm", "--provider", "anthropic"]
+        body = start + '\n' + stop + '\n'
+        if batch:
+            args.append("--batch")
+            body = '{"id":"n","events":[' + start + ',' + stop + ']}\n'
+        p = subprocess.run(args, input=body, capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        result = json.loads(p.stdout, parse_float=Decimal, parse_int=Decimal)
+        call = result["calls"][0] if batch else result
+        assert call["executable"] is True, call
+        assert call["value"]["amount"] == Decimal(number), (number, call)
+PY
+then
+  pass=$((pass + 1)); printf 'ok   %-34s\n' "llm direct numeric input"
+else
+  fail=$((fail + 1)); printf 'FAIL %-34s\n' "llm direct numeric input"
+fi
+
 # llm --batch carries the end reason through the adapter.
 out="$(printf '%s\n' '{"id":"t","events":[{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","name":"f"}},{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"a\":"}},{"type":"message_delta","delta":{"stop_reason":"max_tokens"}}]}' \
   | "$BIN" llm --provider anthropic --batch)"

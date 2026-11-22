@@ -99,9 +99,13 @@ fn web_policy(name : String) -> @liwenjson.SafetyPolicy? {
 /// Options for a profile name; the default profile when the name is empty or
 /// unknown.
 fn web_options(policy : String) -> @liwenjson.Options {
-  match web_policy(policy) {
-    Some(p) => @liwenjson.Options::default().with_policy(p)
-    None => @liwenjson.Options::default()
+  if policy == "agent" {
+    @liwenjson.Options::for_agent()
+  } else {
+    match web_policy(policy) {
+      Some(p) => @liwenjson.Options::default().with_policy(p)
+      None => @liwenjson.Options::default()
+    }
   }
 }
 

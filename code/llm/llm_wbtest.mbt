@@ -437,3 +437,114 @@ test "a text stream refuses a second choice instead of losing one" {
   assert_eq(r.value.stringify(), "{\"a\":1}")
   assert_eq(u.end() is Complete, true)
 }
+
+///|
+test "text finish preserves strict and render errors without changing the provider end" {
+  let base = @liwenjson.Options::for_llm()
+  for
+    (options, text, code) in [
+      ({ ..base, mode: @liwenjson.Strict, }, "{\"a\":1", "E010"),
+      ({ ..base, max_output_len: 4, }, "{\"a\":1}", "E023"),
+    ] {
+    let s = TextStream::new(OpenAICompat, options~)
+    ignore(
+      s.push_event(
+        "{\"choices\":[{\"delta\":{\"content\":" +
+        Json::string(text).stringify() +
+        "},\"finish_reason\":\"stop\"}]}",
+      ),
+    )
+    assert_true(s.finish() is None)
+    assert_eq(s.finish_error().unwrap().code(), code)
+    assert_true(s.error().contains(code))
+    assert_true(s.end() is Complete)
+    assert_eq(s.stop_reason(), "stop")
+    // A retry must not replace the original error with E030 InvalidState.
+    assert_true(s.finish() is None)
+    assert_eq(s.finish_error().unwrap().code(), code)
+  }
+}
+
+///|
+test "text finish reports prose parse failure rather than a successful null" {
+  let options = { ..@liwenjson.Options::for_llm(), skip_prose: true, }
+  let s = TextStream::new(OpenAICompat, options~)
+  ignore(
+    s.push_event(
+      "{\"choices\":[{\"delta\":{\"content\":\"No JSON here.\"},\"finish_reason\":\"stop\"}]}",
+    ),
+  )
+  assert_true(s.finish() is None)
+  assert_eq(s.finish_error().unwrap().code(), "E002")
+  assert_true(s.error().contains("E002"))
+  assert_true(s.end() is Complete)
+}
+
+///|
+test "text finish distinguishes no text from a missing provider terminator" {
+  for (reason, end) in [("", Interrupted), ("stop", Complete)] {
+    let s = TextStream::new(OpenAICompat)
+    ignore(
+      s.push_event(
+        "{\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":" +
+        Json::string(reason).stringify() +
+        "}]}",
+      ),
+    )
+    assert_true(s.finish() is None)
+    assert_true(s.finish_error() is None)
+    assert_eq(s.error(), "")
+    assert_true(s.end() == end)
+    assert_eq(s.stop_reason(), reason)
+  }
+}
+
+///|
+test "text finish accepts valid JSON including null and marks unterminated streams interrupted" {
+  for
+    (text, reason, end) in [
+      ("{\"a\":1}", "stop", Complete),
+      ("null", "stop", Complete),
+      ("{\"a\":1}", "", Interrupted),
+    ] {
+    let s = TextStream::new(OpenAICompat)
+    ignore(
+      s.push_event(
+        "{\"choices\":[{\"delta\":{\"content\":" +
+        Json::string(text).stringify() +
+        "},\"finish_reason\":" +
+        Json::string(reason).stringify() +
+        "}]}",
+      ),
+    )
+    let r = s.finish().unwrap()
+    assert_eq(r.value.stringify(), text)
+    assert_true(r.exactness is @liwenjson.Exact)
+    assert_true(s.finish_error() is None)
+    assert_eq(s.error(), "")
+    assert_true(s.end() == end)
+  }
+}
+
+///|
+test "anthropic direct input preserves exact numeric text" {
+  for
+    number in ["0.99999999999999999999", "1e-400", "1e400", "9007199254740993"] {
+    let s = ToolStream::new(Anthropic)
+    ignore(
+      s.push_event(
+        "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"n\",\"name\":\"f\",\"input\":{\"amount\":" +
+        number +
+        "}}}",
+      ),
+    )
+    ignore(s.push_event("{\"type\":\"content_block_stop\",\"index\":0}"))
+    let view = s.finish()[0]
+    assert_true(view.is_executable())
+    assert_eq(
+      view.snapshot.value.unwrap().stringify(),
+      "{\"amount\":" + number + "}",
+    )
+    assert_eq(s.arguments(0), "{\"amount\":" + number + "}")
+  }
+}

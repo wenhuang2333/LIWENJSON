@@ -225,7 +225,7 @@ fn run_llm_batch(provider : @llm.Provider, options : @lj.Options) -> Unit {
         }
         let fallback = "line-" + n.to_string()
         n = n + 1
-        let v = @json.parse(line) catch {
+        let v = @json.parse(line, preserve_number_repr=true) catch {
           _ => {
             write_line_or_exit(
               out,
@@ -265,7 +265,7 @@ fn text_line(
   sb.write_string(Json::string(stop_reason).stringify())
   sb.write_string(",\"executable\":")
   sb.write_string(
-    (end is @llm.Complete && !(exactness is @lj.Lossy)).to_string(),
+    (snapshot is Some(_) && end is @llm.Complete && !(exactness is @lj.Lossy)).to_string(),
   )
   sb.write_string(",\"value\":")
   match snapshot {
@@ -355,7 +355,7 @@ fn run_llm_text_batch(provider : @llm.Provider, options : @lj.Options) -> Unit {
         }
         let fallback = "line-" + n.to_string()
         n = n + 1
-        let v = @json.parse(line) catch {
+        let v = @json.parse(line, preserve_number_repr=true) catch {
           _ => {
             write_line_or_exit(
               out,
@@ -382,9 +382,14 @@ fn run_llm_text_batch(provider : @llm.Provider, options : @lj.Options) -> Unit {
           for e in events {
             ignore(s.push_event(e))
           }
+          let fin = s.finish()
+          match s.finish_error() {
+            Some(e) => raise e
+            None => ()
+          }
           let end = s.end()
           let reason = s.stop_reason()
-          match s.finish() {
+          match fin {
             Some(f) =>
               line_body = text_line(Some(f.value), f.exactness, end, reason)
             None => line_body = text_line(None, @lj.Exact, end, reason)
@@ -505,9 +510,16 @@ fn run_llm(o : CliOpts) -> Unit {
       for p in payloads {
         ignore(s.push_event(p))
       }
+      let fin = s.finish()
+      match s.finish_error() {
+        Some(e) => raise e
+        None => ()
+      }
+      // `finish` marks a stream without a provider terminator Interrupted.
+      // Read that verdict afterwards, and never render a failed parse as null.
       let end = s.end()
       let reason = s.stop_reason()
-      match s.finish() {
+      match fin {
         Some(f) =>
           write_line_or_exit(
             out,
@@ -576,14 +588,11 @@ fn run_llm(o : CliOpts) -> Unit {
     }
     let finals = s.finish()
     if o.follow {
-      // The final view of every call, so a reader of the follow stream can see
-      // the last word even though it was printed as an update earlier. The
-      // lines are de-duplicated against what the updates already said by the
-      // `done` flag: only calls that ended during `finish()` are re-printed.
+      // Every final verdict must supersede its last update, including a late
+      // refusal or provider error after a block completed. `emit_view` drops
+      // unchanged lines, not changes whose end happens to be non-truncated.
       for v in finals {
-        if v.end is @llm.Interrupted || v.end is @llm.MaxTokens {
-          emit_view(out, emitted, v)
-        }
+        emit_view(out, emitted, v)
       }
     } else {
       for v in finals {

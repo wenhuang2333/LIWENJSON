@@ -1,4 +1,4 @@
-**版本**：1.5.2
+**版本**：1.5.3
 
 # LIWENJSON — LLM 输出的执行门
 
@@ -15,14 +15,17 @@
 
 | GitHub tag | mooncakes.io | npm | PyPI | 状态 |
 | --- | --- | --- | --- | --- |
-| `v1.5.2` | `0.14.0` | `liwenjson@1.5.2` | `liwenjson@1.5.2` | **四个渠道全部已发布**（GitHub Release / npm / PyPI 2026-11-20，mooncakes 同日） |
-| `v1.5.1` | `0.13.0` | `interjson-moonbit@1.5.1` | `interjson-moonbit@1.5.1` | 上一版（mooncakes 2026-10-29，npm / PyPI 2026-10-30，重命名前） |
+| `v1.5.3` | `0.15.0` | `liwenjson@1.5.3` | `liwenjson@1.5.3` | **本轮发布**（2026-11-23）：标签触发 CI 与 GitHub Release，npm / PyPI / mooncakes 依次跟进 |
+| `v1.5.2` | `0.14.0` | `liwenjson@1.5.2` | `liwenjson@1.5.2` | 上一版（GitHub Release / npm / PyPI 2026-11-20，mooncakes 同日） |
+| `v1.5.1` | `0.13.0` | `interjson-moonbit@1.5.1` | `interjson-moonbit@1.5.1` | 更早（mooncakes 2026-10-29，npm / PyPI 2026-10-30，重命名前） |
 
-改名前后是三个不同的模块名：mooncakes 上 0.11.0–0.13.0 是 `zhanshishan/interjson`，更早是 `zhanshishan/jsonmend`，`zhanshishan/liwenjson` 是 0.14.0 才出现的新模块（注册表不支持改名，只能新增包名；两个旧模块 `zhanshishan/interjson`、`zhanshishan/jsonmend` 已于 2026-11-20 `moon deprecate` 标为废弃并把新名写进理由）。已发布的是 mooncakes `zhanshishan/interjson@0.13.0`（2026-10-29）与 npm / PyPI 的 `interjson-moonbit@1.5.1`（2026-10-30）；**`1.5.2` 四个渠道都已发布**——GitHub Release、npm、PyPI 在 2026-11-20，mooncakes `zhanshishan/liwenjson@0.14.0` 同一天，拉回后 `VERSION=1.5.2` / `REGISTRY_VERSION=0.14.0`、门调用返回 `REJECT (a value was changed)`。发包顺序与发布记录见 `code/CHANGELOG.md`。两个语言包的 wheel 与 tarball 里都带着引擎，装完即可调用。
+改名前后是三个不同的模块名：mooncakes 上 0.11.0–0.13.0 是 `zhanshishan/interjson`，更早是 `zhanshishan/jsonmend`，`zhanshishan/liwenjson` 是 0.14.0 才出现的新模块（注册表不支持改名，只能新增包名；两个旧模块 `zhanshishan/interjson`、`zhanshishan/jsonmend` 已于 2026-11-20 `moon deprecate` 标为废弃并把新名写进理由）。已发布的是 mooncakes `zhanshishan/interjson@0.13.0`（2026-10-29）与 npm / PyPI 的 `interjson-moonbit@1.5.1`（2026-10-30）、以及 `1.5.2` 的四个渠道（GitHub Release、npm、PyPI、mooncakes `zhanshishan/liwenjson@0.14.0` 都在 2026-11-20，拉回后 `VERSION=1.5.2` / `REGISTRY_VERSION=0.14.0`）。**本轮的 `1.5.3` ↔ mooncakes `0.15.0`** 装的是同一份引擎的第三轮审计修复，发布顺序仍是 标签 → GitHub Release → wheel → PyPI → npm → mooncakes；发布记录与历史见 `code/CHANGELOG.md`。两个语言包的 wheel 与 tarball 里都带着引擎，装完即可调用。
+
+本文的自动化验收数字对应当前构建（`v1.5.3`）；每个版本的内容见 [CHANGELOG](code/CHANGELOG.md)。
 
 ## 功能亮点
 
-- **执行门（默认入口）**。每个结果都带精确度标签——`Exact`（没修）、`Cosmetic`（只改记法）、`Lossy`（发明或丢弃了信息）——以及歧义类别。执行档（`execution` / `agent`）下，有损或有两种读法的结果被拒绝，而不是先执行再后悔。拒绝契约是硬性的：`executable: false` 的结果一定带非空的 `retry.prompt` 且 `value: null`，那段提示可以直接回灌模型。
+- **执行门（默认入口）**。每个结果都带精确度标签——`Exact`（没修）、`Cosmetic`（只改记法）、`Lossy`（发明或丢弃了信息）——以及歧义类别。执行档（`execution` / `agent`）下，有损或有两种读法的结果被拒绝，而不是先执行再后悔。执行档的拒绝结果带非空的 `retry.prompt` 且 `value: null`；只有 `refusal.auto_retry: true` 时才可按提示自动重试，宿主声明或数值表示问题须由调用方修正。
 - **本地 MCP server**。`liwenjson mcp` 通过 stdio 讲 JSON-RPC 2.0（协议 `2025-06-18`），不监听端口、不发网络请求、不需要 API key，模型输出不离开本机。四个只读工具：`liwenjson_gate`（执行门，不传 `profile` 时默认 `agent`，等价于 `Options::for_agent()`）、`liwenjson_repair`、`liwenjson_validate`、`liwenjson_readiness`。`--print-config=claude|cursor|vscode|codex|windsurf|zed|json` 打印可直接粘贴的客户端配置。**MCP 是建议性的**：模型可以不调它，要变成强制闸门得由宿主接入（见下节「接入面」）。
 - **流式部分解析**。`PartialParser` 的 `feed` / `feed_bytes` / `snapshot` / `finish`：任意切分任何 token（含转义序列与代理对）都成立，`snapshot` 给出的是稳定前缀——同一个输入前缀永远得到同一个快照。增量视图是 `Set` / `AppendText` / `Close` 三种 delta，路径用 RFC 6901 JSON Pointer。
 - **五种安全档位**。`permissive` / `interactive` / `execution` / `agent` / `strict`，库侧对应 `Options::for_execution()`、`Options::for_agent()` 等预设；`with_policy` 只换安全字段、保留协议字段，`with_profile` 连协议一起给，可按名字反查。库默认 `permissive`，**任何执行路径必须显式选执行档**。
@@ -32,19 +35,19 @@
 - **LLM provider 适配**。`liwenjson/llm` 吃 Anthropic 的细粒度工具流与 OpenAI 兼容的工具调用流，自带 SSE 分帧，支持多路并发；一次调用结束被报成 `Complete` / `MaxTokens` / `Interrupted` / `ProviderError`，并保留 provider 自己的 `stop_reason`。
 - **修复面与硬不变量**。22 条修复规则（R001–R022）逐条可关，12 个错误码（E001–E070）都带位置与上下文片段。五条不变量不可回退：**输出永远是合法 JSON**、**修复幂等**、**任意分块与一次性输入等价**、**快照是稳定前缀**、**任何字节序列都不会 panic**。
 
-已验证的证据（每一条都由当前构建重新推导后回查本文）：
+验收证据（自动化结果由当前构建重新推导；真实模型和会话行是历史实测记录，本轮未发起外部模型调用）：
 
 | 证据 | 结果 |
 | --- | --- |
-| 四个后端（wasm-gc / native / JS / wasm） | 每个后端 `362/362` 通过 |
-| CLI 冒烟 | `170 项断言` |
+| 四个后端（wasm-gc / native / JS / wasm） | 每个后端 `384/384` 通过 |
+| CLI 冒烟 | `183 项断言` |
 | 协议 / MCP 一致性 | `19 组` |
-| npm 包 | `21 个 Node 测试` |
-| Python 包 | `67 个测试` |
-| 根包行覆盖率 | `4621/4869` |
-| `llm` 包行覆盖率 | `519/690` |
-| 覆盖率门（有未覆盖行的文件口径） | `5065/5484` |
-| wasm-gc 产物体积 | `115.7 KiB` |
+| npm 包 | `33 个 Node 测试` |
+| Python 包 | `89 个测试` |
+| 根包行覆盖率 | `4697/4932` |
+| `llm` 包行覆盖率 | `529/696` |
+| 覆盖率门（有未覆盖行的文件口径） | `5151/5553` |
+| wasm-gc 产物体积 | `116.2 KiB` |
 | MCP 契约（真实二进制 × 真实 `outputSchema`） | `13/13 响应通过` |
 | 真实模型端到端（Responses API，`code/tests/live_model_audit_v2.py`） | `34/34 检查通过` |
 | 真实 Claude Code 会话：强制 `PreToolUse` 门 | 拒绝 `touch pwned.txt`（文件未创建）、放行 `echo read-only-ok` |
@@ -84,7 +87,7 @@ Python 包（同一引擎的原生二进制随 wheel 一起装，四个平台各
 pip install liwenjson
 ```
 
-MoonBit 库（同一份引擎在宿主进程内直接用；注册表对应号是 `0.14.0`，因为平台只接受 `0.x.y`）：
+MoonBit 库（同一份引擎在宿主进程内直接用；注册表对应号是 `0.15.0`，因为平台只接受 `0.x.y`）：
 
 ```bash
 moon add zhanshishan/liwenjson
@@ -94,7 +97,7 @@ moon add zhanshishan/liwenjson
 
 ```bash
 # 版本
-liwenjson --version                                  # liwenjson 1.5.2
+liwenjson --version                                  # liwenjson 1.5.3
 
 # 打印 Claude Code 的 MCP 配置，然后注册
 liwenjson mcp --print-config=claude                  # claude mcp add liwenjson -- liwenjson mcp
@@ -105,7 +108,7 @@ printf '{"amount":100,"currency":"USD"' | liwenjson explain --policy agent --jso
 
 # 语言包自带的启动器起同一个 MCP server（npm 与 pip 都提供 liwenjson-mcp）
 npm install -g liwenjson                     # 或：pip install liwenjson
-liwenjson-mcp --version                              # liwenjson 1.5.2
+liwenjson-mcp --version                              # liwenjson 1.5.3
 ```
 
 `liwenjson-mcp` 只负责找到原生引擎（`LIWENJSON_BIN` → PATH 上的 `liwenjson` → 语言包自带的二进制 → 仓库内的开发构建）并把 stdio 交过去；找不到二进制时以退出码 127 结束并打印安装方式，不会起一个半可用的 server。
@@ -199,7 +202,7 @@ q.finish()                                             // 抛 E010
 | **长驻协议** | `liwenjson serve` | 任何能起子进程的宿主；和高频 / 流式场景 |
 | **npm** | `liwenjson` | Node 宿主进程内调用 |
 | **pip** | `pip install liwenjson` | Python 宿主进程内调用 |
-| **MoonBit 库** | `moon add zhanshishan/liwenjson` | MoonBit 宿主进程内调用（注册表号 `0.14.0` = 引擎 1.5.2） |
+| **MoonBit 库** | `moon add zhanshishan/liwenjson` | MoonBit 宿主进程内调用（注册表号 `0.15.0` = 引擎 1.5.3） |
 | **HTTP** | `liwenjson-http --port 8080` | n8n、Dify、Coze、网关等只讲 HTTP 的宿主 |
 
 **MCP 是建议性的，这是产品边界而不是实现疏漏。** `liwenjson_gate` 是模型可以选择调用的一个工具，协议层没有任何强制点；「接了 MCP」等于多了一个检查点，不等于参数一定过了门。真正把它变成强制闸门的是宿主侧的三条路径：Claude Code 的 `PreToolUse` hook、宿主 SDK 里一行 `gate(args) -> execute | retry`、或 `liwenjson serve`——它们在执行之前运行，不依赖模型自觉。
@@ -207,7 +210,7 @@ q.finish()                                             // 抛 E010
 ## 技术栈
 
 - **引擎**：纯 MoonBit，无第三方运行时依赖；工具链钉在 `moon 0.1.20261016`（CI 同样钉住）。
-- **后端**：wasm-gc / native / JS / wasm 四个后端跑同一套测试（每个后端 `362/362`）；CLI 与 MCP server 是 native 后端，浏览器里跑的是 JS 后端产物。
+- **后端**：wasm-gc / native / JS / wasm 四个后端跑同一套测试（每个后端 `384/384`）；CLI 与 MCP server 是 native 后端，浏览器里跑的是 JS 后端产物。
 - **协议**：MCP 用 stdio + JSON-RPC 2.0，协议版本 `2025-06-18`；`liwenjson serve` 用版本化 JSONL（每行一个请求、一行一个响应，stdout 只走协议）。
 - **语言包**：npm 包提供 ESM + CJS + TypeScript 类型（Node >= 20）；Python 包是同一引擎的薄客户端，无第三方依赖，wheel 内自带四个平台的 native 二进制。
 - **构建与 CI**：GitHub Actions；同一组命令在 CI 与本地执行，失败即失败。

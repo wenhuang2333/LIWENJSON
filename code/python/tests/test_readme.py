@@ -9,9 +9,13 @@ engine and checks the value it says it produces.
 
 from __future__ import annotations
 
+import ast
 import re
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+
+from liwenjson import Client
 
 README = Path(__file__).resolve().parents[1] / "README.md"
 PYTHON_BLOCK = re.compile(r"```python\n(.*?)```", re.S)
@@ -65,6 +69,56 @@ class ReadmeQuickstartTests(unittest.TestCase):
         match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.M)
         assert match is not None
         self.assertIn(match.group(1), self.source)
+
+
+class IntegrationExamplesTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.path = README.parents[1] / "docs" / "INTEGRATIONS.md"
+        cls.blocks = PYTHON_BLOCK.findall(cls.path.read_text(encoding="utf-8"))
+
+    def test_execution_pattern_returns_values_and_stops_unsafe_retries(self) -> None:
+        source = next(block for block in self.blocks if 'plan = jm.analyze(model_text' in block)
+        wrapped = "def run():\n" + "".join("    " + line + "\n" for line in source.splitlines())
+        with Client() as client:
+            namespace = dict(jm=client, tool={"inputSchema": {"type": "object"}},
+                             execute=lambda value: ("execute", value),
+                             retry_with=lambda prompt: "retry", refuse=lambda prompt: "refuse")
+            exec(compile(wrapped, str(self.path), "exec"), namespace)
+            namespace["model_text"] = '{"a":1}'
+            self.assertIsNone(namespace["run"]())
+            namespace["model_text"] = '{"a":1'
+            self.assertEqual(namespace["run"](), "retry")
+            namespace["model_text"] = '{"a":1e400}'
+            self.assertEqual(namespace["run"](), "refuse")
+
+    def test_host_gate_example_executes_the_approved_value(self) -> None:
+        source = next(block for block in self.blocks if "def gate(tool_name:" in block)
+        captured = []
+        namespace = dict(ToolArgumentsRefused=ValueError,
+                         call=SimpleNamespace(name="f", arguments_text='{"a":1}'),
+                         TOOLS={"f": {"inputSchema": {"type": "object"}}},
+                         execute=lambda name, value: captured.append((name, value)))
+        try:
+            exec(compile(source, str(self.path), "exec"), namespace)
+            self.assertEqual(captured, [("f", {"a": 1})])
+            with self.assertRaises(ValueError):
+                namespace["gate"]("f", '{"a":1', namespace["TOOLS"]["f"])
+        finally:
+            if "GATE" in namespace:
+                namespace["GATE"].close()
+
+    def test_output_parser_body_returns_the_value_without_requiring_text(self) -> None:
+        source = next(block for block in self.blocks if "class LIWENJSONParser" in block)
+        method = next(node for node in ast.walk(ast.parse(source))
+                      if isinstance(node, ast.FunctionDef) and node.name == "parse")
+        namespace = {}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(self.path), "exec"), namespace)
+        with Client() as client:
+            parser = SimpleNamespace(_jm=client, _schema={"type": "object"})
+            self.assertEqual(namespace["parse"](parser, '{"a":1}'), {"a": 1})
+            with self.assertRaises(ValueError):
+                namespace["parse"](parser, '{"a":1')
 
 
 if __name__ == "__main__":

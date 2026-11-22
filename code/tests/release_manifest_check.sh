@@ -124,10 +124,23 @@ esac
 SH
 cat >"$WORK/bin/curl" <<'SH'
 #!/usr/bin/env bash
-# Record the URL and fail: the gate only needs to know what install.sh would
-# download, not to install anything.
+# Fail for platform probes; serve local fixtures for installation regressions.
 printf '%s\n' "$*" >> "${FAKE_CURL_LOG:?}"
-exit 1
+[ -n "${FAKE_CURL_SOURCE:-}" ] || exit 1
+out=""
+url=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+case "$url" in
+  */SHA256SUMS) cp "$FAKE_CURL_SOURCE/SHA256SUMS" "$out" ;;
+  */liwenjson-linux-x86_64) cp "$FAKE_CURL_SOURCE/binary" "$out" ;;
+  *) exit 1 ;;
+esac
 SH
 chmod +x "$WORK/bin/uname" "$WORK/bin/curl"
 
@@ -182,6 +195,81 @@ check_platform "Windows x86_64" MINGW64_NT-10.0 x86_64 1 liwenjson-windows-x86_6
 check_platform "macOS x86_64 (Intel, no toolchain)" Darwin x86_64 2 ""
 check_platform "Windows arm64 (no asset)" MINGW64_NT-10.0 arm64 2 ""
 check_platform "FreeBSD" FreeBSD amd64 2 ""
+
+# --- installer startup and copyable PATH regressions ------------------------
+mkdir -p "$WORK/download"
+cat >"$WORK/download/binary" <<'SH'
+#!/bin/sh
+[ "${1:-}" = "--version" ] || exit 24
+case "${FAKE_BINARY_MODE:-ok}" in
+  fail) exit 23 ;;
+  installed-fail) [ "$0" != "${FAKE_INSTALL_TARGET:?}" ] || exit 23 ;;
+esac
+printf 'LIWENJSON installer test binary\n'
+SH
+if command -v sha256sum >/dev/null 2>&1; then
+  fixture_hash="$(sha256sum "$WORK/download/binary" | cut -d' ' -f1)"
+elif command -v shasum >/dev/null 2>&1; then
+  fixture_hash="$(shasum -a 256 "$WORK/download/binary" | cut -d' ' -f1)"
+else
+  printf 'release_manifest_check: cannot run -- a SHA-256 tool is required\n' >&2
+  exit 2
+fi
+printf '%s  liwenjson-linux-x86_64\n' "$fixture_hash" >"$WORK/download/SHA256SUMS"
+
+run_install() {
+  local mode="$1" dest="$2"
+  env PATH="$WORK/bin:$PATH" \
+    FAKE_UNAME_S=Linux FAKE_UNAME_M=x86_64 FAKE_CURL_LOG="$WORK/curl.log" \
+    FAKE_CURL_SOURCE="$WORK/download" FAKE_BINARY_MODE="$mode" \
+    FAKE_INSTALL_TARGET="$dest/liwenjson" \
+    LIWENJSON_VERSION="v0.0.0-gate" LIWENJSON_DIR="$dest" \
+    sh "$INSTALLER" >"$WORK/installer.out" 2>&1
+}
+
+# Spaces, both quote styles, dollar expansion and command substitution must be
+# literal directory contents when the user copies the printed PATH command.
+quoted_dest="$WORK/dest/space ' \" \$(touch INJECTED) \$HOME \`touch INJECTED_BACKTICK\`"
+rc=0
+run_install ok "$quoted_dest" || rc=$?
+if [ "$rc" -ne 0 ]; then
+  fail "install.sh must install a runnable, verified binary (exit $rc)"
+else
+  [ -x "$quoted_dest/liwenjson" ] || fail "install.sh did not install an executable binary"
+  grep -q '  installed:' "$WORK/installer.out" || fail "install.sh did not report the successful installation"
+  grep -q '^LIWENJSON installer test binary$' "$WORK/installer.out" || fail "install.sh did not report the installed binary version"
+  hint="$(grep '^  export PATH=' "$WORK/installer.out")"
+  if [ -z "$hint" ]; then
+    fail "install.sh did not print a copyable PATH command"
+  else
+    copied_path="$(cd "$WORK" && env PATH="$WORK/bin:$PATH" sh -c 'eval "$1"; printf "%s" "$PATH"' sh "$hint")"
+    [ "$copied_path" = "$quoted_dest:$WORK/bin:$PATH" ] || fail "install.sh PATH hint does not add the actual, safely quoted directory"
+    [ ! -e "$WORK/INJECTED" ] && [ ! -e "$WORK/INJECTED_BACKTICK" ] || fail "install.sh PATH hint executed directory contents as shell code"
+  fi
+fi
+
+# A valid checksum is not proof that the executable can start. Preflight must
+# refuse a broken download without overwriting an already working installation.
+mkdir -p "$WORK/existing"
+printf '#!/bin/sh\nprintf "existing working binary\\n"\n' >"$WORK/existing/liwenjson"
+chmod +x "$WORK/existing/liwenjson"
+cp "$WORK/existing/liwenjson" "$WORK/existing.before"
+rc=0
+run_install fail "$WORK/existing" || rc=$?
+[ "$rc" -eq 1 ] || fail "install.sh must fail when the downloaded binary cannot start (exit $rc)"
+cmp -s "$WORK/existing.before" "$WORK/existing/liwenjson" || fail "install.sh overwrote a working installation with a binary that cannot start"
+if grep -qE '  installed:|^Next:' "$WORK/installer.out"; then
+  fail "install.sh claimed success after the downloaded binary failed --version"
+fi
+
+# A binary may run from the staging directory but fail at its final location.
+# That failure must still be nonzero and must not print a success banner.
+rc=0
+run_install installed-fail "$WORK/final-startup-failure" || rc=$?
+[ "$rc" -eq 1 ] || fail "install.sh must fail when the installed binary cannot start (exit $rc)"
+if grep -qE '  installed:|^Next:' "$WORK/installer.out"; then
+  fail "install.sh claimed success after the installed binary failed --version"
+fi
 
 # --- 5. the packaged directory, when the caller has one ----------------------
 if [ -n "$DIST" ]; then

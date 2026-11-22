@@ -14,7 +14,10 @@ fn dec(text : String) -> Dec {
 
 ///|
 test "TC-DEC-01: the same number in three spellings is one Dec" {
-  for text in ["1", "1.0", "1e0", "10e-1", "0.1e1"] {
+  for
+    text in [
+      "1", "1.0", "1e0", "10e-1", "0.1e1", "1e0000000000", "1e+00000000000", "1e-00000000000",
+    ] {
     assert_eq(dec(text).text(), "1", msg=text)
     assert_eq(dec(text).compare(dec("1")), 0, msg=text)
   }
@@ -112,4 +115,55 @@ test "TC-DEC-08: a JSON number's exact value uses its source text" {
   assert_eq(number_dec(Json::number(0.1)).unwrap().text(), "0.1")
   // A non-number has no decimal value.
   assert_true(number_dec(Json::string("1")) is None)
+}
+
+///|
+test "TC-DEC-09: an unreadable repr never falls back to a Double" {
+  for text in ["1e-9999999999", "-1e-9999999999", "1e9999999999", "invalid"] {
+    assert_true(Dec::parse(text) is None, msg=text)
+    assert_true(Dec::of_number(0.0, Some(text)) is None, msg=text)
+    assert_true(Dec::of_number(1.0, Some(text)) is None, msg=text)
+  }
+  assert_eq(Dec::of_number(0.0, None).unwrap().text(), "0")
+  assert_eq(Dec::of_number(1.0, None).unwrap().text(), "1")
+}
+
+///|
+test "TC-DEC-10: numeric equality is exact with either repr missing" {
+  for (d, text) in [(0.0, "1e-400"), (1.0, "0.99999999999999999999")] {
+    assert_false(number_equal(d, None, d, Some(text)), msg=text)
+    assert_false(number_equal(d, Some(text), d, None), msg=text)
+  }
+  for (d, text) in [(1.0, "1.0"), (100.0, "1e2"), (0.0, "-0")] {
+    assert_true(number_equal(d, None, d, Some(text)), msg=text)
+    assert_true(number_equal(d, Some(text), d, None), msg=text)
+  }
+  assert_true(number_equal(1.5, None, 1.5, None))
+  assert_false(number_equal(1.5, None, 1.0, None))
+  let text = "1e-9999999999"
+  assert_true(number_equal(0.0, Some(text), 0.0, Some(text)))
+  assert_false(number_equal(0.0, Some(text), 0.0, Some("2e-9999999999")))
+  assert_false(number_equal(0.0, Some(text), 0.0, None))
+  assert_false(number_equal(0.0, None, 0.0, Some(text)))
+}
+
+///|
+test "TC-DEC-11: exponent leading zeroes and boundary arithmetic preserve values" {
+  let integer = Schema::parse("integer")
+  for text in ["1e0000000000", "1e+00000000000", "1e-00000000000"] {
+    assert_eq(Dec::parse(text).unwrap().text(), "1")
+    assert_true(number_equal(1.0, None, 1.0, Some(text)))
+    for options in [Options::for_agent(), Options::for_execution()] {
+      assert_true(analyze(text, options~, schema=integer).is_executable())
+    }
+  }
+  let huge = Dec::parse("1e2147483647").unwrap()
+  assert_eq(huge.text(), "1e2147483647")
+  assert_eq(huge.compare(dec("1")), 1)
+  let wide = Dec::parse("12e2147483647").unwrap()
+  assert_eq(wide.text(), "1.2e2147483648")
+  assert_eq(wide.compare(huge), 1)
+  assert_true(Dec::parse("10e2147483647") is None)
+  assert_eq(Dec::parse("10e-2147483649").unwrap().exp, -2147483648)
+  assert_eq(Dec::parse("1e-2147483648").unwrap().text(), "1e-2147483648")
 }

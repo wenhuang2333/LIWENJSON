@@ -27,50 +27,101 @@
 //    were never text.
 
 ///|
-/// Read all of standard input as text.
-///
-/// The stream is decoded once, not chunk by chunk. Decoding each 64 KiB piece
-/// on its own looks equivalent and is not: a multi-byte character that
-/// straddles a chunk boundary is a malformed sequence in *both* pieces, so a
-/// lossy decode turns it into two U+FFFD replacement characters. For Chinese
-/// text and emoji that is a silent wrong result — the command reports success
-/// and the document it read is not the document that was written. Reading the
-/// bytes first and decoding once removes the boundary entirely.
-fn read_all(stream : Int64) -> String? {
-  // `stream` is a stdio `FILE *`, the same handle the single document path
-  // reads from.
-  let all : Array[Byte] = []
-  let mut piece = read_chunk(stream, 65536)
-  while piece.length() > 0 {
-    for i = 0; i < piece.length(); i = i + 1 {
-      all.push(piece[i])
-    }
-    piece = read_chunk(stream, 65536)
+/// End of the complete UTF-8 prefix; retain at most three trailing bytes for
+/// the next read. Validation itself is still the standard strict decoder's job.
+fn complete_utf8_prefix(bytes : Bytes) -> Int32 {
+  let n = bytes.length()
+  if n == 0 {
+    return 0
   }
-  // Strict, for the same reason as the batch line reader: an input that was
-  // not text must not become a document with U+FFFD substituted for bytes the
-  // caller never wrote. `repair` already streams through `feed_bytes` and
-  // raises E040; this is the one-shot reader, so it has to say the same thing.
-  let bytes = Bytes::from_array(all[:])
-  let text : String? = Some(@utf8.decode(bytes[:])) catch {
-    @utf8.Malformed(suffix) => {
-      let offset = bytes.length() - suffix.length()
-      eprintln("liwenjson: " + @lj.InvalidUtf8(offset).to_string())
-      None
-    }
+  let mut start = n - 1
+  while start > 0 && n - start < 4 && (bytes[start].to_int() & 0xC0) == 0x80 {
+    start = start - 1
   }
-  text
+  let lead = bytes[start].to_int()
+  let width = if lead >= 0xC2 && lead <= 0xDF {
+    2
+  } else if lead >= 0xE0 && lead <= 0xEF {
+    3
+  } else if lead >= 0xF0 && lead <= 0xF4 {
+    4
+  } else {
+    1
+  }
+  if n - start < width {
+    start
+  } else {
+    n
+  }
 }
 
 ///|
-/// Read all of a stream, exiting 3 on malformed UTF-8. Every one-shot input in
-/// the CLI (`explain`, `readiness`, `llm`) goes through this, so they cannot
-/// disagree with `repair` about what a byte sequence is.
-fn read_all_or_exit(stream : Int64) -> String {
-  match read_all(stream) {
-    Some(text) => text
-    None => {
-      quit(3)
+/// Strictly read text, bounded in UTF-16 code units even before EOF. The
+/// default is the library's 64 Mi-unit limit, including for LLM transport:
+/// a provider envelope must not be limited by its argument document's budget.
+fn read_all(
+  stream : Int64,
+  max_input_len? : Int32,
+) -> String raise @lj.LIWENJSONError {
+  let limit = max_input_len.unwrap_or(@lj.Options::default().max_input_len)
+  if limit <= 0 {
+    raise @lj.InvalidOption("max_input_len must be positive")
+  }
+  let sb = StringBuilder()
+  let mut used = 0
+  let mut tail = b""
+  let mut byte_offset = 0L
+  while true {
+    // `fread` waits for its whole request on a pipe. Ask for no more than the
+    // remaining units plus one byte, so an ASCII overrun cannot wait for a
+    // 64 KiB chunk or EOF. Comparing before adding also avoids Int32 overflow
+    // at the largest CLI limit; there is no overflowing `limit * 3` budget.
+    let remaining = limit - used
+    let cap = if remaining >= 65535 { 65536 } else { remaining + 1 }
+    let piece = read_chunk(stream, cap)
+    let eof = piece.length() == 0
+    let bytes = Bytes::makei(tail.length() + piece.length(), i => {
+      if i < tail.length() {
+        tail[i]
+      } else {
+        piece[i - tail.length()]
+      }
+    })
+    let end = if eof { bytes.length() } else { complete_utf8_prefix(bytes) }
+    let text = @utf8.decode(bytes[:end]) catch {
+      @utf8.Malformed(suffix) => {
+        let offset = byte_offset + (end - suffix.length()).to_int64()
+        raise @lj.InvalidUtf8(
+          if offset > 2147483647L {
+            2147483647
+          } else {
+            offset.to_int()
+          },
+        )
+      }
+    }
+    if text.length() > remaining {
+      raise @lj.SizeLimit(limit, limit)
+    }
+    used = used + text.length()
+    sb.write_string(text)
+    if eof {
+      break
+    }
+    tail = bytes[end:].to_owned()
+    byte_offset = byte_offset + end.to_int64()
+  }
+  sb.to_string()
+}
+
+///|
+/// Every one-shot input (`explain`, `readiness`, `llm`) shares strict UTF-8
+/// decoding (E040 / exit 3) and bounded accumulation (E021 / exit 4).
+fn read_all_or_exit(stream : Int64, max_input_len? : Int32) -> String {
+  read_all(stream, max_input_len?) catch {
+    e => {
+      eprintln("liwenjson: " + e.to_string())
+      quit(error_exit_code(e))
       ""
     }
   }

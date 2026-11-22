@@ -28,8 +28,10 @@ config, the privacy model, troubleshooting — is [MCP.md](MCP.md).
 
 The MCP server, the `serve` protocol, the npm package, the pip package, the
 HTTP facade, and the browser bundle are all wrappers over the same engine. They
-do not reimplement parsing, repair, or the decision; a wrapper that disagrees
-with `serve` is a bug.
+do not reimplement parsing or repair. The npm and Python wrappers additionally
+refuse execution when their host numeric representation would change the exact
+JSON value; string-returning repair still preserves the original number text.
+Raw `serve` and MCP hosts must preserve numeric text themselves.
 
 ## The one pattern to remember
 
@@ -38,8 +40,10 @@ Everything below is a variation of this:
 ```python
 plan = jm.analyze(model_text, profile="agent", schema_json=tool["inputSchema"])
 if not plan["executable"]:
-    return retry_with(plan["retry"]["prompt"])   # feed the model its own error
-execute(json.loads(plan["text"]))
+    if (plan.get("refusal") or {}).get("auto_retry", False):
+        return retry_with(plan["retry"]["prompt"])
+    return refuse(plan["retry"]["prompt"])
+execute(plan["value"])
 ```
 
 `profile="agent"` refuses a lossy or ambiguous repair instead of inventing
@@ -48,7 +52,9 @@ second source of truth to keep in sync.
 
 `liwenjson mcp`'s gate tool applies the same rule with the same default: the
 model or the client calls `liwenjson_gate` with the raw argument text, reads
-`executable`, and sends `retry.prompt` back when it is false.
+`executable`, and sends `retry.prompt` back when it is false. Automatic retries
+are only appropriate when `refusal.auto_retry` is true; schema/intent conflicts
+and host-number conversion refusals require the host to stop or seek review.
 
 ## Making the gate mandatory
 
@@ -273,7 +279,7 @@ def gate(tool_name: str, args_text: str, tool_spec: dict) -> dict:
     if not plan["executable"]:
         # The refusal is the program: hand it back verbatim.
         raise ToolArgumentsRefused(plan["retry"]["prompt"])
-    return json.loads(plan["text"])
+    return plan["value"]
 
 # In the tool-call handler, before anything runs:
 args = gate(call.name, call.arguments_text, TOOLS[call.name])
@@ -291,7 +297,7 @@ function gate(argsText, toolSpec) {
     schemaJson: toolSpec.inputSchema,
   });
   if (!plan.executable) throw new ToolArgumentsRefused(plan.retry.prompt);
-  return JSON.parse(plan.text);
+  return plan.value;
 }
 ```
 
@@ -380,13 +386,13 @@ with Client() as jm:
     plan = jm.analyze(text, profile="agent", schema_json=tool["inputSchema"])
 ```
 
-The package installs two console scripts: `liwenjson-mcp` (the MCP launcher,
-see [MCP.md](MCP.md)) and `liwenjson-http` (below).
+The package installs three console scripts: `liwenjson` (the native CLI),
+`liwenjson-mcp` (the MCP launcher, see [MCP.md](MCP.md)) and `liwenjson-http`
+(below). Generated MCP configs can therefore run in a pip-only environment.
 
 A LangChain output parser is a thin wrapper:
 
 ```python
-import json
 from langchain_core.output_parsers import BaseOutputParser
 from liwenjson import Client
 
@@ -399,7 +405,7 @@ class LIWENJSONParser(BaseOutputParser[dict]):
         plan = self._jm.analyze(text, profile="agent", schema_json=self._schema)
         if not plan["executable"]:
             raise ValueError(plan["retry"]["prompt"])
-        return json.loads(plan["text"])
+        return plan["value"]
 ```
 
 The same shape works for an LlamaIndex output parser, an OpenAI Agents SDK

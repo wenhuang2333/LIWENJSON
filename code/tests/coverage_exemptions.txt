@@ -62,7 +62,6 @@ stream_readiness.mbt	365	Index(i) => i.to_string()
 stream_readiness.mbt	455	(Index(x), Index(y)) => x == y
 stream_readiness.mbt	456	_ => false
 stream_readiness.mbt	485	None => false
-stream_readiness.mbt	557	Index(i) => i.to_string()
 stream_readiness.mbt	685	return Some((p, "missing"))
 stream_readiness.mbt	913	self.syntax_at = self.bytes
 stream_readiness.mbt	378	None => Any

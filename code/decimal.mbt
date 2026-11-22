@@ -13,9 +13,9 @@
 // `1`, `1.0` and `1e0` are one `Dec`, and so are `100` and `1e2`.
 //
 // A text whose exponent cannot be normalised into `Int32` (a hand-written
-// `1e9999999999`) is not represented at all: `Dec::parse` returns `None`, and
-// the caller falls back to `Double` -- the conservative choice, documented at
-// each call site, instead of a silently clamped exponent.
+// `1e9999999999`) is not represented at all: `Dec::parse` returns `None`.
+// Callers must fail closed rather than substitute a rounded or underflowed
+// `Double` for a source text they could not understand exactly.
 
 ///|
 /// An exact decimal number, normalised (see the file header).
@@ -61,13 +61,7 @@ pub fn Dec::parse(text : String) -> Dec? {
 /// `Double` comparison whenever the text is the only thing there is.
 pub fn Dec::of_number(d : Double, repr : String?) -> Dec? {
   match repr {
-    Some(text) =>
-      match Dec::parse(text) {
-        Some(x) => Some(x)
-        // A text the reader could not normalise (`1e9999999999`): fall back to
-        // the double rather than pretend the text was understood.
-        None => Dec::parse(d.to_string())
-      }
+    Some(text) => Dec::parse(text)
     None => Dec::parse(d.to_string())
   }
 }
@@ -89,19 +83,19 @@ pub fn Dec::text(self : Dec) -> String {
   // The position of the decimal point inside `digits`: `len + exp` digits come
   // before it. `1.5` is `digits="15"`, `exp=-1`, so one digit is before the
   // point; `0.015` is `digits="15"`, `exp=-3`, so the point is before both.
-  let point = len + self.exp
+  let point = len.to_int64() + self.exp.to_int64()
   if self.exp >= 0 && point <= 21 {
     sb.write_string(self.digits)
     for i = 0; i < self.exp; i = i + 1 {
       sb.write_char('0')
     }
   } else if self.exp < 0 && point > 0 && len <= 21 {
-    sb.write_string(self.digits[:point].to_owned())
+    sb.write_string(self.digits[:point.to_int()].to_owned())
     sb.write_char('.')
-    sb.write_string(self.digits[point:].to_owned())
+    sb.write_string(self.digits[point.to_int():].to_owned())
   } else if self.exp < 0 && point <= 0 && -point <= 21 && len <= 21 {
     sb.write_string("0.")
-    for i = 0; i < -point; i = i + 1 {
+    for i = 0L; i < -point; i = i + 1L {
       sb.write_char('0')
     }
     sb.write_string(self.digits)
@@ -114,7 +108,7 @@ pub fn Dec::text(self : Dec) -> String {
       sb.write_string(self.digits[1:].to_owned())
     }
     sb.write_char('e')
-    sb.write_string((len + self.exp - 1).to_string())
+    sb.write_string((point - 1L).to_string())
   }
   sb.to_string()
 }
@@ -163,8 +157,8 @@ fn Dec::magnitude_compare(self : Dec, other : Dec) -> Int32 {
   // The position of the decimal point relative to the significant digits:
   // `digits.length + exp` is the number of integer digits. Comparing that first
   // is comparing the exponent of a scientific notation.
-  let a = self.digits.length() + self.exp
-  let b = other.digits.length() + other.exp
+  let a = self.digits.length().to_int64() + self.exp.to_int64()
+  let b = other.digits.length().to_int64() + other.exp.to_int64()
   if a != b {
     return if a < b { -1 } else { 1 }
   }

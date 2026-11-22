@@ -16,6 +16,7 @@ three gates that stop it:
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import platform
 import struct
@@ -191,6 +192,54 @@ class BuildWheelTests(unittest.TestCase):
             names = zipfile.ZipFile(wheels[0]).namelist()
             binaries = [name for name in names if "/bin/" in name]
             self.assertEqual(binaries, [f"liwenjson/bin/{host}/liwenjson"], binaries)
+            # Exercise the installed console scripts, not the source module or
+            # a CLI supplied by the developer's PATH / LIWENJSON_BIN.
+            environment = Path(out) / "venv"
+            subprocess.run([sys.executable, "-m", "venv", str(environment)],
+                           check=True, capture_output=True, timeout=60)
+            scripts = environment / "bin"
+            subprocess.run([str(scripts / "python"), "-m", "pip", "install",
+                            "--no-index", "--no-deps", str(wheels[0])],
+                           check=True, capture_output=True, timeout=60)
+            env = os.environ.copy()
+            for name in ("LIWENJSON_BIN", "PYTHONPATH", "PYTHONHOME"):
+                env.pop(name, None)
+            env["PATH"] = str(scripts) + os.pathsep + os.defpath
+
+            def run(args: list[str], input: str = "") -> str:
+                return subprocess.run(args, input=input, env=env, cwd=out,
+                                      capture_output=True, text=True, check=True,
+                                      timeout=15).stdout
+
+            from version import engine_version
+
+            self.assertEqual(run(["liwenjson", "--version"]).strip(),
+                             f"liwenjson {engine_version()}")
+            self.assertEqual(run(["liwenjson-mcp", "--version"]).strip(),
+                             f"liwenjson {engine_version()}")
+            config = json.loads(run(["liwenjson-mcp", "--print-config=json"]))
+            server = config["mcpServers"]["liwenjson"]
+            self.assertEqual(server, {"command": "liwenjson", "args": ["mcp"]})
+            configured = [server["command"], *server["args"]]
+            self.assertEqual(json.loads(run([*configured, "--print-config=json"])), config)
+            requests = [
+                {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                 "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                            "clientInfo": {"name": "wheel-test", "version": "1"}}},
+                {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            ]
+            replies = [json.loads(line) for line in run(
+                configured, "".join(json.dumps(request) + "\n" for request in requests)
+            ).splitlines()]
+            by_id = {reply.get("id"): reply for reply in replies}
+            self.assertEqual(by_id[1]["result"]["protocolVersion"], "2025-06-18")
+            self.assertIn("liwenjson_gate", {tool["name"] for tool in by_id[2]["result"]["tools"]})
+            # Client() now finds the console script too; it must forward serve
+            # to the bundled engine rather than recursively execing itself.
+            self.assertEqual(run([str(scripts / "python"), "-c",
+                                  "from liwenjson import repair; print(repair(\"{'a':1,}\")[\"text\"])"]).strip(),
+                             '{"a":1}')
 
     def test_help_documents_the_host_contract(self) -> None:
         result = self.run_wheel("--help")

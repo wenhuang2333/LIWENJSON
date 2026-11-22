@@ -73,6 +73,7 @@ pub struct TextStream {
   mut end : CallEnd
   mut stop_reason : String
   mut error_message : String
+  mut finish_error : @liwenjson.LIWENJSONError?
   mut ignored : Int32
   mut seen_text : Bool
   mut choice : Int32
@@ -80,6 +81,7 @@ pub struct TextStream {
 pub fn TextStream::end(Self) -> CallEnd
 pub fn TextStream::error(Self) -> String
 pub fn TextStream::finish(Self) -> @liwenjson.FinalResult?
+pub fn TextStream::finish_error(Self) -> @liwenjson.LIWENJSONError?
 pub fn TextStream::ignored_events(Self) -> Int32
 pub fn TextStream::new(Provider, options? : @liwenjson.Options) -> Self raise @liwenjson.LIWENJSONError
 pub fn TextStream::push_event(Self, String) -> @liwenjson.Snapshot? raise @liwenjson.LIWENJSONError

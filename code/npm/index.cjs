@@ -93,9 +93,10 @@ function repair(input, options = {}) {
   // 4.2). The engine has no separate "repair against a declaration" entry
   // point, and the decision fields `analyze` computes are the same check the
   // other two entry points make, so the declaration path goes through
-  // `analyze` and returns its repaired text.
+  // the raw engine plan and returns its exact repaired text. Unlike a host
+  // value, a string does not need to round-trip through JavaScript numbers.
   if (options.schemaJson !== undefined || options.schema !== undefined) {
-    const plan = analyze(input, {
+    const plan = enginePlan(input, {
       profile: profile || "agent",
       ...(options.schemaJson !== undefined ? { schemaJson: options.schemaJson } : {}),
       ...(options.schema !== undefined ? { schema: options.schema } : {}),
@@ -106,17 +107,14 @@ function repair(input, options = {}) {
         `${plan.error && plan.error.code ? plan.error.code : "E070"} ${reason}`,
       );
     }
-    return plan.text === undefined ? plan.value === null ? "" : JSON.stringify(plan.value) : plan.text;
+    return plan.text;
   }
   return unwrap(profile ? engine.repair_opts(input, profile) : engine.repair(input));
 }
 
-/**
- * The full decision plan. This is the call an agent integration should use
- * before executing tool arguments: it never throws on malformed JSON, and its
- * `executable` field is the gate.
- */
-function analyze(input, options = {}) {
+// The engine plan retains exact JSON text, even when its parsed host value
+// cannot represent the same numbers. Only string-returning repair uses it raw.
+function enginePlan(input, options = {}) {
   requireString("analyze", input);
   const profile = profileOf(options);
   let plan;
@@ -133,6 +131,46 @@ function analyze(input, options = {}) {
     throw new Error(plan.error || "liwenjson.analyze: could not build a plan");
   }
   return plan;
+}
+
+/**
+ * The full decision plan. Malformed JSON produces a refusal, not an exception.
+ * An executable plan also guarantees that its host value preserves the engine
+ * JSON: use the engine's strict const comparison, not a second numeric parser.
+ */
+function analyze(input, options = {}) {
+  const plan = enginePlan(input, options);
+  if (plan.value === null || plan.value === undefined) return plan;
+
+  try {
+    const comparison = JSON.parse(
+      engine.analyze_json_schema(plan.text, "strict", JSON.stringify({ const: plan.value })),
+    );
+    if (comparison.executable === true) return plan;
+  } catch {
+    // A host serialization limit or an engine declaration limit must also fail
+    // closed: an unverified value is never handed to an execution integration.
+  }
+
+  const code = "E070";
+  const message = "The JavaScript host value could not be verified as equal to the engine JSON text.";
+  return {
+    ...plan,
+    decision: "invalid",
+    label: "REJECT (host value not representable)",
+    exactness: "lossy",
+    information_loss: true,
+    execution: "blocked",
+    executable: false,
+    value: null,
+    error: { code, message },
+    refusal: { kind: "host_declaration", auto_retry: false },
+    retry: {
+      code,
+      prompt: `${message} Use a host representation that preserves the exact JSON text. Do not automatically retry or execute a changed business action.`,
+    },
+    business_authorized: false,
+  };
 }
 
 /**
@@ -323,7 +361,8 @@ function deltas(input, upto) {
  * `agent` profile. A caller who read the MCP documentation and then called
  * the npm package got a different answer from the same input. The npm package
  * is the same product, so it defaults to the same profile; `permissive` is
- * one explicit argument away.
+ * one explicit argument away. The npm host additionally refuses a value whose
+ * JavaScript number conversion does not preserve the engine's exact JSON text.
  */
 function gate(input, options = {}) {
   return analyze(input, { profile: "agent", ...options });

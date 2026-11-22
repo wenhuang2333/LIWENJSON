@@ -1181,21 +1181,14 @@ fn json_equal_step(x : Json, y : Json, work : Array[(Json, Json)]) -> Bool {
 /// document because two spellings of the same number were merged would be a
 /// false loss, which is a defect in the other direction.
 ///
-/// A number with no `repr` at all was synthesised by the library rather than
-/// parsed from input, so its double is all there is to compare.
+/// A number with no `repr` uses its double's shortest round-trip text. Both
+/// sides still compare as exact decimals: a missing `repr` must not erase the
+/// other side's precision. If either text cannot be normalised, only identical
+/// texts prove equality; a rounded double is never a fallback.
 fn number_equal(x : Double, rx : String?, y : Double, ry : String?) -> Bool {
-  match (rx, ry) {
-    (Some(a), Some(b)) =>
-      match (decimal_key(a), decimal_key(b)) {
-        // Both texts are decimal numbers: the exact values decide.
-        (Some(ka), Some(kb)) => ka == kb
-        // A text the parser could not read as a decimal number (a repaired
-        // form, or an exponent too large to normalise): fall back to the
-        // double, and require the texts to be identical as well so that two
-        // different unreadable texts are never called equal by accident.
-        _ => a == b || (x == y && a == b)
-      }
-    _ => x == y
+  match (Dec::of_number(x, rx), Dec::of_number(y, ry)) {
+    (Some(a), Some(b)) => a == b
+    _ => rx.unwrap_or(x.to_string()) == ry.unwrap_or(y.to_string())
   }
 }
 
@@ -1227,7 +1220,7 @@ fn decimal_key(text : String) -> (Bool, String, Int32)? {
   }
   let digits = StringBuilder()
   let mut seen_digit = false
-  let mut exp : Int32 = 0
+  let mut exp : Int64 = 0L
   while i < n {
     let c = text.at(i)
     if is_ascii_digit(c) {
@@ -1245,7 +1238,7 @@ fn decimal_key(text : String) -> (Bool, String, Int32)? {
       if is_ascii_digit(c) {
         digits.write_char(Int32::unsafe_to_char(c.to_int()))
         // A fractional digit lowers the exponent by one.
-        exp = exp - 1
+        exp = exp - 1L
         seen_digit = true
         i = i + 1
       } else {
@@ -1272,9 +1265,10 @@ fn decimal_key(text : String) -> (Bool, String, Int32)? {
       }
       magnitude = magnitude * 10L + (c.to_int() - 0x30).to_int64()
       exp_digits = exp_digits + 1
-      // An exponent this large cannot be normalised into an `Int32`, and no
-      // two such texts are meaningfully comparable: refuse to normalise.
-      if exp_digits > 9 {
+      // Fractional/trailing digits can shift an exponent by at most Int32
+      // input length. Bound the magnitude before the next multiply, not the
+      // spelling length: leading zeroes do not make an exponent too large.
+      if magnitude > 4294967295L {
         return None
       }
       i = i + 1
@@ -1283,11 +1277,7 @@ fn decimal_key(text : String) -> (Bool, String, Int32)? {
       return None
     }
     let signed = if exp_negative { -magnitude } else { magnitude }
-    let adjusted = exp.to_int64() + signed
-    if adjusted > 2147483647L || adjusted < -2147483648L {
-      return None
-    }
-    exp = adjusted.to_int()
+    exp = exp + signed
   }
   if i != n {
     return None
@@ -1307,13 +1297,16 @@ fn decimal_key(text : String) -> (Bool, String, Int32)? {
   let mut stop = len
   while stop > start + 1 && raw.at(stop - 1) == 0x30 {
     stop = stop - 1
-    exp = exp + 1
+    exp = exp + 1L
+  }
+  if exp > 2147483647L || exp < -2147483648L {
+    return None
   }
   let significant = StringBuilder()
   for j = start; j < stop; j = j + 1 {
     significant.write_char(Int32::unsafe_to_char(raw.at(j).to_int()))
   }
-  Some((negative, significant.to_string(), exp))
+  Some((negative, significant.to_string(), exp.to_int()))
 }
 
 ///|

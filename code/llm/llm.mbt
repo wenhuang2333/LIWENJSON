@@ -554,7 +554,7 @@ pub fn ToolStream::push_event(
   self : ToolStream,
   event_json : String,
 ) -> Array[ToolCallView] raise @liwenjson.LIWENJSONError {
-  let v = @json.parse(event_json) catch {
+  let v = @json.parse(event_json, preserve_number_repr=true) catch {
     _ => raise @liwenjson.InvalidEvent("event payload is not valid JSON")
   }
   let touched = match self.provider {

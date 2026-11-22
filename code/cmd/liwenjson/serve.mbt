@@ -590,9 +590,20 @@ fn handle_repair(
   let repaired = @lj.repair(text, options=opts)
   match schema {
     Some(s) => {
-      // The repaired text is legal JSON by construction, so this parse cannot
-      // raise for a reason the caller could act on.
-      let value = @lj.parse(repaired.text).value
+      // Validate the already-budgeted output, not the original input again.
+      // Repair can add delimiters/escapes/indentation, so the output byte budget
+      // safely bounds both input units and tokens here. Keep the caller's depth
+      // instead of accidentally imposing the default 512 on a successful repair.
+      let parse_opts : @lj.Options = {
+        ..@lj.Options::strict(),
+        max_depth: opts.max_depth,
+        max_input_len: opts.max_output_len,
+        max_token_len: opts.max_output_len,
+        max_output_len: opts.max_output_len,
+        want_text: false,
+        collect_repairs: false,
+      }
+      let value = @lj.parse(repaired.text, options=parse_opts).value
       let violation = @lj.schema_violation(s, value)
       if violation != "" {
         raise @lj.SchemaError(violation)
@@ -623,7 +634,9 @@ fn handle_analyze(
   // `text` is now opt-in (`with_text`), because a caller that has `value` can
   // render it and the MCP gate never reads `text`.
   let with_text = bool_param(params, "with_text", false)
-  @json.parse(plan.to_json_with_text(with_text)) catch {
+  // The plan has already approved the exact value. Preserve its numeric text
+  // through the envelope: rounding here would execute a different document.
+  @json.parse(plan.to_json_with_text(with_text), preserve_number_repr=true) catch {
     _ => raise @lj.InvalidState("the plan could not be serialised")
   }
 }
@@ -1166,7 +1179,8 @@ fn run_serve(o : CliOpts) -> Unit {
         if trimmed.length() == 0 {
           continue
         }
-        let request = @json.parse(trimmed) catch {
+        // `schema_json` constants and numeric ids must reach the handler intact.
+        let request = @json.parse(trimmed, preserve_number_repr=true) catch {
           _ => {
             write_line(
               proto,
