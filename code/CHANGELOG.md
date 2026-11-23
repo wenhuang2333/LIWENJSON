@@ -231,6 +231,35 @@ Windows 上文本模式会把 `\n` 写成 CRLF，于是同一份夹具/文档在
 声明的当前版本就是 `moon.mod` 的那一个。**不覆盖已发布的 1.5.2**：它仍在 npm 与 PyPI
 上，是另一个版本号。
 
+### 发布记录（2026-11-23）
+
+CI 在 `fce76bc` 三项作业全绿（MoonBit 43 步、Windows 11 步、差分与基准 16 步）后打标签
+`v1.5.3`（远端 `refs/tags/v1.5.3^{}` 即该提交，标签没有移动过），`release.yml` 出 8 个资产：
+七个 `liwenjson-*`（四平台二进制 + wasm 探针 + 浏览器包 + 安装脚本）外加 `SHA256SUMS`。
+四个二进制逐个按 Release 自带的 `SHA256SUMS` 校验通过，
+容器格式与其名字声称的平台一致（ELF aarch64、ELF x86-64、Mach-O arm64、PE32+）。
+
+- **PyPI**：`liwenjson-1.5.3-py3-none-any.whl`（1 674 438 字节）与 `liwenjson-1.5.3.tar.gz`
+  （1 669 698 字节）上传成功，`twine check` 两份都 PASSED。wheel 里的四个二进制取自 Release
+  本身（`build_wheel.sh --from-dir`），不是另一次编译。干净虚拟环境
+  `pip install liwenjson==1.5.3` 后 `liwenjson --version` 报 `1.5.3`，`repair` 与 `serve`
+  的 `hello`（`engine 1.5.3` / `registry 0.15.0`）都走通。
+- **npm**：`liwenjson@1.5.3` 发布后 `https://registry.npmjs.org/-/package/liwenjson/dist-tags`
+  返回 `{"latest":"1.5.3"}`；tarball `shasum` `41ed65af9d7bbd08523db9a4a6344dc6c28eedec`
+  与本地 `npm pack --dry-run` 完全相同（9 个文件，含 `vendor/liwenjson.js`）。刚发布的几分钟内
+  注册表仍返回 `version not found`，几分钟后转 200——发布成功与可解析之间有一段处理窗口。
+- **mooncakes**：`zhanshishan/liwenjson@0.15.0`。先 `moon publish --dry-run`（`202 Accepted …
+  Dry run completed successfully`），再正式 `moon publish`（`Server status: 200 OK`）。发布用的
+  是仓库外的整棵副本，只把副本 `moon.mod` 的 `version` 改成 `0.15.0`；工作树 `moon.mod` 仍是
+  `1.5.3`。独立模块 `moon add zhanshishan/liwenjson@0.15.0` 拉回 565 个文件，包内
+  `VERSION=1.5.3` / `REGISTRY_VERSION=0.15.0`，native 与 js 两个后端都编译并跑出
+  `{"a":[1,2]}`。打包器会略过 `tests/claude-e2e/.claude/` 下三个点目录文件（端到端钩子配置，
+  不属于库）。
+- **本轮为发布而修的两处门**：Linux 上 HTTP 繁忙路径假红——被拒绝的请求体在关闭前还要限时排空，
+  响应已经发出并不意味着工作者槽位已经归还；Windows 上 `ffi_fopen` 只被非 Windows 分支调用，
+  `--deny-warn` 在没有它的目标上把声明判成未使用值，于是按平台门控。后一条自 `v1.5.2` 就存在，
+  直到 Windows 作业跑到类型检查这一步才暴露。
+
 ## [1.5.2] - 2026-11-08
 
 第二轮审计（`marks/迭代.md`）以「把一个真实模型的后端接到闸门上，看会错在哪」为问题。

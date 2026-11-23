@@ -1051,13 +1051,13 @@
             "title": "npm · Node / TypeScript",
             "tag": "liwenjson",
             "cmd": "npm install liwenjson",
-            "note": "装完 import { analyze, repair } from \"liwenjson\"，在执行工具参数前过闸。本轮发布到 npm：liwenjson@1.5.3（2026-11-23）；包内还带一个 liwenjson-mcp 入口（需要 liwenjson 在 PATH 上，或用 LIWENJSON_BIN 指向它——npm 包带的是 JS 引擎，不含原生二进制）。包里的 vendor/liwenjson.js 是同一引擎的 JS 构建，供进程内调用，不能当 MCP server 用。"
+            "note": "装完 import { analyze, repair } from \"liwenjson\"，在执行工具参数前过闸。已发布到 npm：liwenjson@1.5.3（2026-11-23，dist-tag latest）；包内还带一个 liwenjson-mcp 入口（需要 liwenjson 在 PATH 上，或用 LIWENJSON_BIN 指向它——npm 包带的是 JS 引擎，不含原生二进制）。包里的 vendor/liwenjson.js 是同一引擎的 JS 构建，供进程内调用，不能当 MCP server 用。"
           },
           {
             "title": "pip · Python",
             "tag": "liwenjson",
             "cmd": "pip install liwenjson",
-            "note": "from liwenjson import Client：复用同一个 liwenjson serve 进程，executable 为 false 时把 retry.prompt 原样回灌模型。本轮发布到 PyPI：liwenjson 1.5.3（2026-11-23），wheel 内带四平台原生引擎并按当前平台自动选；pip 包同样提供 liwenjson-mcp 与 liwenjson-http 两个入口，装完即可用，不需要另外装 CLI。"
+            "note": "from liwenjson import Client：复用同一个 liwenjson serve 进程，executable 为 false 时把 retry.prompt 原样回灌模型。已发布到 PyPI：liwenjson 1.5.3（2026-11-23，wheel 与 sdist 两份），wheel 内带四平台原生引擎并按当前平台自动选；pip 包同样提供 liwenjson-mcp 与 liwenjson-http 两个入口，装完即可用，不需要另外装 CLI。"
           },
           {
             "title": "HTTP · n8n / Dify / Coze",
@@ -1069,7 +1069,7 @@
             "title": "MoonBit 库 · 进程内",
             "tag": "moon add zhanshishan/liwenjson",
             "cmd": "let p = @liwenjson.PartialParser::new()",
-            "note": "不想起子进程时直接用库：PartialParser 逐个码元喂，analyze 给出同一份执行门判断。mooncakes 0.15.0 对应本版（2026-11-23）；GitHub v1.5.3 ↔ mooncakes 0.15.0 的对应关系由 code/version.mbt 的 VERSION / REGISTRY_VERSION 定义，serve 的 hello 同时报告两个号——平台只接受 0.x.y，所以两个号不会相同。旧名 zhanshishan/interjson、zhanshishan/jsonmend 已标 deprecated 并指向新名。"
+            "note": "不想起子进程时直接用库：PartialParser 逐个码元喂，analyze 给出同一份执行门判断。已发布到 mooncakes：0.15.0 对应本版（2026-11-23，从注册表拉回后报 VERSION=1.5.3）；GitHub v1.5.3 ↔ mooncakes 0.15.0 的对应关系由 code/version.mbt 的 VERSION / REGISTRY_VERSION 定义，serve 的 hello 同时报告两个号——平台只接受 0.x.y，所以两个号不会相同。旧名 zhanshishan/interjson、zhanshishan/jsonmend 已标 deprecated 并指向新名。"
           }
         ],
         "mcp": {

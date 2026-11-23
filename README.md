@@ -15,11 +15,11 @@
 
 | GitHub tag | mooncakes.io | npm | PyPI | 状态 |
 | --- | --- | --- | --- | --- |
-| `v1.5.3` | `0.15.0` | `liwenjson@1.5.3` | `liwenjson@1.5.3` | **本轮发布**（2026-11-23）：标签触发 CI 与 GitHub Release，npm / PyPI / mooncakes 依次跟进 |
+| `v1.5.3` | `0.15.0` | `liwenjson@1.5.3` | `liwenjson@1.5.3` | **已发布**（2026-11-23）：CI 全绿后打标签（→ `fce76bc`），Release 出 8 个产物，PyPI / npm / mooncakes 同日跟进，四渠道直连复验通过 |
 | `v1.5.2` | `0.14.0` | `liwenjson@1.5.2` | `liwenjson@1.5.2` | 上一版（GitHub Release / npm / PyPI 2026-11-20，mooncakes 同日） |
 | `v1.5.1` | `0.13.0` | `interjson-moonbit@1.5.1` | `interjson-moonbit@1.5.1` | 更早（mooncakes 2026-10-29，npm / PyPI 2026-10-30，重命名前） |
 
-改名前后是三个不同的模块名：mooncakes 上 0.11.0–0.13.0 是 `zhanshishan/interjson`，更早是 `zhanshishan/jsonmend`，`zhanshishan/liwenjson` 是 0.14.0 才出现的新模块（注册表不支持改名，只能新增包名；两个旧模块 `zhanshishan/interjson`、`zhanshishan/jsonmend` 已于 2026-11-20 `moon deprecate` 标为废弃并把新名写进理由）。已发布的是 mooncakes `zhanshishan/interjson@0.13.0`（2026-10-29）与 npm / PyPI 的 `interjson-moonbit@1.5.1`（2026-10-30）、以及 `1.5.2` 的四个渠道（GitHub Release、npm、PyPI、mooncakes `zhanshishan/liwenjson@0.14.0` 都在 2026-11-20，拉回后 `VERSION=1.5.2` / `REGISTRY_VERSION=0.14.0`）。**本轮的 `1.5.3` ↔ mooncakes `0.15.0`** 装的是同一份引擎的第三轮审计修复，发布顺序仍是 标签 → GitHub Release → wheel → PyPI → npm → mooncakes；发布记录与历史见 `code/CHANGELOG.md`。两个语言包的 wheel 与 tarball 里都带着引擎，装完即可调用。
+改名前后是三个不同的模块名：mooncakes 上 0.11.0–0.13.0 是 `zhanshishan/interjson`，更早是 `zhanshishan/jsonmend`，`zhanshishan/liwenjson` 是 0.14.0 才出现的新模块（注册表不支持改名，只能新增包名；两个旧模块 `zhanshishan/interjson`、`zhanshishan/jsonmend` 已于 2026-11-20 `moon deprecate` 标为废弃并把新名写进理由）。已发布的是 mooncakes `zhanshishan/interjson@0.13.0`（2026-10-29）与 npm / PyPI 的 `interjson-moonbit@1.5.1`（2026-10-30）、以及 `1.5.2` 的四个渠道（GitHub Release、npm、PyPI、mooncakes `zhanshishan/liwenjson@0.14.0` 都在 2026-11-20，拉回后 `VERSION=1.5.2` / `REGISTRY_VERSION=0.14.0`）。**本轮的 `1.5.3` ↔ mooncakes `0.15.0` 已于 2026-11-23 发布完毕**：GitHub tag `v1.5.3`（→ `fce76bc`）与带 8 个产物的 Release、PyPI `liwenjson` 1.5.3（wheel + sdist）、npm `liwenjson@1.5.3`（`latest`，tarball `shasum` 与本地构建逐字节一致）、mooncakes `zhanshishan/liwenjson@0.15.0`（`moon add` 拉回后 `VERSION=1.5.3` / `REGISTRY_VERSION=0.15.0`）。顺序仍是 标签 → GitHub Release → wheel → PyPI → npm → mooncakes；发布记录与历史见 `code/CHANGELOG.md`。两个语言包的 wheel 与 tarball 里都带着引擎，装完即可调用。
 
 本文的自动化验收数字对应当前构建（`v1.5.3`）；每个版本的内容见 [CHANGELOG](code/CHANGELOG.md)。
 
