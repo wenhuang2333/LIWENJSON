@@ -8,7 +8,7 @@
 | 版本 | 1.5.3 |
 | 许可证 | Apache-2.0 |
 | 后端 | wasm-gc / native / JS / wasm，同一套测试，各 384/384 通过 |
-| 发行渠道 | `1.5.3` 四渠道已全部发布（2026-11-23，CI 全绿后打标签）：GitHub `v1.5.3`（8 个产物：三系统四二进制 + wasm 探针 + 浏览器包 + 安装脚本 + `SHA256SUMS`）、[mooncakes](https://mooncakes.io/docs/zhanshishan/liwenjson) `zhanshishan/liwenjson@0.15.0`、npm / PyPI `liwenjson@1.5.3`（PyPI 是 wheel + sdist 两份，npm 的 tarball `shasum` 与本地构建一致；顺序 标签 → Release → wheel → PyPI → npm → mooncakes）；上一版 `1.5.2` 四渠道全部发布于 2026-11-20，更早 1.5.1 的 `0.13.0` 于 2026-10-29、npm / PyPI 于 2026-10-30 发布，都在重命名之前 |
+| 发行渠道 | `1.5.3` 四渠道全部发布：GitHub `v1.5.3` 带 8 个产物，mooncakes `zhanshishan/liwenjson@0.15.0`，npm 与 PyPI 都是 `liwenjson@1.5.3`。发布顺序 标签 → Release → wheel → PyPI → npm → mooncakes，历史版本见 [`CHANGELOG.md`](CHANGELOG.md) |
 
 **本页是中文 API 速查**：`Options`、`PartialParser`、`Schema`、修复规则、错误码、快照语义。
 项目的 60 秒上手、接入面、证据表与版本映射在[仓库首页](../README.md)；英文完整参考见

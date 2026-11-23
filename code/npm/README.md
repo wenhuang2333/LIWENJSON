@@ -10,9 +10,7 @@ that starts the local MCP server from the native binary.
 npm install liwenjson
 ```
 
-> The package name is **`liwenjson`** — the bare name, no suffix. `1.5.2` is the
-> first release published under it; `1.5.1` reached the npm registry on
-> 2026-10-30 as `interjson-moonbit`.
+> The package name is **`liwenjson`** — the bare name, no suffix.
 
 ```js
 import { analyze, repair } from "liwenjson";
@@ -119,10 +117,9 @@ the MoonBit `PartialParser`.
 ## Scope
 
 This package wraps the same bundle as `static/demo/liwenjson.js`; it does not
-reimplement the engine. The version is the engine version (`1.5.3`), published to
+reimplement the engine. The version is the engine version `1.5.3`, published to
 npm in the same release train as the `v1.5.3` GitHub tag. The MoonBit package on
-mooncakes is `0.15.0` because the registry currently accepts only `0.x.y`; the
-bytes are the same. Earlier correspondences: `0.14.0` (1.5.2) on 2026-11-20,
-`0.13.0` (1.5.1) on 2026-10-29, and `0.12.0` (1.5.0) on 2026-10-28.
+mooncakes is `0.15.0` because the registry accepts only `0.x.y`; the bytes are
+the same.
 
 License: Apache-2.0.

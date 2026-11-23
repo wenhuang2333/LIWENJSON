@@ -17,9 +17,8 @@ pip install liwenjson
 ```
 
 > The distribution name is **`liwenjson`** on PyPI — the bare name, no suffix —
-> and it is also the import name. `1.5.2` is the first release published under
-> it; `1.5.1` reached PyPI on 2026-10-30 as `interjson-moonbit`. The npm package
-> uses the same name: `npm install liwenjson`.
+> and it is also the import name. The npm package uses the same name:
+> `npm install liwenjson`.
 
 An engine that is already installed keeps priority: `LIWENJSON_BIN`, then
 `liwenjson` on `PATH`, then the bundled binary. Set either to point the client
@@ -155,8 +154,7 @@ than being silently dropped.
 
 The Python package is `1.5.3`, the engine version, published to PyPI in the same
 release train as the `v1.5.3` GitHub tag. The MoonBit package on mooncakes is
-`0.15.0` because the registry currently accepts only `0.x.y`; the bytes are the
-same. `Client.hello()` reports both. Earlier correspondences: `0.14.0` (1.5.2) on
-2026-11-20, `0.13.0` (1.5.1) on 2026-10-29, and `0.12.0` (1.5.0) on 2026-10-28.
+`0.15.0` because the registry accepts only `0.x.y`; the bytes are the same.
+`Client.hello()` reports both.
 
 License: Apache-2.0.
