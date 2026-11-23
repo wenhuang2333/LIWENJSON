@@ -19,6 +19,10 @@ extern "C" fn ffi_exit(code : Int32) -> Unit = "exit"
 extern "C" fn ffi_fdopen(fd : Int32, mode : Bytes) -> Int64 = "fdopen"
 
 ///|
+/// Non-Windows only: the path open goes through `_wopen` there, so this
+/// declaration has no caller on Windows and `--deny-warn` rejects it as an
+/// unused value on that target.
+#cfg(not(all(target="native", platform="windows")))
 #borrow(path, mode)
 extern "C" fn ffi_fopen(path : Bytes, mode : Bytes) -> Int64 = "moonbit_fopen_ffi"
 
