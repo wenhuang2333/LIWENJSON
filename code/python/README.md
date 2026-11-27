@@ -91,7 +91,7 @@ platform the release does not build for — Intel macOS, for example — needs
 `LIWENJSON_BIN`.
 
 ```bash
-liwenjson --version                  # liwenjson 1.5.3: the engine the launchers need
+liwenjson --version                  # liwenjson 1.5.4: the engine the launchers need
 liwenjson-mcp                        # MCP stdio server
 liwenjson-mcp --print-config=claude  # the client configuration snippet
 liwenjson-http --port 8080           # POST /repair /analyze /validate /readiness, GET /healthz
@@ -152,9 +152,9 @@ than being silently dropped.
 
 ## Version
 
-The Python package is `1.5.3`, the engine version, published to PyPI in the same
-release train as the `v1.5.3` GitHub tag. The MoonBit package on mooncakes is
-`0.15.0` because the registry accepts only `0.x.y`; the bytes are the same.
+The Python package is `1.5.4`, the engine version, published to PyPI in the same
+release train as the `v1.5.4` GitHub tag. The MoonBit package on mooncakes is
+`0.16.0` because the registry accepts only `0.x.y`; the bytes are the same.
 `Client.hello()` reports both.
 
 License: Apache-2.0.

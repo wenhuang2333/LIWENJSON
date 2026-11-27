@@ -1,4 +1,4 @@
-**版本**：1.5.3
+**版本**：1.5.4
 
 # LIWENJSON — LLM 输出的执行门
 
@@ -15,9 +15,9 @@
 
 | GitHub tag | mooncakes.io | npm | PyPI |
 | --- | --- | --- | --- |
-| `v1.5.3` | `0.15.0` | `liwenjson@1.5.3` | `liwenjson@1.5.3` |
+| `v1.5.4` | `0.16.0` | `liwenjson@1.5.4` | `liwenjson@1.5.4` |
 
-1.5.3 已于 2026-11-23 发布到四个渠道：CI 全绿后打标签，Release 带 8 个产物，PyPI、npm、mooncakes 同日跟进，逐渠道直连复验。平台只接受 `0.x.y` 形式的版本号，所以注册表的 `0.15.0` 对应引擎 1.5.3。历史版本与逐渠道发布记录见 [CHANGELOG](code/CHANGELOG.md)。
+1.5.4 已于 2026-11-27 发布到四个渠道：CI 全绿后打标签，Release 带 8 个产物，PyPI、npm、mooncakes 同日跟进，逐渠道直连复验。平台只接受 `0.x.y` 形式的版本号，所以注册表的 `0.16.0` 对应引擎 1.5.4。历史版本与逐渠道发布记录见 [CHANGELOG](code/CHANGELOG.md)。
 
 **dsh 插件**：`liwenjson-dsh@0.2.0` 已于 2026-11-25 发布到 npm，把同一执行门接到 DeepSeek Harness 的 `ctx.tools.guard()`；安装方式为 `dsh plugin --profile <name> add liwenjson-dsh`。它与本项目的 `liwenjson` 是两个独立的包。
 
@@ -103,7 +103,7 @@ moon add zhanshishan/liwenjson
 
 ```bash
 # 版本
-liwenjson --version                                  # liwenjson 1.5.3
+liwenjson --version                                  # liwenjson 1.5.4
 
 # 打印 Claude Code 的 MCP 配置，然后注册
 liwenjson mcp --print-config=claude                  # claude mcp add liwenjson -- liwenjson mcp
@@ -115,7 +115,7 @@ printf '{"amount":100,"currency":"USD"' | liwenjson explain --policy agent --jso
 # 语言包自带的启动器起同一个 MCP server，npm 与 pip 都提供
 npm install -g liwenjson
 pip install liwenjson
-liwenjson-mcp --version                              # liwenjson 1.5.3
+liwenjson-mcp --version                              # liwenjson 1.5.4
 ```
 
 `liwenjson-mcp` 只负责找到原生引擎，顺序是 `LIWENJSON_BIN`、PATH 上的 `liwenjson`、语言包自带的二进制、仓库内的开发构建，然后把 stdio 交过去。找不到二进制时以退出码 127 结束并打印安装方式，不会起一个半可用的 server。

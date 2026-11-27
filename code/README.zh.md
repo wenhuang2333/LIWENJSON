@@ -5,10 +5,10 @@
 | | |
 | --- | --- |
 | 模块 | `zhanshishan/liwenjson` |
-| 版本 | 1.5.3 |
+| 版本 | 1.5.4 |
 | 许可证 | Apache-2.0 |
 | 后端 | wasm-gc / native / JS / wasm，同一套测试，各 384/384 通过 |
-| 发行渠道 | `1.5.3` 四渠道全部发布：GitHub `v1.5.3` 带 8 个产物，mooncakes `zhanshishan/liwenjson@0.15.0`，npm 与 PyPI 都是 `liwenjson@1.5.3`。发布顺序 标签 → Release → wheel → PyPI → npm → mooncakes，历史版本见 [`CHANGELOG.md`](CHANGELOG.md) |
+| 发行渠道 | `1.5.4` 四渠道全部发布：GitHub `v1.5.4` 带 8 个产物，mooncakes `zhanshishan/liwenjson@0.16.0`，npm 与 PyPI 都是 `liwenjson@1.5.4`。发布顺序 标签 → Release → wheel → PyPI → npm → mooncakes，历史版本见 [`CHANGELOG.md`](CHANGELOG.md) |
 
 **本页是中文 API 速查**：`Options`、`PartialParser`、`Schema`、修复规则、错误码、快照语义。
 项目的 60 秒上手、接入面、证据表与版本映射在[仓库首页](../README.md)；英文完整参考见

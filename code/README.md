@@ -12,12 +12,12 @@ question for host-side callers (`serve`, npm, pip, HTTP).
 | | |
 | --- | --- |
 | Module | `zhanshishan/liwenjson` |
-| Version | 1.5.3 |
+| Version | 1.5.4 |
 | License | Apache-2.0 |
 | MCP server | `liwenjson mcp`, also `liwenjson-mcp`; JSON-RPC 2.0 over stdio, protocol `2025-06-18`, also accepts `2025-03-26` and `2024-11-05` |
 | Backends | wasm-gc, native, JS, wasm — one test suite, all four |
-| Registry | [`mooncakes.io zhanshishan/liwenjson`](https://mooncakes.io/docs/zhanshishan/liwenjson) — **`0.15.0` is this 1.5.3 release**, the platform only accepts `0.x.y`. `moon add zhanshishan/liwenjson` pulls it back and the package reports `VERSION=1.5.3` / `REGISTRY_VERSION=0.15.0` |
-| Prebuilt binaries | GitHub release `v1.5.3` carries 8 assets: four binaries across three operating systems — `linux-x86_64`, `linux-arm64`, `macos-arm64`, `windows-x86_64.exe` — plus the wasm probe, the browser bundle, `SHA256SUMS` and the `liwenjson-install.sh` one-command installer. There is **no Intel macOS build**: the MoonBit toolchain publishes no `darwin-x86_64` target |
+| Registry | [`mooncakes.io zhanshishan/liwenjson`](https://mooncakes.io/docs/zhanshishan/liwenjson) — **`0.16.0` is this 1.5.4 release**, the platform only accepts `0.x.y`. `moon add zhanshishan/liwenjson` pulls it back and the package reports `VERSION=1.5.4` / `REGISTRY_VERSION=0.16.0` |
+| Prebuilt binaries | GitHub release `v1.5.4` carries 8 assets: four binaries across three operating systems — `linux-x86_64`, `linux-arm64`, `macos-arm64`, `windows-x86_64.exe` — plus the wasm probe, the browser bundle, `SHA256SUMS` and the `liwenjson-install.sh` one-command installer. There is **no Intel macOS build**: the MoonBit toolchain publishes no `darwin-x86_64` target |
 | Docs | [`docs/MCP.md`](docs/MCP.md) for deployment, [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for host-side recipes, [`docs/SPEC.md`](docs/SPEC.md) for the normative contract, [../README.md](../README.md) as the project front page |
 
 This page is the package page for mooncakes.io and the **API reference**: the
@@ -413,7 +413,7 @@ Flags:
 | `--chunk N` | Feed the input in N-code-unit chunks (≤1048576) to exercise the streaming path. |
 | `--batch` | Read `{"id","input"}` objects line by line and write one result object per line. |
 | `-h`, `--help` | Show help. |
-| `--version` | Show the version (`liwenjson 1.5.3`). |
+| `--version` | Show the version (`liwenjson 1.5.4`). |
 | file, or `-` | Read a file; `-` or an omitted argument reads standard input. |
 
 `--indent=N`, `--multi-root=MODE`, and `--max-repairs=N` are accepted as

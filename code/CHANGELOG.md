@@ -5,7 +5,9 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.5.4] - 2026-11-27
+
+工具链升级版：同一套行为在 MoonBit 1.0.0-rc1 上构建，四个渠道一起发新版本（mooncakes 对应 `0.16.0`）。
 
 ### 工具链
 

@@ -13,7 +13,7 @@
 | 5 | 使用持续集成，覆盖检查、构建、测试流程 | 满足 | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) 的三组 job：MoonBit（`check --deny-warn`、`fmt --check`、四后端测试、CLI/MCP/差分/覆盖率/打包）、Windows（native 构建与 I/O 不变量）、Differential（外部 oracle 与基准）；提交 `ea96d92` 的 `main` 运行结论 `success`，本次升级由同一工作流在推送后验证 |
 | 6 | 至少一个可运行示例或最小使用样例 | 满足 | 两个端到端示例 `examples/agent_gate`、`examples/agent_loop`，以及下文「样例」中的 CLI 与 MoonBit 最小调用；浏览器演示控制台由同一引擎的 JS 产物驱动 |
 | 7 | 完整测试，覆盖核心功能路径 | 满足 | 白盒测试 `*_wbtest.mbt` 覆盖修复规则、黄金用例、性质、流式分块、字节级 fuzz 与错误码；四个后端各 `384/384`；CLI 冒烟、协议一致性、MCP 契约、npm 与 Python 包各有独立测试，数字见下表 |
-| 8 | 发布到 mooncakes.io | 满足 | `zhanshishan/liwenjson@0.15.0`（对应 GitHub `v1.5.3`）。`moon search liwenjson` 命中 0.15.0，`moon add zhanshishan/liwenjson` 可直接安装 |
+| 8 | 发布到 mooncakes.io | 满足 | `zhanshishan/liwenjson@0.16.0`（对应 GitHub `v1.5.4`）。`moon search liwenjson` 命中 0.16.0，`moon add zhanshishan/liwenjson` 可直接安装 |
 | 9 | 采用 OSI 认可的开源许可证；参考或移植其他项目时符合原许可证 | 满足 | Apache-2.0：根目录 `LICENSE` 与 `NOTICE`；测试仅把 `jsonrepair`（ISC）与 `json-repair`（MIT）作为进程外 oracle，未复制其源码；vendored 的 nst/JSONTestSuite 语料保留原许可证与出处（`code/tests/eval/third_party/jsontestsuite/PROVENANCE.md`） |
 
 ## 测试证据（当前构建）

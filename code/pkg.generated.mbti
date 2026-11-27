@@ -16,9 +16,9 @@ pub const MAX_SCHEMA_WALK_NODES : Int32 = 4194304
 
 pub const MAX_VALUE_DEPTH : Int32 = 1048576
 
-pub const REGISTRY_VERSION : String = "0.15.0"
+pub const REGISTRY_VERSION : String = "0.16.0"
 
-pub const VERSION : String = "1.5.3"
+pub const VERSION : String = "1.5.4"
 
 pub fn advice_for(PlanOp) -> String
 

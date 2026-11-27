@@ -117,9 +117,9 @@ the MoonBit `PartialParser`.
 ## Scope
 
 This package wraps the same bundle as `static/demo/liwenjson.js`; it does not
-reimplement the engine. The version is the engine version `1.5.3`, published to
-npm in the same release train as the `v1.5.3` GitHub tag. The MoonBit package on
-mooncakes is `0.15.0` because the registry accepts only `0.x.y`; the bytes are
+reimplement the engine. The version is the engine version `1.5.4`, published to
+npm in the same release train as the `v1.5.4` GitHub tag. The MoonBit package on
+mooncakes is `0.16.0` because the registry accepts only `0.x.y`; the bytes are
 the same.
 
 License: Apache-2.0.
