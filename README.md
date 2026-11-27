@@ -19,6 +19,8 @@
 
 1.5.3 已于 2026-11-23 发布到四个渠道：CI 全绿后打标签，Release 带 8 个产物，PyPI、npm、mooncakes 同日跟进，逐渠道直连复验。平台只接受 `0.x.y` 形式的版本号，所以注册表的 `0.15.0` 对应引擎 1.5.3。历史版本与逐渠道发布记录见 [CHANGELOG](code/CHANGELOG.md)。
 
+**dsh 插件**：`liwenjson-dsh@0.2.0` 已于 2026-11-25 发布到 npm，把同一执行门接到 DeepSeek Harness 的 `ctx.tools.guard()`；安装方式为 `dsh plugin --profile <name> add liwenjson-dsh`。它与本项目的 `liwenjson` 是两个独立的包。
+
 ## 功能亮点
 
 - **执行门，默认入口**。每个结果都带精确度标签——`Exact` 没改、`Cosmetic` 只改记法、`Lossy` 发明或丢弃了信息——以及歧义类别。执行档 `execution` 与 `agent` 下，有损或有多重读法的结果被拒绝，而不是先执行再后悔。拒绝结果带非空的 `retry.prompt` 且 `value: null`；只有 `refusal.auto_retry: true` 时才可按提示自动重试，宿主声明或数值表示问题须由调用方修正。
