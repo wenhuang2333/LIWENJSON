@@ -98,8 +98,8 @@ for wf in "$CI_YML" "$RELEASE_YML"; do
   if [ "$installs" -gt 0 ] && [ "$pins" -lt "$installs" ]; then
     fail "$wf installs the toolchain $installs time(s) but pins MOONBIT_INSTALL_VERSION only $pins time(s)"
   fi
-  if ! grep -q "MOONBIT_INSTALL_VERSION: \${{ vars.MOONBIT_VERSION || '0.10.16+b1a0e846e' }}" "$wf"; then
-    fail "$wf does not pin the toolchain to 0.10.16+b1a0e846e (allow the MOONBIT_VERSION override)"
+  if ! grep -q "MOONBIT_INSTALL_VERSION: \${{ vars.MOONBIT_VERSION || '1.0.0-rc1+3c0520448' }}" "$wf"; then
+    fail "$wf does not pin the toolchain to 1.0.0-rc1+3c0520448 (allow the MOONBIT_VERSION override)"
   fi
 done
 

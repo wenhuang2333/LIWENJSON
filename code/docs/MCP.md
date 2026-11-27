@@ -144,7 +144,7 @@ liwenjson --version          # liwenjson 1.5.3
 > **Technical preview.** The prebuilt binary comes from the GitHub release, which
 > builds four binaries across three operating systems: `linux-x86_64`,
 > `linux-arm64`, `macos-arm64` and `windows-x86_64`. Building
-> from source needs the MoonBit toolchain `moon 0.1.20261016`. The mooncakes
+> from source needs the MoonBit toolchain `moon 0.1.20261126`. The mooncakes
 > counterpart **0.13.0 was published on 2026-10-29**, and `interjson-moonbit@1.5.1`
 > reached npm and PyPI on 2026-10-30, so both language packages install with one
 > command. **1.5.2 was the first release named `liwenjson` on npm, on PyPI and on
@@ -181,7 +181,7 @@ checksum failure, `2` unsupported platform.
 ### Build from source
 
 The CLI is native-only (`supported_targets = "native"`), built with the pinned
-toolchain `moon 0.1.20261016`. This is the install path for the `liwenjson`
+toolchain `moon 0.1.20261126`. This is the install path for the `liwenjson`
 surface today:
 
 ```sh

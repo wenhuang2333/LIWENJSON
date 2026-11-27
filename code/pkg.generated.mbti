@@ -1,6 +1,10 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "zhanshishan/liwenjson"
 
+import {
+  "moonbitlang/core/json",
+}
+
 // Values
 pub const MAX_INDENT : Int32 = 64
 
@@ -24,7 +28,7 @@ pub fn auto_step(Int32, Int32) -> Int32
 
 pub fn code_points(String) -> Int32
 
-pub fn copy_json(Json) -> Json
+pub fn copy_json(@json.Json) -> @json.Json
 
 pub fn decide(Int32, Exactness, Bool) -> ExecutionDecision
 
@@ -44,11 +48,11 @@ pub fn hint_context(String, Int32, Int32) -> (String, Int32)
 
 pub fn is_valid_json(String) -> Bool
 
-pub fn kind_of(Json) -> String
+pub fn kind_of(@json.Json) -> String
 
-pub fn lookup_path(Json, String) -> Json?
+pub fn lookup_path(@json.Json, String) -> @json.Json?
 
-pub fn number_dec(Json) -> Dec?
+pub fn number_dec(@json.Json) -> Dec?
 
 pub fn parse(String, options? : Options) -> ParseResult raise LIWENJSONError
 
@@ -64,9 +68,9 @@ pub fn repair(String, options? : Options) -> RepairResult raise LIWENJSONError
 
 pub fn repair_record_fields() -> Array[String]
 
-pub fn repair_record_json(Repair) -> Json
+pub fn repair_record_json(Repair) -> @json.Json
 
-pub fn schema_violation(Schema, Json) -> String
+pub fn schema_violation(Schema, @json.Json) -> String
 
 pub fn semantic_readiness(String, Schema, step? : Int32, options? : Options) -> SemanticReadiness raise LIWENJSONError
 
@@ -125,7 +129,7 @@ pub(all) struct Constraints {
   mut exclusive_maximum : Dec?
   mut min_length : Int32?
   mut max_length : Int32?
-  mut enum_values : Array[Json]?
+  mut enum_values : Array[@json.Json]?
   mut pattern : String?
   mut additional_properties_closed : Bool
 }
@@ -150,7 +154,7 @@ pub impl Eq for Dec
 pub(all) struct Delta {
   path : Array[PathSegment]
   op : DeltaOp
-  value : Json?
+  value : @json.Json?
   text : String
   at : Int32
 }
@@ -169,7 +173,7 @@ pub impl Eq for DeltaOp
 pub(all) struct DeltaView {
   op : DeltaOp
   at : Int32
-  value : Json?
+  value : @json.Json?
   text : String
   // private fields
 }
@@ -231,7 +235,7 @@ pub fn FieldTracker::ready_keys(Self) -> Array[String]
 
 pub(all) struct FinalResult {
   text : String
-  value : Json
+  value : @json.Json
   repairs : Array[Repair]
   completeness : Completeness
   repairs_truncated : Bool
@@ -310,7 +314,7 @@ pub fn Options::with_policy(Self, SafetyPolicy) -> Self
 pub fn Options::with_profile(Self, SafetyPolicy) -> Self
 
 pub(all) struct ParseResult {
-  value : Json
+  value : @json.Json
   repairs : Array[Repair]
   completeness : Completeness
   repairs_truncated : Bool
@@ -469,7 +473,7 @@ pub impl Eq for RepairCode
 
 pub(all) struct RepairPlan {
   text : String
-  value : Json?
+  value : @json.Json?
   repairs : Array[PlanOp]
   repairs_truncated : Bool
   exactness : Exactness
@@ -565,14 +569,14 @@ pub(all) enum Schema {
   Obj(Array[SchemaMember])
   Constrained(Schema, Constraints)
 }
-pub fn Schema::accepts(Self, Json) -> Bool
+pub fn Schema::accepts(Self, @json.Json) -> Bool
 pub fn Schema::at_path(Self, String) -> Self?
-pub fn Schema::evaluate(Self, Json) -> SchemaVerdict
+pub fn Schema::evaluate(Self, @json.Json) -> SchemaVerdict
 pub fn Schema::expectation(Self) -> String
 pub fn Schema::field(Self, String) -> SchemaMember?
 pub fn Schema::member_keys(Self) -> Array[String]
 pub fn Schema::name(Self) -> String
-pub fn Schema::of_json_schema(Json) -> Self raise LIWENJSONError
+pub fn Schema::of_json_schema(@json.Json) -> Self raise LIWENJSONError
 pub fn Schema::parse(String) -> Self raise LIWENJSONError
 pub fn Schema::parse_json_schema(String) -> Self raise LIWENJSONError
 pub fn Schema::required_paths(Self, depth_budget? : Int32, node_budget? : Int32) -> Array[String] raise LIWENJSONError
@@ -659,7 +663,7 @@ pub fn Slot::not_equal(Self, Self) -> Bool
 pub impl Eq for Slot
 
 pub(all) struct Snapshot {
-  value : Json?
+  value : @json.Json?
   completeness : Completeness
   open_path : Array[PathSegment]
   exactness : Exactness

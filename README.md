@@ -40,10 +40,10 @@
 | 协议 / MCP 一致性 | `19 组` |
 | npm 包 | `33 个 Node 测试` |
 | Python 包 | `89 个测试` |
-| 根包行覆盖率 | `4697/4932` |
+| 根包行覆盖率 | `4697/4931` |
 | `llm` 包行覆盖率 | `529/696` |
-| 覆盖率门（有未覆盖行的文件口径） | `5151/5553` |
-| wasm-gc 产物体积 | `116.2 KiB` |
+| 覆盖率门（有未覆盖行的文件口径） | `5151/5552` |
+| wasm-gc 产物体积 | `121.0 KiB` |
 | MCP 契约：真实二进制对真实 `outputSchema` | `13/13 响应通过` |
 | 真实模型端到端，Responses API，脚本 `code/tests/live_model_audit_v2.py` | `34/34 检查通过` |
 | 真实 Claude Code 会话：强制 `PreToolUse` 门 | 拒绝 `touch pwned.txt`，文件未创建；放行 `echo read-only-ok` |
@@ -54,6 +54,14 @@
 | 差分测试（对 `jsonrepair` / `json-repair`） | `402` 条，未解释 0 处分歧 |
 | 骨架就绪表 | `10 个场景` |
 
+九项赛事验收要求逐条对照、复现命令与最小样例见 **[code/docs/ACCEPTANCE.md](code/docs/ACCEPTANCE.md)**；测试与样例的入口也汇总在那里。
+
+## AI 辅助开发与责任边界
+
+AI 编码代理参与实现草案、重构、测试与文档起草、命令执行和结果整理。项目负责人保留验收标准、修复语义、架构取舍、发布与「是否达标」的决定权。
+
+关键数字由 `code/tests/claims.sh` 从当前构建重新推导；真值评测的判据与数据指纹在运行前冻结。真实模型与 Claude Code 会话是历史实测记录，不用 AI 的自我描述替代可复现证据。
+
 ## 快速上手
 
 ### 环境依赖
@@ -61,7 +69,7 @@
 - **原生 CLI**：不需要运行时。支持 macOS Apple Silicon、Linux x86_64 与 arm64、Windows x86_64。**没有 Intel macOS 产物**：MoonBit 工具链不发布 `darwin-x86_64` 目标，该平台只能从源码构建。
 - **npm 包**：Node.js **>= 20**。
 - **pip 包**：Python **>= 3.10**，无需其他依赖，原生引擎随 wheel 一起装。
-- **从源码构建**：需要 MoonBit 工具链 `moon 0.1.20261016`，仓库与 CI 都钉在这个版本，其他版本未验证。
+- **从源码构建**：需要 MoonBit 工具链 `moon 0.1.20261126` / `moonc v1.0.0-rc1+3c0520448`（MoonBit 1.0.0-rc1），仓库与 CI 都钉在这个版本，其他版本未验证。
 
 ### 安装
 
@@ -206,7 +214,7 @@ q.finish()                                             // 抛 E010
 
 ## 技术栈
 
-- **引擎**：纯 MoonBit，无第三方运行时依赖；工具链钉在 `moon 0.1.20261016`，CI 同样钉住。
+- **引擎**：纯 MoonBit，无第三方运行时依赖；工具链钉在 `moon 0.1.20261126` / `moonc v1.0.0-rc1+3c0520448`，CI 同样钉住。
 - **后端**：wasm-gc、native、JS、wasm 四个后端跑同一套测试，每个后端 `384/384`。CLI 与 MCP server 是 native 后端，浏览器里跑的是 JS 后端产物。
 - **协议**：MCP 用 stdio + JSON-RPC 2.0，协议版本 `2025-06-18`；`liwenjson serve` 用版本化 JSONL，每行一个请求、一行一个响应，stdout 只走协议。
 - **语言包**：npm 包提供 ESM + CJS + TypeScript 类型，要求 Node >= 20。Python 包是同一引擎的薄客户端，无第三方依赖，wheel 内自带四个平台的 native 二进制。

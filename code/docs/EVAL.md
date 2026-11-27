@@ -8,9 +8,9 @@
 | 生成器 | `code/tests/eval/corpus.py` eval-2，种子 20261015 |
 | 语料 | `code/tests/eval/corpus.jsonl`，1200 条，sha256 `c528375a0d996a78` |
 | 生成跳过 | 1203 次尝试因算子不适用而丢弃（登记 §5） |
-| 被测二进制 | `./_build/native/release/build/cmd/liwenjson/liwenjson.exe`（sha256:2224388aaeb019f1, 903072 bytes） |
-| 工具链 | `moon 0.1.20261016 (1af328f 2026-10-16)` |
-| 运行时刻 | 2026-11-22T15:48:46Z |
+| 被测二进制 | `./_build/native/release/build/cmd/liwenjson/liwenjson.exe`（sha256:a0e91e353703ef27, 998592 bytes） |
+| 工具链 | `moon 0.1.20261126 (ccd306a 2026-11-26)` |
+| 运行时刻 | 2026-11-27T08:10:01Z |
 | 退出码 | 0（0 = 全部验收判据通过） |
 
 ## 1. 总体
@@ -75,7 +75,7 @@
 | 版本 | 时间 | 语料 sha256 | N | 恢复率 | 差异 | 漏标 | 关键修订 |
 |------|------|-------------|----|--------|------|------|----------|
 | `eval-1` | 2026-10-15 | `5a435447f28eee72` | 1200 | 91.58% | 101 | 16 | — |
-| `eval-2` | 2026-11-22 | `c528375a0d996a78` | 1200 | 100.00% | 0 | 0 | 语料：撇号歧义、裸 token 合并、标量根 prose、截断的祖先语义；实现：R015/R017/R021 降为 Info、新增 R022、R018 判等（[EVAL_REGISTRATION.md](EVAL_REGISTRATION.md) §10） |
+| `eval-2` | 2026-11-27 | `c528375a0d996a78` | 1200 | 100.00% | 0 | 0 | 语料：撇号歧义、裸 token 合并、标量根 prose、截断的祖先语义；实现：R015/R017/R021 降为 Info、新增 R022、R018 判等（[EVAL_REGISTRATION.md](EVAL_REGISTRATION.md) §10） |
 
 `eval-1` 的 16 条漏标与 84 条语料缺陷的完整归因见
 [EVAL_REGISTRATION.md](EVAL_REGISTRATION.md) §10。

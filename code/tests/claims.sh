@@ -23,6 +23,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CODE="$ROOT/code"
+ACC="$CODE/docs/ACCEPTANCE.md"
 export PATH="$HOME/.moon/bin:$PATH"
 
 FAIL=0
@@ -156,6 +157,7 @@ for t in wasm wasm-gc js native; do
  # checked on its own line: a single any-of search here used to let one stale
  # document pass because another one was up to date.
  require_line "$ROOT/README.md" "四个后端" "$n/$n"
+ require_line "$ACC" "四个后端" "$n/$n"
  require_line "$CODE/README.md" "Cross-backend results are identical" "**$n/$n** tests pass"
  require_line "$CODE/README.zh.md" "| 后端 |" "各 $n/$n 通过"
 done
@@ -175,6 +177,7 @@ CLI_N="$(printf '%s' "$cli_out" | sed -n 's/^\([0-9]*\) passed.*/\1/p' | head -1
 if [ -n "$CLI_N" ]; then
  derive "cli_assertions" "$CLI_N" "bash tests/cli_smoke.sh"
  require_line "$ROOT/README.md" "CLI 冒烟" "$CLI_N 项断言"
+ require_line "$ACC" "CLI 冒烟" "$CLI_N 项断言"
 else
  fail "could not read the CLI assertion count from tests/cli_smoke.sh"
 fi
@@ -213,6 +216,7 @@ if [ -n "$MCP_N" ] && [ -n "$MCP_T" ]; then
  # derived number: it used to be printed and never checked, so the README row
  # could say any old count.
  require_line "$ROOT/README.md" "MCP 契约" "$MCP_N/$MCP_T 响应通过"
+ require_line "$ACC" "MCP 契约" "$MCP_N/$MCP_T 响应通过"
 else
  fail "the MCP contract check (strict) did not report a pass count: $mcp_out"
 fi
@@ -230,6 +234,7 @@ CONF_N="$(printf '%s' "$conf_out" | sed -n 's#^\([0-9]*\)/\([0-9]*\) conformance
 if [ -n "$CONF_N" ]; then
  derive "conformance_groups" "$CONF_N" "python3 tests/conformance/run_conformance.py"
  require_line "$ROOT/README.md" "协议 / MCP 一致性" "$CONF_N 组"
+ require_line "$ACC" "协议 / MCP 一致性" "$CONF_N 组"
 else
  fail "could not read the conformance group count"
 fi
@@ -239,6 +244,7 @@ NPM_N="$(printf '%s' "$npm_out" | sed -n 's/.*tests \([0-9]*\).*/\1/p' | head -1
 if [ -n "$NPM_N" ]; then
  derive "npm_tests" "$NPM_N" "cd code/npm && node --test"
  require_line "$ROOT/README.md" "npm 包" "$NPM_N 个 Node 测试"
+ require_line "$ACC" "npm 包" "$NPM_N 个 Node 测试"
 else
  fail "could not read the npm test count"
 fi
@@ -248,6 +254,7 @@ PY_N="$(printf '%s' "$py_out" | head -1)"
 if [ -n "$PY_N" ]; then
  derive "python_tests" "$PY_N" "cd code/python && python3 -m unittest discover -s tests"
  require_line "$ROOT/README.md" "Python 包" "$PY_N 个测试"
+ require_line "$ACC" "Python 包" "$PY_N 个测试"
 else
  fail "could not read the Python test count"
 fi
@@ -308,8 +315,11 @@ EOF
  # Each figure is checked in its own README row. The old any-of check let the
  # README and code/docs/MCP.md cover for each other: one could be stale.
  require_line "$ROOT/README.md" "根包行覆盖率" "$ROOT_C/$ROOT_T"
+ require_line "$ACC" "根包行覆盖率" "$ROOT_C/$ROOT_T"
  require_line "$ROOT/README.md" '`llm` 包行覆盖率' "$LLM_C/$LLM_T"
+ require_line "$ACC" '`llm` 包行覆盖率' "$LLM_C/$LLM_T"
  require_line "$ROOT/README.md" "覆盖率门（有未覆盖行的文件口径）" "$GATE_C/$GATE_T"
+ require_line "$ACC" "覆盖率门（有未覆盖行的文件口径）" "$GATE_C/$GATE_T"
  fi
 else
  fail "the instrumented test run failed, so no coverage number was derived"
@@ -342,6 +352,7 @@ else
  WASM_KIB="$(size_kib "$(wc -c <"$WASM_B" | tr -d ' ')")"
  derive "wasm_gc_kib" "$WASM_KIB" "wc -c < wasm-gc artifact"
  require_line "$ROOT/README.md" "wasm-gc 产物体积" "$WASM_KIB KiB"
+ require_line "$ACC" "wasm-gc 产物体积" "$WASM_KIB KiB"
 fi
 
 BUNDLE="$ROOT/static/demo/liwenjson.js"
@@ -378,10 +389,12 @@ if [ -f "$EVAL_REPORT" ]; then
  if [ -n "$EVAL_N" ]; then
  derive "eval_cases" "$EVAL_N" "code/docs/EVAL.md"
  require_line "$ROOT/README.md" "真值评测（协议先冻结）" "$EVAL_N"
+ require_line "$ACC" "真值评测（协议先冻结）" "$EVAL_N"
  fi
  if [ -n "$EVAL_R" ]; then
  derive "eval_recovery" "$EVAL_R" "code/docs/EVAL.md"
  require_line "$ROOT/README.md" "真值评测（协议先冻结）" "$EVAL_R%"
+ require_line "$ACC" "真值评测（协议先冻结）" "$EVAL_R%"
  fi
 fi
 
@@ -393,6 +406,7 @@ if [ -f "$DIFF_REPORT" ]; then
  derive "diff_cases" "$D_CASES" "code/docs/DIVERGENCES.md"
  # One row carries both figures, so one anchored check covers the pair.
  require_line "$ROOT/README.md" "差分测试（对" "$D_CASES" "未解释 0"
+ require_line "$ACC" "差分测试（对" "$D_CASES" "未解释 0"
  else
  fail "could not read the differential corpus size from code/docs/DIVERGENCES.md"
  fi
@@ -410,6 +424,7 @@ if [ -f "$RDY" ]; then
  if [ "$RDY_N" -gt 0 ]; then
  derive "readiness_cases" "$RDY_N" "code/docs/READINESS.md"
  require_line "$ROOT/README.md" "骨架就绪表" "$RDY_N 个场景"
+ require_line "$ACC" "骨架就绪表" "$RDY_N 个场景"
  fi
 fi
 

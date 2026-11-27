@@ -57,6 +57,7 @@ moon.lock
 !code/docs/SPEC.md
 !code/docs/NOTREE.md
 !code/docs/MCP.md
+!code/docs/ACCEPTANCE.md
 !code/docs/INTEGRATIONS.md
 !code/docs/PROTOCOL.md
 !code/docs/CONFORMANCE.md

@@ -279,8 +279,18 @@ fn frame_map(f : Frame) -> Map[String, Json] {
 /// objects is the case where the padding is the whole memory profile. The copy
 /// happens once, when the container closes, and only when it would actually
 /// shrink.
+///
+/// `Map::capacity` is gone in moonc 1.0 (it was deprecated in 0.10.16: "the
+/// bucket count is an implementation detail; the constructor's `capacity` hint
+/// is the only sizing control"), so the decision is made from the entry count.
+/// A map built by this parser starts at the default eight-slot table; a hint
+/// smaller than four entries builds a strictly smaller one, while from four
+/// entries up the hint builds the same power-of-two table the default has
+/// already grown into. Rebuilding above that boundary would copy the map while
+/// the old table is still alive -- peak memory, the thing this function exists
+/// for, would get worse, not better.
 fn shrink_map(m : Map[String, Json]) -> Map[String, Json] {
-  if m.capacity() <= m.length() {
+  if m.length() >= 4 {
     return m
   }
   let out : Map[String, Json] = Map([], capacity=m.length())

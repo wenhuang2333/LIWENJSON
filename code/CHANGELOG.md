@@ -5,6 +5,15 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 工具链
+
+- 工具链升级到 MoonBit 1.0.0-rc1：`moon 0.1.20261126` / `moonc v1.0.0-rc1+3c0520448`，CI 的 `MOONBIT_INSTALL_VERSION` 同步钉住。赛事验收要求 `moonc` 不低于 1.0.0-rc1。
+- rc1 移除了 `Map::capacity`（0.10.16 起已标记 deprecated）。`engine.mbt` 的 `shrink_map` 改为按条目数判断是否重建：不足四条时按精确容量重建，四条及以上保留原表，避免为不会缩小的表复制而抬高峰值内存。
+- `static/demo/liwenjson.js` 与 `code/npm/vendor/liwenjson.js` 用 rc1 重建；两个 `pkg.generated.mbti` 随 rc1 的接口表示重新生成。
+- 新增 `code/docs/ACCEPTANCE.md`：九项赛事验收要求逐条对照、复现命令与最小样例。
+
 ## [1.5.3] - 2026-11-23
 
 第三轮审计（`marks/1120优化.md`）以「让真实宿主按文档使用 CLI、serve/MCP、包装层」为问题：

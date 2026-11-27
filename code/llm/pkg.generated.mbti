@@ -2,23 +2,24 @@
 package "zhanshishan/liwenjson/llm"
 
 import {
+  "moonbitlang/core/json",
   "zhanshishan/liwenjson",
 }
 
 // Values
-pub fn as_array(Json) -> Array[Json]?
+pub fn as_array(@json.Json) -> Array[@json.Json]?
 
-pub fn as_int(Json) -> Int32?
+pub fn as_int(@json.Json) -> Int32?
 
-pub fn as_object(Json) -> Map[String, Json]?
+pub fn as_object(@json.Json) -> Map[String, @json.Json]?
 
-pub fn as_string(Json) -> String?
+pub fn as_string(@json.Json) -> String?
 
-pub fn field(Json, String) -> Json?
+pub fn field(@json.Json, String) -> @json.Json?
 
-pub fn field_int(Json, String) -> Int32?
+pub fn field_int(@json.Json, String) -> Int32?
 
-pub fn field_string(Json, String) -> String?
+pub fn field_string(@json.Json, String) -> String?
 
 pub fn sse_data(String) -> String?
 

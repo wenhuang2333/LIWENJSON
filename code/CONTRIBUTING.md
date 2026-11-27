@@ -6,12 +6,12 @@ commands and the rules a change has to follow.
 ## Environment
 
 ```bash
-curl -fsSL https://cli.moonbitlang.com/install/unix.sh | MOONBIT_INSTALL_VERSION=0.10.16+b1a0e846e bash
+curl -fsSL https://cli.moonbitlang.com/install/unix.sh | MOONBIT_INSTALL_VERSION=1.0.0-rc1+3c0520448 bash
 export PATH="$HOME/.moon/bin:$PATH"
 cd code && moon check && moon test
 ```
 
-The toolchain is pinned to `moon 0.1.20261016` / `moonc v0.10.16+b1a0e846e`. Rebuild bundle artifacts with that compiler, matching CI; do not install `latest`.
+The toolchain is pinned to `moon 0.1.20261126` / `moonc v1.0.0-rc1+3c0520448` (MoonBit 1.0.0-rc1). Rebuild bundle artifacts with that compiler, matching CI; do not install `latest`.
 Python 3 and Node.js are needed for the protocol, package, browser and differential checks.
 
 ## Layout
