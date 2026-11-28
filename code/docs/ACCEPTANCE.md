@@ -6,7 +6,7 @@
 
 | # | 验收要求 | 结论 | 证据 |
 | --- | --- | --- | --- |
-| 1 | 项目以 MoonBit 为主要实现语言，`moonc` 版本不低于 `1.0.0-rc1` | 满足 | 引擎（`code/*.mbt`）、native CLI（`code/cmd/liwenjson/`）、provider 适配（`code/llm/`）与示例全部是 MoonBit；工具链 `moon 0.1.20261126` / `moonc v1.0.0-rc1+3c0520448`，CI 用 `MOONBIT_INSTALL_VERSION` 钉住 |
+| 1 | 项目以 MoonBit 为主要实现语言，`moonc` 版本不低于 `1.0.0-rc1` | 满足 | 引擎（`code/*.mbt`）、native CLI（`code/cmd/liwenjson/`）、provider 适配（`code/llm/`）与示例全部是 MoonBit；工具链为 MoonBit 1.0 稳定编译器（`moon 0.1.20261126` / `moonc v1.0.0-rc1+3c0520448`），CI 用 `MOONBIT_INSTALL_VERSION` 钉住 |
 | 2 | GitHub 仓库公开可访问，提交记录清晰 | 满足 | <https://github.com/wenhuang2333/LIWENJSON> 公开（visibility `public`，Apache-2.0）；提交按主题拆分，`git log --oneline` 可直接审阅 |
 | 3 | 源代码结构清晰，能够完成声明的核心功能 | 满足 | `code/` 单扁平包是引擎，`cmd/` 是 CLI，`llm/` 是 provider 适配，`npm/`、`python/` 是同引擎包装；目录表见 README「目录结构」。修复、流式部分解析、执行档、JSON Schema 桥与 MCP server 都由此实现 |
 | 4 | 提供 README，说明项目目标、安装方式、使用方法和示例，并可复现 | 满足 | README 的「功能亮点 / 快速上手 / 使用说明 / 技术栈」覆盖目标、四种安装方式、MCP 与 Node/MoonBit 用法；复现命令见本文件「复现」与 `code/CONTRIBUTING.md` |

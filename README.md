@@ -71,7 +71,7 @@ AI 编码代理参与实现草案、重构、测试与文档起草、命令执�
 - **原生 CLI**：不需要运行时。支持 macOS Apple Silicon、Linux x86_64 与 arm64、Windows x86_64。**没有 Intel macOS 产物**：MoonBit 工具链不发布 `darwin-x86_64` 目标，该平台只能从源码构建。
 - **npm 包**：Node.js **>= 20**。
 - **pip 包**：Python **>= 3.10**，无需其他依赖，原生引擎随 wheel 一起装。
-- **从源码构建**：需要 MoonBit 工具链 `moon 0.1.20261126` / `moonc v1.0.0-rc1+3c0520448`（MoonBit 1.0.0-rc1），仓库与 CI 都钉在这个版本，其他版本未验证。
+- **从源码构建**：需要 MoonBit 1.0 编译器（官方当前稳定构建 `moonc v1.0.0-rc1+3c0520448`，配 `moon 0.1.20261126`），仓库与 CI 都钉在这个版本，其他版本未验证。
 
 ### 安装
 
@@ -216,7 +216,7 @@ q.finish()                                             // 抛 E010
 
 ## 技术栈
 
-- **引擎**：纯 MoonBit，无第三方运行时依赖；工具链钉在 `moon 0.1.20261126` / `moonc v1.0.0-rc1+3c0520448`，CI 同样钉住。
+- **引擎**：纯 MoonBit，无第三方运行时依赖；工具链钉在 MoonBit 1.0 的 `moon 0.1.20261126` / `moonc v1.0.0-rc1+3c0520448`，CI 同样钉住。
 - **后端**：wasm-gc、native、JS、wasm 四个后端跑同一套测试，每个后端 `384/384`。CLI 与 MCP server 是 native 后端，浏览器里跑的是 JS 后端产物。
 - **协议**：MCP 用 stdio + JSON-RPC 2.0，协议版本 `2025-06-18`；`liwenjson serve` 用版本化 JSONL，每行一个请求、一行一个响应，stdout 只走协议。
 - **语言包**：npm 包提供 ESM + CJS + TypeScript 类型，要求 Node >= 20。Python 包是同一引擎的薄客户端，无第三方依赖，wheel 内自带四个平台的 native 二进制。

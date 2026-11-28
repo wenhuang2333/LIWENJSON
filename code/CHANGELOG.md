@@ -5,6 +5,12 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 审阅
+
+- 按 MoonBit 1.0 编译器复审：官方当前稳定构建仍是 `moonc v1.0.0-rc1+3c0520448`（`moon 0.1.20261126`），`moon fix --target all` 无待应用修复；四后端测试、格式、严格检查与本地全部门通过。
+
 ## [1.5.4] - 2026-11-27
 
 工具链升级版：同一套行为在 MoonBit 1.0.0-rc1 上构建，四个渠道一起发新版本（mooncakes 对应 `0.16.0`）。

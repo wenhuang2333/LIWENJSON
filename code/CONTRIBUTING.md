@@ -11,7 +11,7 @@ export PATH="$HOME/.moon/bin:$PATH"
 cd code && moon check && moon test
 ```
 
-The toolchain is pinned to `moon 0.1.20261126` / `moonc v1.0.0-rc1+3c0520448` (MoonBit 1.0.0-rc1). Rebuild bundle artifacts with that compiler, matching CI; do not install `latest`.
+The toolchain is pinned to `moon 0.1.20261126` / `moonc v1.0.0-rc1+3c0520448`, the MoonBit 1.0 compiler the official release marks stable (its published build string still carries `rc1`). Rebuild bundle artifacts with that compiler, matching CI; pin instead of following `latest`, which moves without notice.
 Python 3 and Node.js are needed for the protocol, package, browser and differential checks.
 
 ## Layout

@@ -10,10 +10,11 @@ This document is the canonical deployment guide. The host-side surfaces
 [INTEGRATIONS.md](INTEGRATIONS.md); the engine and its guarantees are in
 [../README.md](../README.md).
 
-## 1.5.4: built with MoonBit 1.0.0-rc1
+## 1.5.4: built with the MoonBit 1.0 compiler
 
-This release moves the engine, CLI and both language packages to MoonBit
-1.0.0-rc1 (`moon 0.1.20261126` / `moonc v1.0.0-rc1+3c0520448`). Behavior is
+This release moves the engine, CLI and both language packages to the MoonBit
+1.0 compiler the official release marks stable (its published build string is
+still `v1.0.0-rc1+3c0520448`, with `moon 0.1.20261126`). Behavior is
 unchanged from `1.5.3`: the only source change replaces the removed
 `Map::capacity` in the container-close shrink step with an entry-count rule,
 so a one-key object keeps its small map and a large object is not copied.
